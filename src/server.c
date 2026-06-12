@@ -342,7 +342,7 @@ sso_error_t sso_server_start(sso_server_t *server) {
     signal(SIGPIPE, SIG_IGN);
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) return SSO_ERR_GENERAL;
+    if (server_fd < 0) { perror("socket"); return SSO_ERR_GENERAL; }
 
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
@@ -354,11 +354,13 @@ sso_error_t sso_server_start(sso_server_t *server) {
     addr.sin_port = htons((uint16_t)server->port);
 
     if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        perror("bind");
         close(server_fd);
         return SSO_ERR_GENERAL;
     }
 
     if (listen(server_fd, 128) < 0) {
+        perror("listen");
         close(server_fd);
         return SSO_ERR_GENERAL;
     }
