@@ -31,10 +31,20 @@
 #define SSO_SERVER_H
 
 #include "sso.h"
+#include "user.h"
+#include "token.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ========================================================================
+ * Auth context — passed to handlers via req->userdata after authentication
+ * ======================================================================== */
+typedef struct {
+    user_t        user;          /* authenticated user              */
+    token_t       token;         /* decoded token                   */
+} auth_context_t;
 
 /* ========================================================================
  * HTTP method

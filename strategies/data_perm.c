@@ -75,58 +75,6 @@ static char *extract_json_string(const char *json, const char *key) {
     return result;
 }
 
-/* Check if a condition is satisfied against a record JSON.
- * This is a simplified implementation. */
-static bool check_condition(const char *condition_json, const char *record_json) {
-    if (!condition_json || !record_json) return true;
-
-    char *field = extract_json_string(condition_json, "field");
-    char *op    = extract_json_string(condition_json, "op");
-    if (!field || !op) {
-        free(field);
-        free(op);
-        return true; /* skip if malformed */
-    }
-
-    /* Extract the record's field value */
-    char *record_val = extract_json_string(record_json, field);
-    if (!record_val) {
-        /* Field not in record — condition fails */
-        free(field); free(op);
-        return false;
-    }
-
-    /* Extract condition value (simplified: only supports "value" as string) */
-    char *cond_val = extract_json_string(condition_json, "value");
-    if (!cond_val) {
-        free(field); free(op); free(record_val);
-        return true; /* no value to compare — skip */
-    }
-
-    bool matches = false;
-    if (strcmp(op, "eq") == 0) {
-        matches = (strcmp(record_val, cond_val) == 0);
-    } else if (strcmp(op, "neq") == 0) {
-        matches = (strcmp(record_val, cond_val) != 0);
-    } else if (strcmp(op, "gt") == 0) {
-        matches = (atof(record_val) > atof(cond_val));
-    } else if (strcmp(op, "gte") == 0) {
-        matches = (atof(record_val) >= atof(cond_val));
-    } else if (strcmp(op, "lt") == 0) {
-        matches = (atof(record_val) < atof(cond_val));
-    } else if (strcmp(op, "lte") == 0) {
-        matches = (atof(record_val) <= atof(cond_val));
-    } else if (strcmp(op, "contains") == 0) {
-        matches = (strstr(record_val, cond_val) != NULL);
-    } else {
-        /* "in" and "not_in" require array handling — skip for simplicity */
-        matches = true;
-    }
-
-    free(field); free(op); free(record_val); free(cond_val);
-    return matches;
-}
-
 /* Check if a scope matches the user's context.
  * "self"     → user is the owner (record has "created_by" matching user)
  * "all"      → always matches

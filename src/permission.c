@@ -170,8 +170,7 @@ sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
     bool strategy_result = false;
     sso_error_t err = strategy->evaluate(strategy, ctx, policy, &strategy_result);
     if (err == SSO_ERR_NOT_FOUND) {
-        *result = true; /* policy didn't match — neutral, continue */
-        return SSO_OK;
+        return SSO_ERR_NOT_FOUND; /* policy didn't match — neutral, propagate to caller */
     }
     if (err != SSO_OK) return err;
 
@@ -213,17 +212,19 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
     for (size_t i = 0; i < policy_count; i++) {
         bool policy_result = false;
         err = perm_engine_evaluate_policy(engine, &policies[i], ctx, &policy_result);
+        if (err == SSO_ERR_NOT_FOUND) {
+            continue; /* neutral — policy didn't match this request, skip */
+        }
         if (err != SSO_OK) continue; /* skip broken policies */
 
         if (!policy_result) {
-            /* This policy explicitly denies */
+            /* This policy explicitly denies — DENY overrides */
             *result = false;
             return SSO_OK;
         }
 
-        if (policy_result) {
-            any_allowed = true;
-        }
+        /* Policy matched and allowed */
+        any_allowed = true;
     }
 
     *result = any_allowed;

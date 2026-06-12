@@ -8,16 +8,16 @@
  *   {
  *     "endpoints": [
  *       {"method": "GET",    "path": "/api/v1/users",       "effect": "allow"},
- *       {"method": "GET",    "path": "/api/v1/users/*",     "effect": "allow"},
+ *       {"method": "GET",    "path": "/api/v1/users/" "*",  "effect": "allow"},
  *       {"method": "POST",   "path": "/api/v1/users",       "effect": "allow"},
- *       {"method": "DELETE", "path": "/api/v1/users/*",     "effect": "deny"},
- *       {"method": "*",      "path": "/api/v1/public/*",    "effect": "allow"}
+ *       {"method": "DELETE", "path": "/api/v1/users/" "*",  "effect": "deny"},
+ *       {"method": "*",      "path": "/api/v1/public/" "*", "effect": "allow"}
  *     ]
  *   }
  *
  * Path matching supports:
  *   - Exact match: "/api/v1/users"
- *   - Wildcard:    "/api/v1/users/*" matches any sub-path
+ *   - Wildcard:    "/api/v1/users/" "*" matches any sub-path
  *   - Parametric:  "/api/v1/users/:id" matches "/api/v1/users/42"
  *
  * Method "*" matches any HTTP method.
@@ -28,8 +28,6 @@
  *   - Matched with "deny"  → return true (engine handles override)
  *   - No match             → return false (policy doesn't apply)
  */
-
-#define _GNU_SOURCE
 
 #include "sso.h"
 #include "policy.h"
@@ -88,7 +86,6 @@ static bool find_endpoint_effect(const char *rules, const char *method,
     const char *method_key;
     char rule_method[16];
     char rule_path[256];
-    char rule_effect[8];
 
     /* Very simple linear scan — in production use a proper JSON parser */
     while ((method_key = strstr(p, "\"method\"")) != NULL) {

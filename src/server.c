@@ -73,7 +73,8 @@ static int parse_request(int client_fd, http_request_t *req) {
     else if (strcmp(method, "PATCH") == 0) req->method = HTTP_PATCH;
     else return -1;
 
-    strncpy(req->path, path, SSO_MAX_PATH - 1);
+    memcpy(req->path, path, SSO_MAX_PATH - 1);
+    req->path[SSO_MAX_PATH - 1] = '\0';
 
     /* Parse headers — look for Content-Length and Authorization */
     int content_length = 0;
@@ -248,25 +249,41 @@ static void handle_client(sso_server_t *server, int client_fd) {
         return;
     }
 
-    /* Auth check */
+    /* Auth check — populate req->userdata with auth_context_t */
+    req.userdata = NULL;
     if (matched->require_auth) {
-        user_t user;
-        token_t tok;
-        sso_error_t aerr = authenticate_request(server, &req, &user, &tok);
-        if (aerr != SSO_OK) {
-            const char *msg = "Authentication failed";
-            if (aerr == SSO_ERR_TOKEN_EXPIRED) msg = "Token expired";
-            sso_response_error(&resp, 401, msg);
+        auth_context_t *auth = (auth_context_t *)malloc(sizeof(auth_context_t));
+        if (!auth) {
+            sso_response_error(&resp, 500, "Internal server error");
             send_response(client_fd, &resp);
             free(resp.body);
             free(req.body);
             close(client_fd);
             return;
         }
+        sso_error_t aerr = authenticate_request(server, &req, &auth->user, &auth->token);
+        if (aerr != SSO_OK) {
+            const char *msg = "Authentication failed";
+            if (aerr == SSO_ERR_TOKEN_EXPIRED) msg = "Token expired";
+            sso_response_error(&resp, 401, msg);
+            free(auth);
+            send_response(client_fd, &resp);
+            free(resp.body);
+            free(req.body);
+            close(client_fd);
+            return;
+        }
+        req.userdata = auth;
     }
 
     /* Dispatch to handler */
     sso_error_t err = matched->handler(server->sso_ctx, &req, &resp);
+
+    /* Free auth context if allocated */
+    if (req.userdata) {
+        free(req.userdata);
+        req.userdata = NULL;
+    }
     if (err != SSO_OK && resp.body == NULL) {
         sso_response_error(&resp, 500, sso_strerror(err));
     }

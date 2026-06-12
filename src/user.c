@@ -14,7 +14,7 @@
 #include <stdio.h>
 
 /* Simple SHA-256 + salt "hash" — REPLACE with bcrypt/argon2 in production */
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 
 #define SALT_LEN 16
 
@@ -27,19 +27,21 @@ struct user_manager {
  * ----------------------------------------------------------------------- */
 static void hash_password(const char *password, const unsigned char *salt,
                           char *out_hash, size_t out_len) {
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_CTX sha;
-    SHA256_Init(&sha);
-    SHA256_Update(&sha, salt, SALT_LEN);
-    SHA256_Update(&sha, password, strlen(password));
-    SHA256_Final(hash, &sha);
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int hash_len = 0;
+    EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
+    EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL);
+    EVP_DigestUpdate(mdctx, salt, SALT_LEN);
+    EVP_DigestUpdate(mdctx, password, strlen(password));
+    EVP_DigestFinal_ex(mdctx, hash, &hash_len);
+    EVP_MD_CTX_free(mdctx);
 
     /* Encode as hex: salt + hash */
     char *p = out_hash;
     for (int i = 0; i < SALT_LEN && p < out_hash + out_len - 3; i++) {
         p += snprintf(p, out_len - (size_t)(p - out_hash), "%02x", salt[i]);
     }
-    for (int i = 0; i < SHA256_DIGEST_LENGTH && p < out_hash + out_len - 3; i++) {
+    for (unsigned int i = 0; i < hash_len && p < out_hash + out_len - 3; i++) {
         p += snprintf(p, out_len - (size_t)(p - out_hash), "%02x", hash[i]);
     }
 }
