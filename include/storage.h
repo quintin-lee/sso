@@ -86,6 +86,13 @@ typedef sso_error_t (*storage_get_target_policies_fn)(storage_backend_t *self,
 typedef sso_error_t (*storage_role_get_parent_fn)(storage_backend_t *self, sso_id_t role_id, sso_id_t *parent_id);
 typedef sso_error_t (*storage_group_get_parent_fn)(storage_backend_t *self, sso_id_t group_id, sso_id_t *parent_id);
 
+/* Efficient bulk query: get all role IDs for a user (direct + inherited via hierarchy)
+ * in a single operation.  Returns SSO_ERR_NOT_FOUND if no roles found. */
+typedef sso_error_t (*storage_get_user_roles_with_ancestors_fn)(storage_backend_t *self,
+                                                                 sso_id_t user_id,
+                                                                 sso_id_t *role_ids,
+                                                                 size_t *count, size_t max);
+
 /* ========================================================================
  * Storage backend struct — concrete implementations fill these pointers.
  * ======================================================================== */
@@ -149,8 +156,9 @@ struct storage_backend {
     storage_get_target_policies_fn      get_target_policies;
 
     /* Hierarchy */
-    storage_role_get_parent_fn          role_get_parent;
-    storage_group_get_parent_fn         group_get_parent;
+    storage_role_get_parent_fn                  role_get_parent;
+    storage_group_get_parent_fn                 group_get_parent;
+    storage_get_user_roles_with_ancestors_fn    get_user_roles_with_ancestors;
 
     /* Opaque backend-private data (e.g. sqlite3*, FILE*, hashtable*) */
     void *handle;

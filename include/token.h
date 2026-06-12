@@ -59,9 +59,16 @@ struct token_manager {
 sso_error_t token_manager_init(token_manager_t *mgr, const unsigned char *secret,
                                size_t secret_len, sso_timestamp_t default_ttl_ms);
 
+/* Destroy the token manager and securely wipe sensitive data. */
+void        token_manager_destroy(token_manager_t *mgr);
+
 /* -----------------------------------------------------------------------
  * Token operations
  * ----------------------------------------------------------------------- */
+
+/* Free dynamically allocated fields inside a token (role_ids, group_ids).
+ * Does NOT free the token struct itself. */
+void token_destroy(token_t *token);
 
 /* Issue a new token for the given user, embedding their roles & groups. */
 sso_error_t token_issue(token_manager_t *mgr, const user_t *user,

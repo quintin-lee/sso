@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
+#include <sodium.h>
 
 /* ========================================================================
  * Internal helpers
@@ -146,8 +147,30 @@ sso_error_t token_manager_init(token_manager_t *mgr, const unsigned char *secret
     memset(mgr->secret, 0, sizeof(mgr->secret));
     size_t copy_len = secret_len < sizeof(mgr->secret) ? secret_len : sizeof(mgr->secret);
     memcpy(mgr->secret, secret, copy_len);
+    /* Lock the secret in memory to prevent it from being swapped to disk. */
+    if (sodium_mlock(mgr->secret, sizeof(mgr->secret)) != 0) {
+        /* Non-fatal: best-effort protection. */
+    }
     mgr->default_ttl_ms = default_ttl_ms;
     return SSO_OK;
+}
+
+void token_manager_destroy(token_manager_t *mgr) {
+    if (!mgr) return;
+    /* Securely wipe the HMAC key before freeing. */
+    sodium_memzero(mgr->secret, sizeof(mgr->secret));
+    sodium_munlock(mgr->secret, sizeof(mgr->secret));
+    free(mgr);
+}
+
+void token_destroy(token_t *token) {
+    if (!token) return;
+    free(token->role_ids);
+    token->role_ids = NULL;
+    token->role_count = 0;
+    free(token->group_ids);
+    token->group_ids = NULL;
+    token->group_count = 0;
 }
 
 /* ========================================================================
@@ -357,27 +380,48 @@ sso_error_t token_refresh(token_manager_t *mgr, const token_t *old_token,
 }
 
 /* ========================================================================
- * Revocation (simple blocklist — in production, use Redis or DB)
+ * Revocation (dynamic growing blocklist)
  * ======================================================================== */
-#define MAX_REVOKED 1024
+#define REVOCATION_STR_LEN 64
+#define REVOCATIONS_INIT_CAP 64
 
 static struct {
-    char jtis[MAX_REVOKED][64];
+    char (*jtis)[REVOCATION_STR_LEN];
     size_t count;
-} revocations;
+    size_t capacity;
+} revocations = {NULL, 0, 0};
 
 sso_error_t token_revoke(token_manager_t *mgr, const char *jti) {
     (void)mgr;
     if (!jti) return SSO_ERR_INVALID_PARAM;
-    if (revocations.count >= MAX_REVOKED) return SSO_ERR_OUT_OF_MEMORY;
-    strncpy(revocations.jtis[revocations.count++], jti, 63);
-    revocations.jtis[revocations.count - 1][63] = '\0';
+
+    /* Lazily initialise the array */
+    if (revocations.jtis == NULL) {
+        revocations.jtis = (char (*)[REVOCATION_STR_LEN])calloc(
+            REVOCATIONS_INIT_CAP, REVOCATION_STR_LEN);
+        if (!revocations.jtis) return SSO_ERR_OUT_OF_MEMORY;
+        revocations.capacity = REVOCATIONS_INIT_CAP;
+    }
+
+    /* Grow if full */
+    if (revocations.count >= revocations.capacity) {
+        size_t new_cap = revocations.capacity * 2;
+        char (*new_jtis)[REVOCATION_STR_LEN] = (char (*)[REVOCATION_STR_LEN])realloc(
+            revocations.jtis, new_cap * REVOCATION_STR_LEN);
+        if (!new_jtis) return SSO_ERR_OUT_OF_MEMORY;
+        revocations.jtis = new_jtis;
+        revocations.capacity = new_cap;
+    }
+
+    strncpy(revocations.jtis[revocations.count], jti, REVOCATION_STR_LEN - 1);
+    revocations.jtis[revocations.count][REVOCATION_STR_LEN - 1] = '\0';
+    revocations.count++;
     return SSO_OK;
 }
 
 bool token_is_revoked(token_manager_t *mgr, const char *jti) {
     (void)mgr;
-    if (!jti) return false;
+    if (!jti || !revocations.jtis) return false;
     for (size_t i = 0; i < revocations.count; i++) {
         if (strcmp(revocations.jtis[i], jti) == 0) return true;
     }

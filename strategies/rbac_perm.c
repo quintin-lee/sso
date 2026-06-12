@@ -26,46 +26,48 @@
 #include "policy.h"
 #include "role.h"
 #include "user.h"
+#include "storage.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
 /* -----------------------------------------------------------------------
  * Helper: check if a user ID holds a named role.
- * Uses user_get_roles + role_get_by_id + role_get_ancestors.
+ * Uses the storage backend's get_user_roles_with_ancestors for an
+ * efficient single-query lookup that avoids N+1 hierarchy walks.
  * ----------------------------------------------------------------------- */
 static bool user_has_role(sso_context_t *sso_ctx, sso_id_t user_id,
                           const char *role_name) {
     if (!sso_ctx || !role_name) return false;
 
-    user_manager_t *umgr = (user_manager_t *)sso_ctx->user_mgr;
+    storage_backend_t *sb = (storage_backend_t *)sso_ctx->storage_backend;
     role_manager_t *rmgr = (role_manager_t *)sso_ctx->role_mgr;
-    if (!umgr || !rmgr) return false;
+    if (!sb || !rmgr) return false;
 
-    /* Get all role IDs for this user */
-    sso_id_t role_ids[64];
-    size_t role_count = 64;
-    if (user_get_roles(umgr, user_id, role_ids, &role_count, 64) != SSO_OK) {
+    /* Look up the target role by name to get its numeric ID. */
+    role_t target_role;
+    if (role_get_by_name(rmgr, role_name, &target_role) != SSO_OK) {
         return false;
     }
 
-    for (size_t i = 0; i < role_count; i++) {
-        /* Look up the role by ID */
-        role_t role;
-        if (role_get_by_id(rmgr, role_ids[i], &role) != SSO_OK) continue;
+    /* Use the bulk query to get all role IDs (direct + inherited)
+     * for this user in a single operation. */
+    if (!sb->get_user_roles_with_ancestors) {
+        /* Fallback if the backend doesn't support this interface. */
+        return false;
+    }
 
-        /* Direct match */
-        if (strcmp(role.name, role_name) == 0) return true;
+    sso_id_t user_role_ids[128];
+    size_t count = 128;
+    sso_error_t err = sb->get_user_roles_with_ancestors(sb, user_id,
+                                                         user_role_ids,
+                                                         &count, 128);
+    if (err != SSO_OK) return false;
 
-        /* Check ancestors (role hierarchy inheritance) */
-        sso_id_t ancestors[64];
-        size_t depth = 64;
-        if (role_get_ancestors(rmgr, role.id, ancestors, &depth, 64) == SSO_OK) {
-            for (size_t j = 0; j < depth; j++) {
-                role_t anc_role;
-                if (role_get_by_id(rmgr, ancestors[j], &anc_role) != SSO_OK) continue;
-                if (strcmp(anc_role.name, role_name) == 0) return true;
-            }
+    /* Check if the target role ID appears in the result set. */
+    for (size_t i = 0; i < count; i++) {
+        if (user_role_ids[i] == target_role.id) {
+            return true;
         }
     }
 

@@ -129,6 +129,10 @@ static sso_error_t load_token_secret(unsigned char *out, size_t out_len) {
             /* Pad with zeros to fill the key buffer. */
             memset(out + len, 0, out_len - len);
         }
+        /* Lock secret in memory to prevent swapping to disk. */
+        if (sodium_mlock(out, out_len) != 0) {
+            /* Non-fatal: best-effort protection. */
+        }
         printf("[sso] Token secret loaded from %s environment variable.\n",
                SSO_ENV_TOKEN_SECRET);
         return SSO_OK;
@@ -140,6 +144,10 @@ static sso_error_t load_token_secret(unsigned char *out, size_t out_len) {
         size_t n = fread(out, 1, out_len, f);
         fclose(f);
         if (n == out_len) {
+            /* Lock the random secret in memory as well. */
+            if (sodium_mlock(out, out_len) != 0) {
+                /* Non-fatal: best-effort protection. */
+            }
             fprintf(stderr,
                     "[sso] WARNING: No %s set. Generated a random token secret.\n"
                     "       This secret will change on every restart, invalidating\n"
@@ -188,8 +196,8 @@ sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
     }
     token_manager_init(tmgr, secret, SSO_SECRET_BYTES,
                        3600000LL); /* 1 hour default TTL */
-    /* Zero out the stack copy of the key after use. */
-    memset(secret, 0, SSO_SECRET_BYTES);
+    /* Securely wipe the stack copy of the key after use. */
+    sodium_memzero(secret, SSO_SECRET_BYTES);
     ctx->token_mgr = tmgr;
 
     /* 3. Managers */
@@ -231,7 +239,8 @@ void sso_destroy(sso_context_t *ctx) {
     if (ctx->user_mgr)      user_manager_destroy((user_manager_t *)ctx->user_mgr);
 
     if (ctx->token_mgr) {
-        free(ctx->token_mgr);
+        /* Use the destroy function that securely wipes the secret. */
+        token_manager_destroy((token_manager_t *)ctx->token_mgr);
     }
 
     if (ctx->storage_backend) {

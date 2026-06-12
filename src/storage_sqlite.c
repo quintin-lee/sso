@@ -799,6 +799,40 @@ static sso_error_t sqlite_group_get_parent(storage_backend_t *self, sso_id_t gro
     return SSO_OK;
 }
 
+/* --- get_user_roles_with_ancestors --- */
+static sso_error_t sqlite_get_user_roles_with_ancestors(storage_backend_t *self,
+                                                         sso_id_t user_id,
+                                                         sso_id_t *role_ids,
+                                                         size_t *count, size_t max) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db) return SSO_ERR_STORAGE;
+
+    /* Use a recursive CTE to get all roles (directly assigned + inherited
+     * through parent_role_id hierarchy) in a single query. */
+    const char *sql =
+        "WITH RECURSIVE user_role_tree(role_id) AS ("
+        "  SELECT ur.role_id FROM user_roles ur WHERE ur.user_id = ?1"
+        "  UNION"
+        "  SELECT r.parent_role_id FROM roles r"
+        "  INNER JOIN user_role_tree ut ON r.id = ut.role_id"
+        "  WHERE r.parent_role_id != 0"
+        ")"
+        "SELECT DISTINCT role_id FROM user_role_tree";
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK)
+        return SSO_ERR_STORAGE;
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)user_id);
+
+    size_t n = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && n < max) {
+        role_ids[n++] = COL_ID(stmt, 0);
+    }
+    *count = n;
+    sqlite3_finalize(stmt);
+    return n > 0 ? SSO_OK : SSO_ERR_NOT_FOUND;
+}
+
 /* ========================================================================
  * Backend constructor
  * ======================================================================== */
@@ -870,8 +904,9 @@ sso_error_t storage_sqlite_create(storage_backend_t **backend) {
     (*backend)->get_target_policies       = sqlite_get_target_policies;
 
     /* Hierarchy */
-    (*backend)->role_get_parent           = sqlite_role_get_parent;
-    (*backend)->group_get_parent          = sqlite_group_get_parent;
+    (*backend)->role_get_parent                 = sqlite_role_get_parent;
+    (*backend)->group_get_parent                = sqlite_group_get_parent;
+    (*backend)->get_user_roles_with_ancestors   = sqlite_get_user_roles_with_ancestors;
 
     (*backend)->handle = priv;
     return SSO_OK;
