@@ -37,7 +37,10 @@ SRCS = $(SRCDIR)/sso.c           \
 
 STRAT_SRCS = $(STRATEGIES)/func_perm.c \
              $(STRATEGIES)/api_perm.c  \
-             $(STRATEGIES)/data_perm.c
+             $(STRATEGIES)/data_perm.c \
+             $(STRATEGIES)/rbac_perm.c \
+             $(STRATEGIES)/lbac_perm.c \
+             $(STRATEGIES)/abac_perm.c
 
 ALL_SRCS = $(SRCS) $(STRAT_SRCS)
 OBJS     = $(ALL_SRCS:%=$(BUILDDIR)/%.o)

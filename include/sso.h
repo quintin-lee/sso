@@ -12,7 +12,8 @@
  *   │  Manager │  Manager │ Manager  │  (Strategy Router)  │
  *   ├──────────┴──────────┴──────────┴─────────────────────┤
  *   │             Permission Strategy Layer                 │
- *   │  [Functional]  [API Endpoint]  [Data Scope]           │
+ *   │  [Functional] [API Endpoint] [Data Scope]             │
+ *   │  [RBAC]       [LBAC]        [ABAC]                    │
  *   ├───────────────────────────────────────────────────────┤
  *   │               Token / Session Manager                 │
  *   ├───────────────────────────────────────────────────────┤
@@ -130,6 +131,9 @@ typedef enum {
     PERM_STRATEGY_FUNCTIONAL = 1,   /* 功能权限: menu / button / feature flags */
     PERM_STRATEGY_API        = 2,   /* 接口权限: HTTP method + path matching   */
     PERM_STRATEGY_DATA       = 3,   /* 数据权限: row / column level filtering   */
+    PERM_STRATEGY_RBAC       = 4,   /* 角色权限: role membership check          */
+    PERM_STRATEGY_LBAC       = 5,   /* 位置权限: IP/location-based control      */
+    PERM_STRATEGY_ABAC       = 6,   /* 属性权限: attribute-based control         */
 } perm_strategy_type_t;
 
 /* Return string name for a strategy type. */
@@ -255,6 +259,24 @@ struct eval_context {
             char **field_filter;         /* output: allowed fields       */
             size_t field_filter_count;
         } data;
+
+        /* PERM_STRATEGY_RBAC */
+        struct {
+            char role_name[64];          /* role name to check membership */
+        } rbac;
+
+        /* PERM_STRATEGY_LBAC */
+        struct {
+            char source_ip[64];          /* client IP address             */
+            char geo_country[8];         /* ISO country code              */
+        } lbac;
+
+        /* PERM_STRATEGY_ABAC */
+        struct {
+            char subject_attrs[SSO_MAX_ATTRIBUTES];  /* user JSON attributes */
+            char resource_attrs[SSO_MAX_ATTRIBUTES]; /* resource JSON attr   */
+            char action[64];                          /* action being performed */
+        } abac;
     } params;
 
     /* Custom attributes from the environment (key=value pairs, JSON). */

@@ -104,6 +104,22 @@ sso_error_t perm_check_data(sso_context_t *ctx, sso_id_t user_id,
                             const char *resource_type, const char *record_json,
                             bool *allowed, char ***field_filter, size_t *field_count);
 
+/* RBAC permission check — does the user hold the named role? */
+sso_error_t perm_check_rbac(sso_context_t *ctx, sso_id_t user_id,
+                            const char *role_name, bool *allowed);
+
+/* LBAC permission check — does the source IP match allowed location rules? */
+sso_error_t perm_check_lbac(sso_context_t *ctx, sso_id_t user_id,
+                            const char *source_ip, const char *geo_country,
+                            bool *allowed);
+
+/* ABAC permission check — evaluate attribute-based conditions */
+sso_error_t perm_check_abac(sso_context_t *ctx, sso_id_t user_id,
+                            const char *subject_attrs,
+                            const char *resource_attrs,
+                            const char *action,
+                            bool *allowed);
+
 #ifdef __cplusplus
 }
 #endif

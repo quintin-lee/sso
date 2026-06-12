@@ -28,6 +28,9 @@
 extern permission_strategy_t func_perm_strategy;
 extern permission_strategy_t api_perm_strategy;
 extern permission_strategy_t data_perm_strategy;
+extern permission_strategy_t rbac_perm_strategy;
+extern permission_strategy_t lbac_perm_strategy;
+extern permission_strategy_t abac_perm_strategy;
 
 /* ========================================================================
  * Engine structure (private)
@@ -55,10 +58,13 @@ sso_error_t perm_engine_create(permission_engine_t **engine, sso_context_t *ctx)
 
     sso_error_t err;
 
-    /* Register the three built-in strategies */
+    /* Register the six built-in strategies */
     if ((err = perm_engine_register_strategy(*engine, &func_perm_strategy)) != SSO_OK ||
         (err = perm_engine_register_strategy(*engine, &api_perm_strategy))  != SSO_OK ||
-        (err = perm_engine_register_strategy(*engine, &data_perm_strategy)) != SSO_OK) {
+        (err = perm_engine_register_strategy(*engine, &data_perm_strategy)) != SSO_OK ||
+        (err = perm_engine_register_strategy(*engine, &rbac_perm_strategy)) != SSO_OK ||
+        (err = perm_engine_register_strategy(*engine, &lbac_perm_strategy)) != SSO_OK ||
+        (err = perm_engine_register_strategy(*engine, &abac_perm_strategy)) != SSO_OK) {
         perm_engine_destroy(*engine);
         return err;
     }
@@ -308,5 +314,77 @@ sso_error_t perm_check_data(sso_context_t *ctx, sso_id_t user_id,
         eval_context_destroy(&ectx);
     }
 
+    return err;
+}
+
+sso_error_t perm_check_rbac(sso_context_t *ctx, sso_id_t user_id,
+                            const char *role_name, bool *allowed) {
+    if (!ctx || !role_name || !allowed) return SSO_ERR_INVALID_PARAM;
+
+    user_t user;
+    sso_error_t err = user_get_by_id((user_manager_t *)ctx->user_mgr, user_id, &user);
+    if (err != SSO_OK) return err;
+
+    eval_context_t ectx;
+    eval_context_init(&ectx, &user);
+    strncpy(ectx.params.rbac.role_name, role_name,
+            sizeof(ectx.params.rbac.role_name) - 1);
+
+    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed);
+    eval_context_destroy(&ectx);
+    return err;
+}
+
+sso_error_t perm_check_lbac(sso_context_t *ctx, sso_id_t user_id,
+                            const char *source_ip, const char *geo_country,
+                            bool *allowed) {
+    if (!ctx || !source_ip || !allowed) return SSO_ERR_INVALID_PARAM;
+
+    user_t user;
+    sso_error_t err = user_get_by_id((user_manager_t *)ctx->user_mgr, user_id, &user);
+    if (err != SSO_OK) return err;
+
+    eval_context_t ectx;
+    eval_context_init(&ectx, &user);
+    strncpy(ectx.params.lbac.source_ip, source_ip,
+            sizeof(ectx.params.lbac.source_ip) - 1);
+    if (geo_country) {
+        strncpy(ectx.params.lbac.geo_country, geo_country,
+                sizeof(ectx.params.lbac.geo_country) - 1);
+    }
+
+    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed);
+    eval_context_destroy(&ectx);
+    return err;
+}
+
+sso_error_t perm_check_abac(sso_context_t *ctx, sso_id_t user_id,
+                            const char *subject_attrs,
+                            const char *resource_attrs,
+                            const char *action,
+                            bool *allowed) {
+    if (!ctx || !allowed) return SSO_ERR_INVALID_PARAM;
+
+    user_t user;
+    sso_error_t err = user_get_by_id((user_manager_t *)ctx->user_mgr, user_id, &user);
+    if (err != SSO_OK) return err;
+
+    eval_context_t ectx;
+    eval_context_init(&ectx, &user);
+    if (subject_attrs) {
+        strncpy(ectx.params.abac.subject_attrs, subject_attrs,
+                sizeof(ectx.params.abac.subject_attrs) - 1);
+    }
+    if (resource_attrs) {
+        strncpy(ectx.params.abac.resource_attrs, resource_attrs,
+                sizeof(ectx.params.abac.resource_attrs) - 1);
+    }
+    if (action) {
+        strncpy(ectx.params.abac.action, action,
+                sizeof(ectx.params.abac.action) - 1);
+    }
+
+    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed);
+    eval_context_destroy(&ectx);
     return err;
 }
