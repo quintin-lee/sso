@@ -27,6 +27,7 @@
 #include "storage.h"
 #include "server.h"
 #include "login_page.h"
+#include "admin_page.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -877,6 +878,405 @@ static sso_error_t handle_assign_role(sso_context_t *ctx, const http_request_t *
 }
 
 /* ========================================================================
+ * List handlers — return JSON arrays of objects
+ * ======================================================================== */
+
+/* GET /api/v1/users */
+static sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *req,
+                                      http_response_t *resp) {
+    (void)req;
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+    sso_id_t ids[256];
+    size_t count = 0;
+    sso_error_t err = user_list(umgr, ids, &count, 256);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to list users");
+        return SSO_OK;
+    }
+
+    size_t total = 2;
+    for (size_t i = 0; i < count; i++) {
+        total += 512;
+    }
+
+    char *json = (char *)calloc(1, total + 1);
+    if (!json) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
+    strcat(json, "[");
+    for (size_t i = 0; i < count; i++) {
+        user_t u;
+        err = user_get_by_id(umgr, ids[i], &u);
+        if (err != SSO_OK) continue;
+
+        /* Get roles for this user */
+        sso_id_t role_ids[16];
+        size_t rc = 0;
+        user_get_roles(umgr, u.id, role_ids, &rc, 16);
+
+        char roles_json[512] = "";
+        strcat(roles_json, "[");
+        for (size_t j = 0; j < rc; j++) {
+            role_t r;
+            char buf[128];
+            if (role_get_by_id(rmgr, role_ids[j], &r) == SSO_OK) {
+                snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
+                         j > 0 ? "," : "",
+                         (unsigned long long)r.id, r.name);
+                strcat(roles_json, buf);
+            }
+        }
+        strcat(roles_json, "]");
+
+        char buf[1024];
+        snprintf(buf, sizeof(buf),
+            "%s{"
+            "\"id\":%llu,"
+            "\"username\":\"%s\","
+            "\"email\":\"%s\","
+            "\"display_name\":\"%s\","
+            "\"status\":%d,"
+            "\"roles\":%s,"
+            "\"created_at\":%lld"
+            "}",
+            i > 0 ? "," : "",
+            (unsigned long long)u.id,
+            u.username,
+            u.email,
+            u.display_name,
+            (int)u.status,
+            roles_json,
+            (long long)u.created_at);
+        strcat(json, buf);
+    }
+    strcat(json, "]");
+
+    sso_response_ok(resp, json);
+    free(json);
+    return SSO_OK;
+}
+
+/* GET /api/v1/roles */
+static sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *req,
+                                      http_response_t *resp) {
+    (void)req;
+    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+    sso_id_t ids[256];
+    size_t count = 0;
+    sso_error_t err = role_list(rmgr, ids, &count, 256);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to list roles");
+        return SSO_OK;
+    }
+
+    size_t total = 2;
+    for (size_t i = 0; i < count; i++) total += 512;
+
+    char *json = (char *)calloc(1, total + 1);
+    if (!json) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
+    strcat(json, "[");
+    for (size_t i = 0; i < count; i++) {
+        role_t r;
+        err = role_get_by_id(rmgr, ids[i], &r);
+        if (err != SSO_OK) continue;
+
+        /* Get parent role name */
+        char parent_name[64] = "";
+        if (r.parent_role_id != 0) {
+            role_t parent;
+            if (role_get_by_id(rmgr, r.parent_role_id, &parent) == SSO_OK) {
+                snprintf(parent_name, sizeof(parent_name), "%s", parent.name);
+            }
+        }
+
+        char buf[1024];
+        snprintf(buf, sizeof(buf),
+            "%s{"
+            "\"id\":%llu,"
+            "\"name\":\"%s\","
+            "\"description\":\"%s\","
+            "\"parent_role_id\":%llu,"
+            "\"parent_name\":\"%s\","
+            "\"created_at\":%lld"
+            "}",
+            i > 0 ? "," : "",
+            (unsigned long long)r.id,
+            r.name,
+            r.description,
+            (unsigned long long)r.parent_role_id,
+            parent_name,
+            (long long)r.created_at);
+        strcat(json, buf);
+    }
+    strcat(json, "]");
+
+    sso_response_ok(resp, json);
+    free(json);
+    return SSO_OK;
+}
+
+/* GET /api/v1/policies */
+static sso_error_t handle_list_policies(sso_context_t *ctx, const http_request_t *req,
+                                         http_response_t *resp) {
+    (void)req;
+    policy_manager_t *pmgr = (policy_manager_t *)ctx->policy_mgr;
+    sso_id_t ids[256];
+    size_t count = 0;
+    sso_error_t err = policy_list(pmgr, ids, &count, 256);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to list policies");
+        return SSO_OK;
+    }
+
+    size_t total = 2;
+    for (size_t i = 0; i < count; i++) total += 1024;
+
+    char *json = (char *)calloc(1, total + 1);
+    if (!json) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
+    strcat(json, "[");
+    for (size_t i = 0; i < count; i++) {
+        policy_t p;
+        err = policy_get_by_id(pmgr, ids[i], &p);
+        if (err != SSO_OK) continue;
+
+        char buf[8192];
+        snprintf(buf, sizeof(buf),
+            "%s{"
+            "\"id\":%llu,"
+            "\"name\":\"%s\","
+            "\"strategy_type\":%d,"
+            "\"strategy_name\":\"%s\","
+            "\"effect\":%d,"
+            "\"priority\":%d,"
+            "\"status\":%d,"
+            "\"rules\":%.4000s,"
+            "\"created_at\":%lld"
+            "}",
+            i > 0 ? "," : "",
+            (unsigned long long)p.id,
+            p.name,
+            (int)p.strategy_type,
+            perm_strategy_name(p.strategy_type),
+            (int)p.effect,
+            p.priority,
+            (int)p.status,
+            p.rules,
+            (long long)p.created_at);
+        strcat(json, buf);
+    }
+    strcat(json, "]");
+
+    sso_response_ok(resp, json);
+    free(json);
+    return SSO_OK;
+}
+
+/* GET /api/v1/groups */
+static sso_error_t handle_list_groups(sso_context_t *ctx, const http_request_t *req,
+                                       http_response_t *resp) {
+    (void)req;
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+    sso_id_t ids[256];
+    size_t count = 0;
+    sso_error_t err = group_list(gmgr, ids, &count, 256);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to list groups");
+        return SSO_OK;
+    }
+
+    size_t total = 2;
+    for (size_t i = 0; i < count; i++) total += 512;
+
+    char *json = (char *)calloc(1, total + 1);
+    if (!json) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
+    strcat(json, "[");
+    for (size_t i = 0; i < count; i++) {
+        group_t g;
+        err = group_get_by_id(gmgr, ids[i], &g);
+        if (err != SSO_OK) continue;
+
+        char parent_name[64] = "";
+        if (g.parent_group_id != 0) {
+            group_t parent;
+            if (group_get_by_id(gmgr, g.parent_group_id, &parent) == SSO_OK) {
+                snprintf(parent_name, sizeof(parent_name), "%s", parent.name);
+            }
+        }
+
+        char buf[1024];
+        snprintf(buf, sizeof(buf),
+            "%s{"
+            "\"id\":%llu,"
+            "\"name\":\"%s\","
+            "\"description\":\"%s\","
+            "\"parent_group_id\":%llu,"
+            "\"parent_name\":\"%s\","
+            "\"created_at\":%lld"
+            "}",
+            i > 0 ? "," : "",
+            (unsigned long long)g.id,
+            g.name,
+            g.description,
+            (unsigned long long)g.parent_group_id,
+            parent_name,
+            (long long)g.created_at);
+        strcat(json, buf);
+    }
+    strcat(json, "]");
+
+    sso_response_ok(resp, json);
+    free(json);
+    return SSO_OK;
+}
+
+/* POST /api/v1/policies — create a policy */
+static sso_error_t handle_create_policy(sso_context_t *ctx, const http_request_t *req,
+                                         http_response_t *resp) {
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *name = json_str_value(req->body, "name");
+    if (!name) {
+        sso_response_error(resp, 400, "name required");
+        return SSO_OK;
+    }
+
+    int strategy_type = (int)json_int_value(req->body, "strategy_type", 1);
+    int effect = (int)json_int_value(req->body, "effect", 1);
+    int priority = (int)json_int_value(req->body, "priority", 50);
+    char *rules = json_str_value(req->body, "rules");
+
+    policy_manager_t *pmgr = (policy_manager_t *)ctx->policy_mgr;
+    policy_t policy;
+    sso_error_t err = policy_create(pmgr, name,
+                                     (perm_strategy_type_t)strategy_type,
+                                     (policy_effect_t)effect,
+                                     priority,
+                                     rules ? rules : "{}",
+                                     &policy);
+    free(name);
+    free(rules);
+
+    if (err == SSO_ERR_ALREADY_EXISTS) {
+        sso_response_error(resp, 409, "Policy already exists");
+        return SSO_OK;
+    }
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to create policy");
+        return SSO_OK;
+    }
+
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "{\"policy_id\":%llu,\"name\":\"%s\",\"created\":true}",
+        (unsigned long long)policy.id, policy.name);
+    sso_response_ok(resp, buf);
+    return SSO_OK;
+}
+
+/* POST /api/v1/policies/:id/assign */
+static sso_error_t handle_assign_policy(sso_context_t *ctx, const http_request_t *req,
+                                         http_response_t *resp) {
+    sso_id_t policy_id = 0;
+    const char *p = req->path;
+    const char *id_start = strstr(p, "/policies/");
+    if (id_start) {
+        id_start += 10;
+        policy_id = (sso_id_t)atoll(id_start);
+    }
+
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    int target_type = (int)json_int_value(req->body, "target_type", 0);
+    sso_id_t target_id = (sso_id_t)json_int_value(req->body, "target_id", 0);
+
+    if (target_id == 0) {
+        sso_response_error(resp, 400, "target_id required");
+        return SSO_OK;
+    }
+
+    policy_manager_t *pmgr = (policy_manager_t *)ctx->policy_mgr;
+    sso_error_t err = policy_assign_to(pmgr, policy_id,
+                                        (policy_target_type_t)target_type,
+                                        target_id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"assigned\":true}");
+    return SSO_OK;
+}
+
+/* POST /api/v1/groups — create group */
+static sso_error_t handle_create_group(sso_context_t *ctx, const http_request_t *req,
+                                        http_response_t *resp) {
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *name = json_str_value(req->body, "name");
+    if (!name) {
+        sso_response_error(resp, 400, "name required");
+        return SSO_OK;
+    }
+    char *desc = json_str_value(req->body, "description");
+    sso_id_t parent_id = (sso_id_t)json_int_value(req->body, "parent_group_id", 0);
+
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+    group_t group;
+    sso_error_t err = group_create(gmgr, name, desc ? desc : "", parent_id, &group);
+    free(name); free(desc);
+    if (err == SSO_ERR_ALREADY_EXISTS) {
+        sso_response_error(resp, 409, "Group already exists");
+        return SSO_OK;
+    }
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to create group");
+        return SSO_OK;
+    }
+
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "{\"id\":%llu,\"name\":\"%s\",\"created\":true}",
+        (unsigned long long)group.id, group.name);
+    sso_response_ok(resp, buf);
+    return SSO_OK;
+}
+
+/* GET /admin — serve the admin management page */
+static sso_error_t handle_admin_page(sso_context_t *ctx, const http_request_t *req,
+                                      http_response_t *resp) {
+    (void)ctx; (void)req;
+    resp->status_code = 200;
+    resp->body = strdup(ADMIN_PAGE_HTML);
+    resp->body_len = strlen(ADMIN_PAGE_HTML);
+    strcpy(resp->content_type, "text/html; charset=utf-8");
+    return SSO_OK;
+}
+
+/* ========================================================================
  * Bootstrap: create default admin + roles on first server start
  * ======================================================================== */
 static sso_error_t bootstrap_data(sso_context_t *ctx) {
@@ -930,7 +1330,7 @@ static sso_error_t bootstrap_data(sso_context_t *ctx) {
         PERM_STRATEGY_API, POLICY_EFFECT_ALLOW, 90,
         "{\"endpoints\":["
           "{\"method\":\"GET\",\"path\":\"/api/v1/*\",\"effect\":\"allow\"},"
-          "{\"method\":\"POST\",\"path\":\"/api/v1/users\",\"effect\":\"allow\"}"
+          "{\"method\":\"POST\",\"path\":\"/api/v1/*\",\"effect\":\"allow\"}"
         "]}",
         &api_policy);
     if (err != SSO_OK) return err;
@@ -971,6 +1371,9 @@ static int run_server(void) {
         {"/",                       HTTP_GET,  handle_login_page,       false},
         {"/login",                  HTTP_GET,  handle_login_page,       false},
 
+        /* Public — admin page (auth is handled by the frontend) */
+        {"/admin",                  HTTP_GET,  handle_admin_page,       false},
+
         /* Public — API */
         {"/api/v1/health",          HTTP_GET,  handle_health,          false},
         {"/api/v1/auth/login",      HTTP_POST, handle_login,           false},
@@ -987,10 +1390,17 @@ static int run_server(void) {
         {"/api/v1/check/api",       HTTP_POST, handle_check_api,         true},
         {"/api/v1/check/data",      HTTP_POST, handle_check_data,        true},
 
-        /* Management */
+        /* Management — CRUD */
+        {"/api/v1/users",           HTTP_GET,  handle_list_users,        true},
         {"/api/v1/users",           HTTP_POST, handle_create_user,       true},
+        {"/api/v1/roles",           HTTP_GET,  handle_list_roles,        true},
         {"/api/v1/roles",           HTTP_POST, handle_create_role,       true},
         {"/api/v1/roles/*/assign",  HTTP_POST, handle_assign_role,       true},
+        {"/api/v1/policies",        HTTP_GET,  handle_list_policies,     true},
+        {"/api/v1/policies",        HTTP_POST, handle_create_policy,     true},
+        {"/api/v1/policies/*/assign",HTTP_POST, handle_assign_policy,    true},
+        {"/api/v1/groups",          HTTP_GET,  handle_list_groups,       true},
+        {"/api/v1/groups",          HTTP_POST, handle_create_group,      true},
     };
 
     size_t route_count = sizeof(routes) / sizeof(routes[0]);
