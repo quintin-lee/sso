@@ -515,11 +515,13 @@ static sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
         "\"valid\":true,"
         "\"user_id\":%llu,"
         "\"username\":\"%s\","
+        "\"email\":\"%s\","
         "\"display_name\":\"%s\","
         "\"expires_at\":%lld"
         "}",
         (unsigned long long)user.id,
         user.username,
+        user.email,
         user.display_name,
         (long long)tok.expires_at);
     sso_response_ok(resp, buf);
@@ -1380,7 +1382,7 @@ static int run_server(void) {
         {"/api/v1/auth/register",   HTTP_POST, handle_register,        false},
 
         /* Auth required */
-        {"/api/v1/auth/verify",     HTTP_POST, handle_verify,           true},
+        {"/api/v1/auth/verify",     HTTP_POST, handle_verify,           false},
         {"/api/v1/auth/refresh",    HTTP_POST, handle_refresh,          true},
         {"/api/v1/auth/logout",     HTTP_POST, handle_logout,           true},
         {"/api/v1/auth/me",         HTTP_GET,  handle_me,               true},
