@@ -1,18 +1,19 @@
 # SSO System — Lightweight Single Sign-On Service in C
 
-A lightweight, embeddable Single Sign-On (SSO) service written in C, providing unified authentication and authorization for microservices. Features six permission strategies (functional, API endpoint, data scope, RBAC, LBAC, ABAC) with a DENY-overrides permission engine, HMAC-based stateless tokens, and an embedded HTTP API server.
+A lightweight, embeddable Single Sign-On (SSO) service written in C, providing unified authentication and authorization for microservices. Features seven permission strategies (functional, API endpoint, data scope, RBAC, Location, LBAC, ABAC) with a DENY-overrides permission engine, HMAC-based stateless tokens, and an embedded HTTP API server.
 
 ## Features
 
 - **Unified Authentication** — register, login, token verify/refresh/logout, self-info query
 - **Role-Based Access Control (RBAC)** — hierarchical roles with ancestry inheritance
 - **Group Management** — hierarchical groups with membership
-- **Six Permission Strategies** (pluggable via strategy pattern):
+- **Seven Permission Strategies** (pluggable via strategy pattern):
   - **Functional** — feature/button-level permissions (`report:view`, `admin:*`)
   - **API Endpoint** — HTTP method + path matching with wildcards (`GET /api/v1/users/*`)
   - **Data Scope** — resource-scoped access with field-level filtering
   - **RBAC** — role membership check against policy-defined role names
-  - **LBAC** — location-based access control via IP CIDR matching
+  - **Location** — location-based access control via IP CIDR matching
+  - **LBAC** — label-based access control (security labels/MLS)
   - **ABAC** — attribute-based access control with multi-condition evaluation
 - **DENY-Overrides Engine** — explicit deny takes precedence; default-deny (fail closed)
 - **Stateless Tokens** — HMAC-SHA256 signed JWT-like tokens (no server-side session storage)
@@ -30,8 +31,8 @@ A lightweight, embeddable Single Sign-On (SSO) service written in C, providing u
 │  Manager │  Manager │  Manager │  Engine    │
 ├──────────┴──────────┴──────────┴────────────┤
 │        Permission Strategy Layer             │
-│  [Functional][API Endpoint][Data Scope]       │
-│  [RBAC]                [LBAC]    [ABAC]       │
+│ [Functional][API][Data][RBAC][Location]      │
+│ [LBAC]                [ABAC]                 │
 ├──────────────────────────────────────────────┤
 │           Token / Session Manager            │
 ├──────────────────────────────────────────────┤
@@ -89,14 +90,14 @@ Runs a comprehensive walkthrough of all features and exits:
 The demo demonstrates:
 1. System initialization with SQLite
 2. User, role, group CRUD
-3. Policy creation for all six strategy types
+3. Policy creation for all seven strategy types
 4. Role/group hierarchy and inheritance
-5. Permission checks (functional, API, data, RBAC, LBAC, ABAC)
+5. Permission checks (functional, API, data, RBAC, Location, LBAC, ABAC)
 6. Token-based authentication
 
 ### Interactive Configuration Mode
 
-Guided step-by-step shell for creating all six policy types interactively:
+Guided step-by-step shell for creating all seven policy types interactively:
 
 ```bash
 ./sso_system --interactive
@@ -270,8 +271,8 @@ Check if a user has a specific role (RBAC).
 {"allowed":true,"user_id":1,"role":"admin"}
 ```
 
-#### `POST /api/v1/check/lbac`
-Check if a user's request originates from an allowed location (LBAC).
+#### `POST /api/v1/check/location`
+Check if a user's request originates from an allowed location.
 
 **Request:**
 ```json
@@ -281,6 +282,19 @@ Check if a user's request originates from an allowed location (LBAC).
 **Response:**
 ```json
 {"allowed":true,"user_id":1,"source_ip":"127.0.0.1"}
+```
+
+#### `POST /api/v1/check/lbac`
+Check if a user has the required security labels (LBAC).
+
+**Request:**
+```json
+{"user_labels":"PUBLIC,CONFIDENTIAL","resource_label":"CONFIDENTIAL","user_id":1}
+```
+
+**Response:**
+```json
+{"allowed":true,"user_id":1}
 ```
 
 #### `POST /api/v1/check/abac`
@@ -332,7 +346,7 @@ or
 
 ### Strategy Pattern
 
-Six strategies are registered in the engine. Each policy declares its strategy type, and the engine dispatches evaluation to the correct strategy implementation.
+Seven strategies are registered in the engine. Each policy declares its strategy type, and the engine dispatches evaluation to the correct strategy implementation.
 
 | Strategy | Type | Purpose | Rule Format |
 |----------|------|---------|-------------|
@@ -340,7 +354,8 @@ Six strategies are registered in the engine. Each policy declares its strategy t
 | API | `PERM_STRATEGY_API` | HTTP method + path access control | `{"endpoints":[{"method":"GET","path":"/api/v1/*","effect":"allow"}]}` |
 | Data | `PERM_STRATEGY_DATA` | Resource-scoped field-level access | `{"resources":[{"type":"report","scope":"all","fields":["id","title"],"conditions":[...]}]}` |
 | RBAC | `PERM_STRATEGY_RBAC` | Role membership check | `{"roles":[{"name":"admin","effect":"allow"}]}` |
-| LBAC | `PERM_STRATEGY_LBAC` | IP/location-based access control | `{"locations":[{"type":"ip_cidr","value":"127.0.0.0/8","effect":"allow"}]}` |
+| Location | `PERM_STRATEGY_LOCATION` | IP/location-based access control | `{"locations":[{"type":"ip_cidr","value":"127.0.0.0/8","effect":"allow"}]}` |
+| LBAC | `PERM_STRATEGY_LBAC` | Label-based access control (MLS) | `{"labels":[{"name":"CONFIDENTIAL","effect":"allow"}]}` |
 | ABAC | `PERM_STRATEGY_ABAC` | Attribute-based access control | `{"conditions":[{"source":"subject","attr":"department","op":"eq","value":"engineering"}],"logic":"and","effect":"allow"}` |
 
 ### Evaluation Logic

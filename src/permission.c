@@ -29,8 +29,9 @@ extern permission_strategy_t func_perm_strategy;
 extern permission_strategy_t api_perm_strategy;
 extern permission_strategy_t data_perm_strategy;
 extern permission_strategy_t rbac_perm_strategy;
-extern permission_strategy_t lbac_perm_strategy;
+extern permission_strategy_t location_perm_strategy;
 extern permission_strategy_t abac_perm_strategy;
+extern permission_strategy_t lbac_perm_strategy;
 
 /* ========================================================================
  * Engine structure (private)
@@ -58,13 +59,14 @@ sso_error_t perm_engine_create(permission_engine_t **engine, sso_context_t *ctx)
 
     sso_error_t err;
 
-    /* Register the six built-in strategies */
+    /* Register built-in strategies */
     if ((err = perm_engine_register_strategy(*engine, &func_perm_strategy)) != SSO_OK ||
         (err = perm_engine_register_strategy(*engine, &api_perm_strategy))  != SSO_OK ||
         (err = perm_engine_register_strategy(*engine, &data_perm_strategy)) != SSO_OK ||
         (err = perm_engine_register_strategy(*engine, &rbac_perm_strategy)) != SSO_OK ||
-        (err = perm_engine_register_strategy(*engine, &lbac_perm_strategy)) != SSO_OK ||
-        (err = perm_engine_register_strategy(*engine, &abac_perm_strategy)) != SSO_OK) {
+        (err = perm_engine_register_strategy(*engine, &location_perm_strategy)) != SSO_OK ||
+        (err = perm_engine_register_strategy(*engine, &abac_perm_strategy)) != SSO_OK ||
+        (err = perm_engine_register_strategy(*engine, &lbac_perm_strategy)) != SSO_OK) {
         perm_engine_destroy(*engine);
         return err;
     }
@@ -335,9 +337,9 @@ sso_error_t perm_check_rbac(sso_context_t *ctx, sso_id_t user_id,
     return err;
 }
 
-sso_error_t perm_check_lbac(sso_context_t *ctx, sso_id_t user_id,
-                            const char *source_ip, const char *geo_country,
-                            bool *allowed) {
+sso_error_t perm_check_location(sso_context_t *ctx, sso_id_t user_id,
+                                const char *source_ip, const char *geo_country,
+                                bool *allowed) {
     if (!ctx || !source_ip || !allowed) return SSO_ERR_INVALID_PARAM;
 
     user_t user;
@@ -346,12 +348,33 @@ sso_error_t perm_check_lbac(sso_context_t *ctx, sso_id_t user_id,
 
     eval_context_t ectx;
     eval_context_init(&ectx, &user);
-    strncpy(ectx.params.lbac.source_ip, source_ip,
-            sizeof(ectx.params.lbac.source_ip) - 1);
+    strncpy(ectx.params.location.source_ip, source_ip,
+            sizeof(ectx.params.location.source_ip) - 1);
     if (geo_country) {
-        strncpy(ectx.params.lbac.geo_country, geo_country,
-                sizeof(ectx.params.lbac.geo_country) - 1);
+        strncpy(ectx.params.location.geo_country, geo_country,
+                sizeof(ectx.params.location.geo_country) - 1);
     }
+
+    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed);
+    eval_context_destroy(&ectx);
+    return err;
+}
+
+sso_error_t perm_check_lbac(sso_context_t *ctx, sso_id_t user_id,
+                            const char *user_labels, const char *resource_label,
+                            bool *allowed) {
+    if (!ctx || !user_labels || !resource_label || !allowed) return SSO_ERR_INVALID_PARAM;
+
+    user_t user;
+    sso_error_t err = user_get_by_id((user_manager_t *)ctx->user_mgr, user_id, &user);
+    if (err != SSO_OK) return err;
+
+    eval_context_t ectx;
+    eval_context_init(&ectx, &user);
+    strncpy(ectx.params.lbac.user_labels, user_labels,
+            sizeof(ectx.params.lbac.user_labels) - 1);
+    strncpy(ectx.params.lbac.resource_label, resource_label,
+            sizeof(ectx.params.lbac.resource_label) - 1);
 
     err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed);
     eval_context_destroy(&ectx);

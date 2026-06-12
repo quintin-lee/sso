@@ -66,8 +66,9 @@ const char *perm_strategy_name(perm_strategy_type_t t) {
         case PERM_STRATEGY_API:        return "api";
         case PERM_STRATEGY_DATA:       return "data";
         case PERM_STRATEGY_RBAC:       return "rbac";
-        case PERM_STRATEGY_LBAC:       return "lbac";
+        case PERM_STRATEGY_LOCATION:   return "location";
         case PERM_STRATEGY_ABAC:       return "abac";
+        case PERM_STRATEGY_LBAC:       return "lbac";
         default:                       return "unknown";
     }
 }

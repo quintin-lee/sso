@@ -108,9 +108,14 @@ sso_error_t perm_check_data(sso_context_t *ctx, sso_id_t user_id,
 sso_error_t perm_check_rbac(sso_context_t *ctx, sso_id_t user_id,
                             const char *role_name, bool *allowed);
 
-/* LBAC permission check — does the source IP match allowed location rules? */
+/* LOCATION permission check — does the source IP match allowed location rules? */
+sso_error_t perm_check_location(sso_context_t *ctx, sso_id_t user_id,
+                                const char *source_ip, const char *geo_country,
+                                bool *allowed);
+
+/* LBAC (Label-Based) permission check — check security labels */
 sso_error_t perm_check_lbac(sso_context_t *ctx, sso_id_t user_id,
-                            const char *source_ip, const char *geo_country,
+                            const char *user_labels, const char *resource_label,
                             bool *allowed);
 
 /* ABAC permission check — evaluate attribute-based conditions */

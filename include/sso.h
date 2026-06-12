@@ -132,8 +132,9 @@ typedef enum {
     PERM_STRATEGY_API        = 2,   /* 接口权限: HTTP method + path matching   */
     PERM_STRATEGY_DATA       = 3,   /* 数据权限: row / column level filtering   */
     PERM_STRATEGY_RBAC       = 4,   /* 角色权限: role membership check          */
-    PERM_STRATEGY_LBAC       = 5,   /* 位置权限: IP/location-based control      */
+    PERM_STRATEGY_LOCATION   = 5,   /* 位置权限: IP/location-based control      */
     PERM_STRATEGY_ABAC       = 6,   /* 属性权限: attribute-based control         */
+    PERM_STRATEGY_LBAC       = 7,   /* 标签权限: Label-based access control    */
 } perm_strategy_type_t;
 
 /* Return string name for a strategy type. */
@@ -265,11 +266,11 @@ struct eval_context {
             char role_name[64];          /* role name to check membership */
         } rbac;
 
-        /* PERM_STRATEGY_LBAC */
+        /* PERM_STRATEGY_LOCATION */
         struct {
             char source_ip[64];          /* client IP address             */
             char geo_country[8];         /* ISO country code              */
-        } lbac;
+        } location;
 
         /* PERM_STRATEGY_ABAC */
         struct {
@@ -277,6 +278,12 @@ struct eval_context {
             char resource_attrs[SSO_MAX_ATTRIBUTES]; /* resource JSON attr   */
             char action[64];                          /* action being performed */
         } abac;
+
+        /* PERM_STRATEGY_LBAC */
+        struct {
+            char user_labels[256];       /* comma-separated user labels   */
+            char resource_label[64];     /* required label for resource   */
+        } lbac;
     } params;
 
     /* Custom attributes from the environment (key=value pairs, JSON). */

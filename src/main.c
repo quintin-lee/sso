@@ -221,11 +221,11 @@ static int run_demo(void) {
            (unsigned long)rbac_policy.id,
            err == SSO_OK ? "OK" : sso_strerror(err));
 
-    /* ---- 10. Create LBAC permission policy ---- */
-    printf("\n[10] Creating LBAC permission policy...\n");
-    policy_t lbac_policy;
+    /* ---- 10. Create Location permission policy ---- */
+    printf("\n[10] Creating Location permission policy...\n");
+    policy_t loc_policy;
     err = policy_create(pmgr, "Local Network Access",
-                        PERM_STRATEGY_LBAC, POLICY_EFFECT_ALLOW,
+                        PERM_STRATEGY_LOCATION, POLICY_EFFECT_ALLOW,
                         60,
                         "{"
                         "  \"locations\": ["
@@ -234,13 +234,30 @@ static int run_demo(void) {
                         "    {\"type\": \"ip_cidr\", \"value\": \"0.0.0.0/0\",    \"effect\": \"deny\"}"
                         "  ]"
                         "}",
+                        &loc_policy);
+    printf("  policy id=%lu status=%s\n",
+           (unsigned long)loc_policy.id,
+           err == SSO_OK ? "OK" : sso_strerror(err));
+
+    /* ---- 11. Create LBAC (Label-Based) permission policy ---- */
+    printf("\n[11] Creating LBAC (Label-Based) permission policy...\n");
+    policy_t lbac_policy;
+    err = policy_create(pmgr, "Confidential Data Access",
+                        PERM_STRATEGY_LBAC, POLICY_EFFECT_ALLOW,
+                        55,
+                        "{"
+                        "  \"labels\": ["
+                        "    {\"name\": \"CONFIDENTIAL\", \"effect\": \"allow\"},"
+                        "    {\"name\": \"TOP_SECRET\",   \"effect\": \"allow\"}"
+                        "  ]"
+                        "}",
                         &lbac_policy);
     printf("  policy id=%lu status=%s\n",
            (unsigned long)lbac_policy.id,
            err == SSO_OK ? "OK" : sso_strerror(err));
 
-    /* ---- 11. Create ABAC permission policy ---- */
-    printf("\n[11] Creating ABAC permission policy...\n");
+    /* ---- 12. Create ABAC permission policy ---- */
+    printf("\n[12] Creating ABAC permission policy...\n");
     policy_t abac_policy;
     err = policy_create(pmgr, "Engineering Department Access",
                         PERM_STRATEGY_ABAC, POLICY_EFFECT_ALLOW,
@@ -257,20 +274,21 @@ static int run_demo(void) {
            (unsigned long)abac_policy.id,
            err == SSO_OK ? "OK" : sso_strerror(err));
 
-    /* ---- 12. Assign policies ---- */
-    printf("\n[12] Assigning policies to roles...\n");
+    /* ---- 13. Assign policies ---- */
+    printf("\n[13] Assigning policies to roles...\n");
     policy_assign_to(pmgr, func_policy.id, POLICY_TARGET_ROLE, admin_role.id);
     policy_assign_to(pmgr, api_policy.id,  POLICY_TARGET_ROLE, admin_role.id);
     policy_assign_to(pmgr, data_policy.id, POLICY_TARGET_ROLE, editor_role.id);
     policy_assign_to(pmgr, rbac_policy.id, POLICY_TARGET_ROLE, admin_role.id);
+    policy_assign_to(pmgr, loc_policy.id, POLICY_TARGET_ROLE, admin_role.id);
     policy_assign_to(pmgr, lbac_policy.id, POLICY_TARGET_ROLE, admin_role.id);
     policy_assign_to(pmgr, abac_policy.id, POLICY_TARGET_ROLE, admin_role.id);
-    printf("  Admin role   ← functional + API + RBAC + LBAC + ABAC policies\n");
+    printf("  Admin role   ← functional + API + RBAC + Location + LBAC + ABAC policies\n");
     printf("  Editor role  ← data policy\n");
     printf("\n");
 
-    /* ---- 13. Functional permission checks ---- */
-    printf("[13] Functional permission checks:\n");
+    /* ---- 14. Functional permission checks ---- */
+    printf("[14] Functional permission checks:\n");
     bool allowed;
 
     perm_check_function(&ctx, admin_user.id, "user:create", &allowed);
@@ -282,7 +300,7 @@ static int run_demo(void) {
     perm_check_function(&ctx, admin_user.id, "report:view", &allowed);
     printf("  admin  report:view  → %s\n", allowed ? "ALLOW" : "DENY");
 
-    printf("\n[14] API permission checks:\n");
+    printf("\n[15] API permission checks:\n");
     perm_check_api(&ctx, admin_user.id, "GET", "/api/v1/users", &allowed);
     printf("  admin  GET /api/v1/users       → %s\n", allowed ? "ALLOW" : "DENY");
 
@@ -292,7 +310,7 @@ static int run_demo(void) {
     perm_check_api(&ctx, admin_user.id, "DELETE", "/api/v1/users/42", &allowed);
     printf("  admin  DELETE /api/v1/users/42 → %s\n", allowed ? "ALLOW" : "DENY");
 
-    printf("\n[15] Data permission checks:\n");
+    printf("\n[16] Data permission checks:\n");
     char **fields = NULL;
     size_t field_count = 0;
 
@@ -312,8 +330,8 @@ static int run_demo(void) {
     }
     printf("\n");
 
-    /* ---- 16. RBAC permission check ---- */
-    printf("\n[16] RBAC permission checks:\n");
+    /* ---- 17. RBAC permission check ---- */
+    printf("\n[17] RBAC permission checks:\n");
     perm_check_rbac(&ctx, admin_user.id, "admin", &allowed);
     printf("  admin  check_rbac(\"admin\")    → %s\n", allowed ? "ALLOW" : "DENY");
     perm_check_rbac(&ctx, bob_user.id,   "admin", &allowed);
@@ -321,17 +339,24 @@ static int run_demo(void) {
     perm_check_rbac(&ctx, admin_user.id, "viewer", &allowed);
     printf("  admin  check_rbac(\"viewer\")   → %s\n", allowed ? "ALLOW" : "DENY");
 
-    /* ---- 17. LBAC permission check ---- */
-    printf("\n[17] LBAC permission checks:\n");
-    perm_check_lbac(&ctx, admin_user.id, "127.0.0.1", NULL, &allowed);
+    /* ---- 18. Location permission check ---- */
+    printf("\n[18] Location permission checks:\n");
+    perm_check_location(&ctx, admin_user.id, "127.0.0.1", NULL, &allowed);
     printf("  admin  source=127.0.0.1         → %s\n", allowed ? "ALLOW" : "DENY");
-    perm_check_lbac(&ctx, admin_user.id, "10.0.0.5",  NULL, &allowed);
+    perm_check_location(&ctx, admin_user.id, "10.0.0.5",  NULL, &allowed);
     printf("  admin  source=10.0.0.5          → %s\n", allowed ? "ALLOW" : "DENY");
-    perm_check_lbac(&ctx, admin_user.id, "203.0.113.1", NULL, &allowed);
+    perm_check_location(&ctx, admin_user.id, "203.0.113.1", NULL, &allowed);
     printf("  admin  source=203.0.113.1       → %s\n", allowed ? "ALLOW" : "DENY");
 
-    /* ---- 18. ABAC permission check ---- */
-    printf("\n[18] ABAC permission checks:\n");
+    /* ---- 19. LBAC (Label-Based) permission check ---- */
+    printf("\n[19] LBAC (Label-Based) permission checks:\n");
+    perm_check_lbac(&ctx, admin_user.id, "PUBLIC,CONFIDENTIAL", "CONFIDENTIAL", &allowed);
+    printf("  admin  labels=[PUBLIC,CONFIDENTIAL] target=CONFIDENTIAL → %s\n", allowed ? "ALLOW" : "DENY");
+    perm_check_lbac(&ctx, admin_user.id, "PUBLIC", "TOP_SECRET", &allowed);
+    printf("  admin  labels=[PUBLIC]              target=TOP_SECRET    → %s\n", allowed ? "ALLOW" : "DENY");
+
+    /* ---- 20. ABAC permission check ---- */
+    printf("\n[20] ABAC permission checks:\n");
     perm_check_abac(&ctx, admin_user.id,
                     "{\"department\":\"engineering\"}", NULL, NULL, &allowed);
     printf("  admin  dept=engineering         → %s\n", allowed ? "ALLOW" : "DENY");
@@ -339,8 +364,8 @@ static int run_demo(void) {
                     "{\"department\":\"sales\"}", NULL, NULL, &allowed);
     printf("  admin  dept=sales               → %s\n", allowed ? "ALLOW" : "DENY");
 
-    /* ---- 19. Token authentication ---- */
-    printf("\n[19] Token-based authentication:\n");
+    /* ---- 21. Token authentication ---- */
+    printf("\n[21] Token-based authentication:\n");
     token_manager_t *tmgr = (token_manager_t *)ctx.token_mgr;
 
     user_t auth_user;
@@ -365,8 +390,8 @@ static int run_demo(void) {
                (unsigned long)decoded.user_id);
     }
 
-    /* ---- 20. Role hierarchy ---- */
-    printf("\n[20] Role hierarchy:\n");
+    /* ---- 22. Role hierarchy ---- */
+    printf("\n[22] Role hierarchy:\n");
     sso_id_t ancestors[8];
     size_t depth = 0;
     role_get_ancestors(rmgr, viewer_role.id, ancestors, &depth, 8);
@@ -378,8 +403,8 @@ static int run_demo(void) {
     }
     printf("\n");
 
-    /* ---- 13. Policy resolution ---- */
-    printf("\n[21] Policy resolution for admin:\n");
+    /* ---- 23. Policy resolution ---- */
+    printf("\n[23] Policy resolution for admin:\n");
     policy_t resolved[16];
     size_t resolved_count = 0;
     err = policy_resolve_for_user(pmgr, admin_user.id, resolved, &resolved_count, 16);
@@ -418,7 +443,7 @@ static void print_banner(void) {
     printf("\n");
     printf("  ╔═══════════════════════════════════════════════╗\n");
     printf("  ║     SSO Permission Strategy Configurator      ║\n");
-    printf("  ║     Configure all 6 strategy types            ║\n");
+    printf("  ║     Configure all 7 strategy types            ║\n");
     printf("  ╚═══════════════════════════════════════════════╝\n\n");
 }
 
@@ -428,12 +453,13 @@ static void print_menu(void) {
     printf("  │  2. API           (HTTP method + path control)   │\n");
     printf("  │  3. Data          (resource/field-level access)  │\n");
     printf("  │  4. RBAC          (role membership check)        │\n");
-    printf("  │  5. LBAC          (IP/location-based control)    │\n");
+    printf("  │  5. Location      (IP/location-based control)    │\n");
     printf("  │  6. ABAC          (attribute-based conditions)   │\n");
+    printf("  │  7. LBAC          (label-based control)          │\n");
     printf("  ├───── Actions ────────────────────────────────────┤\n");
-    printf("  │  7. Assign a policy to a role                    │\n");
-    printf("  │  8. Test a permission check                      │\n");
-    printf("  │  9. List all policies                            │\n");
+    printf("  │  8. Assign a policy to a role                    │\n");
+    printf("  │  9. Test a permission check                      │\n");
+    printf("  │  10. List all policies                           │\n");
     printf("  │  0. Exit                                         │\n");
     printf("  └──────────────────────────────────────────────────┘\n");
     printf("  Choice: ");
@@ -570,14 +596,14 @@ static void config_rbac(policy_manager_t *pmgr) {
         (unsigned long)p.id);
 }
 
-static void config_lbac(policy_manager_t *pmgr) {
-    printf("\n  ─── LBAC Permission (Location-Based) ───\n");
+static void config_location(policy_manager_t *pmgr) {
+    printf("\n  ─── Location Permission (IP-Based) ───\n");
     printf("  Controls access based on source IP address.\n");
     printf("  Uses CIDR notation: 10.0.0.0/8, 192.168.0.0/16, etc.\n\n");
 
     char name[64], cidr[128], effect[8];
-    prompt_line("  Policy name [LBAC Rule]: ", name, sizeof(name));
-    if (name[0] == '\0') strcpy(name, "LBAC Rule");
+    prompt_line("  Policy name [Location Rule]: ", name, sizeof(name));
+    if (name[0] == '\0') strcpy(name, "Location Rule");
     prompt_line("  CIDR range (e.g. 10.0.0.0/8): ", cidr, sizeof(cidr));
     if (cidr[0] == '\0') { printf("  Skipped.\n"); return; }
     prompt_line("  Effect (allow/deny) [allow]: ", effect, sizeof(effect));
@@ -590,7 +616,32 @@ static void config_lbac(policy_manager_t *pmgr) {
 
     policy_t p;
     sso_error_t err = policy_create(pmgr, name,
-        PERM_STRATEGY_LBAC, POLICY_EFFECT_ALLOW, 50, rules, &p);
+        PERM_STRATEGY_LOCATION, POLICY_EFFECT_ALLOW, 50, rules, &p);
+    printf("  \u2192 %s (id=%lu)\n",
+        err == SSO_OK ? "Policy created" : sso_strerror(err),
+        (unsigned long)p.id);
+}
+
+static void config_lbac(policy_manager_t *pmgr) {
+    printf("\n  ─── LBAC Permission (Label-Based) ───\n");
+    printf("  Controls access based on security labels (MLS).\n");
+    printf("  Examples: \"INTERNAL\", \"CONFIDENTIAL\", \"TOP_SECRET\"\n\n");
+
+    char name[64], label[64], effect[8];
+    prompt_line("  Policy name [LBAC Rule]: ", name, sizeof(name));
+    if (name[0] == '\0') strcpy(name, "LBAC Rule");
+    prompt_line("  Required label (e.g. CONFIDENTIAL): ", label, sizeof(label));
+    if (label[0] == '\0') { printf("  Skipped.\n"); return; }
+    prompt_line("  Effect (allow/deny) [allow]: ", effect, sizeof(effect));
+    if (effect[0] == '\0') strcpy(effect, "allow");
+
+    char rules[SSO_MAX_RULES_JSON];
+    snprintf(rules, sizeof(rules),
+        "{\"labels\":[{\"name\":\"%s\",\"effect\":\"%s\"}]}", label, effect);
+
+    policy_t p;
+    sso_error_t err = policy_create(pmgr, name,
+        PERM_STRATEGY_LBAC, POLICY_EFFECT_ALLOW, 55, rules, &p);
     printf("  \u2192 %s (id=%lu)\n",
         err == SSO_OK ? "Policy created" : sso_strerror(err),
         (unsigned long)p.id);
@@ -665,9 +716,9 @@ static void action_assign(policy_manager_t *pmgr, role_manager_t *rmgr) {
 static void action_check(sso_context_t *ctx) {
     printf("\n  ─── Test Permission Check ───\n");
     printf("  Strategy types: 1=Functional  2=API  3=Data\n");
-    printf("                  4=RBAC        5=LBAC  6=ABAC\n");
+    printf("                  4=RBAC        5=Location  6=ABAC  7=LBAC\n");
     char type_str[4], uid_str[16];
-    prompt_line("  Strategy type (1-6): ", type_str, sizeof(type_str));
+    prompt_line("  Strategy type (1-7): ", type_str, sizeof(type_str));
     if (type_str[0] == '\0') return;
     int st = atoi(type_str);
     prompt_line("  User ID [1]: ", uid_str, sizeof(uid_str));
@@ -722,18 +773,26 @@ static void action_check(sso_context_t *ctx) {
         printf("  check_rbac(\"%s\") \u2192 %s\n", rname, allowed ? "ALLOW" : "DENY");
         break;
     }
-    case 5: { /* LBAC */
+    case 5: { /* Location */
         char ip[64];
-        prompt_line("  Source IP: ", ip, sizeof(ip));
-        if (ip[0]) err = perm_check_lbac(ctx, uid, ip, NULL, &allowed);
-        printf("  check_lbac(\"%s\") \u2192 %s\n", ip, allowed ? "ALLOW" : "DENY");
+        prompt_line("  Source IP address: ", ip, sizeof(ip));
+        if (ip[0]) err = perm_check_location(ctx, uid, ip, NULL, &allowed);
+        printf("  check_location(\"%s\") \u2192 %s\n", ip, allowed ? "ALLOW" : "DENY");
         break;
     }
     case 6: { /* ABAC */
         char attrs[SSO_MAX_ATTRIBUTES];
         prompt_line("  Subject attrs JSON (e.g. {\"department\":\"engineering\"}): ", attrs, sizeof(attrs));
         if (attrs[0]) err = perm_check_abac(ctx, uid, attrs, NULL, NULL, &allowed);
-        printf("  check_abac(...) \u2192 %s\n", allowed ? "ALLOW" : "DENY");
+        printf("  check_abac() \u2192 %s\n", allowed ? "ALLOW" : "DENY");
+        break;
+    }
+    case 7: { /* LBAC (Label-Based) */
+        char u_labels[256], r_label[64];
+        prompt_line("  User labels (comma-separated): ", u_labels, sizeof(u_labels));
+        prompt_line("  Resource label: ", r_label, sizeof(r_label));
+        if (u_labels[0] && r_label[0]) err = perm_check_lbac(ctx, uid, u_labels, r_label, &allowed);
+        printf("  check_lbac(\"%s\", \"%s\") \u2192 %s\n", u_labels, r_label, allowed ? "ALLOW" : "DENY");
         break;
     }
     default:
@@ -844,11 +903,12 @@ static int interactive_config(void) {
         case 2:  config_api(pmgr); break;
         case 3:  config_data(pmgr); break;
         case 4:  config_rbac(pmgr); break;
-        case 5:  config_lbac(pmgr); break;
+        case 5:  config_location(pmgr); break;
         case 6:  config_abac(pmgr); break;
-        case 7:  action_assign(pmgr, rmgr); break;
-        case 8:  action_check(&ctx); break;
-        case 9:  action_list(pmgr); break;
+        case 7:  config_lbac(pmgr); break;
+        case 8:  action_assign(pmgr, rmgr); break;
+        case 9:  action_check(&ctx); break;
+        case 10: action_list(pmgr); break;
         case 0:  running = 0; break;
         default: printf("  Invalid option.\n"); break;
         }
@@ -1371,8 +1431,8 @@ static sso_error_t handle_check_rbac(sso_context_t *ctx, const http_request_t *r
     return SSO_OK;
 }
 
-/* POST /api/v1/check/lbac */
-static sso_error_t handle_check_lbac(sso_context_t *ctx, const http_request_t *req,
+/* POST /api/v1/check/location */
+static sso_error_t handle_check_location(sso_context_t *ctx, const http_request_t *req,
                                       http_response_t *resp) {
     if (!req->body) {
         sso_response_error(resp, 400, "Request body required");
@@ -1399,7 +1459,7 @@ static sso_error_t handle_check_lbac(sso_context_t *ctx, const http_request_t *r
     }
 
     bool allowed = false;
-    sso_error_t err = perm_check_lbac(ctx, user_id, source_ip, geo_country, &allowed);
+    sso_error_t err = perm_check_location(ctx, user_id, source_ip, geo_country, &allowed);
 
     char buf[512];
     snprintf(buf, sizeof(buf),
@@ -1409,6 +1469,54 @@ static sso_error_t handle_check_lbac(sso_context_t *ctx, const http_request_t *r
         source_ip);
     free(source_ip);
     free(geo_country);
+
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, buf);
+    return SSO_OK;
+}
+
+/* POST /api/v1/check/lbac */
+static sso_error_t handle_check_lbac(sso_context_t *ctx, const http_request_t *req,
+                                      http_response_t *resp) {
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *user_labels    = json_str_value(req->body, "user_labels");
+    char *resource_label = json_str_value(req->body, "resource_label");
+    if (!user_labels || !resource_label) {
+        free(user_labels); free(resource_label);
+        sso_response_error(resp, 400, "user_labels and resource_label required");
+        return SSO_OK;
+    }
+
+    sso_id_t user_id = (sso_id_t)json_int_value(req->body, "user_id", 0);
+    if (user_id == 0) {
+        auth_context_t *auth = (auth_context_t *)req->userdata;
+        if (auth) user_id = auth->user.id;
+    }
+    if (user_id == 0) {
+        free(user_labels); free(resource_label);
+        sso_response_error(resp, 400, "user_id or authentication required");
+        return SSO_OK;
+    }
+
+    bool allowed = false;
+    sso_error_t err = perm_check_lbac(ctx, user_id, user_labels, resource_label, &allowed);
+
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "{\"allowed\":%s,\"user_id\":%llu,\"user_labels\":\"%s\",\"resource_label\":\"%s\"}",
+        allowed ? "true" : "false",
+        (unsigned long long)user_id,
+        user_labels, resource_label);
+    free(user_labels);
+    free(resource_label);
 
     if (err != SSO_OK) {
         sso_response_error(resp, 500, sso_strerror(err));
@@ -2431,6 +2539,7 @@ static int run_server(void) {
         {"/api/v1/check/api",       HTTP_POST, handle_check_api,         true},
         {"/api/v1/check/data",      HTTP_POST, handle_check_data,        true},
         {"/api/v1/check/rbac",      HTTP_POST, handle_check_rbac,        true},
+        {"/api/v1/check/location",  HTTP_POST, handle_check_location,    true},
         {"/api/v1/check/lbac",      HTTP_POST, handle_check_lbac,        true},
         {"/api/v1/check/abac",      HTTP_POST, handle_check_abac,        true},
 
@@ -2474,7 +2583,8 @@ static int run_server(void) {
     printf("  Check: POST /api/v1/check/api\n");
     printf("  Check: POST /api/v1/check/data\n");
     printf("  Check: POST /api/v1/check/rbac (role membership)\n");
-    printf("  Check: POST /api/v1/check/lbac (location/geo)\n");
+    printf("  Check: POST /api/v1/check/location (location/geo)\n");
+    printf("  Check: POST /api/v1/check/lbac (security labels)\n");
     printf("  Check: POST /api/v1/check/abac (attribute-based)\n");
     printf("  Mgmt:  POST /api/v1/users\n");
     printf("  Mgmt:  POST /api/v1/roles\n");
