@@ -102,6 +102,62 @@ void eval_context_destroy(eval_context_t *ctx) {
  * SSO lifecycle
  * ======================================================================== */
 
+/*
+ * Load the token HMAC secret from the environment or generate a random one.
+ *
+ * Security hierarchy (highest priority first):
+ *   1. SSO_TOKEN_SECRET environment variable  (recommended for production)
+ *   2. Auto-generated random secret           (development / demo only)
+ *
+ * A persistent secret is REQUIRED in production so that previously issued
+ * tokens remain valid across server restarts.  Set the SSO_TOKEN_SECRET
+ * environment variable to a long (~32 character) random string.
+ */
+#define SSO_ENV_TOKEN_SECRET "SSO_TOKEN_SECRET"
+#define SSO_SECRET_BYTES     32   /* 256-bit HMAC key */
+
+static sso_error_t load_token_secret(unsigned char *out, size_t out_len) {
+    const char *env_secret = getenv(SSO_ENV_TOKEN_SECRET);
+
+    if (env_secret && strlen(env_secret) > 0) {
+        /* Use the secret provided by the environment variable. */
+        size_t len = strlen(env_secret);
+        if (len > out_len) len = out_len;
+        memcpy(out, env_secret, len);
+        if (len < out_len) {
+            /* Pad with zeros to fill the key buffer. */
+            memset(out + len, 0, out_len - len);
+        }
+        printf("[sso] Token secret loaded from %s environment variable.\n",
+               SSO_ENV_TOKEN_SECRET);
+        return SSO_OK;
+    }
+
+    /* No environment secret — generate a random key from /dev/urandom. */
+    FILE *f = fopen("/dev/urandom", "r");
+    if (f) {
+        size_t n = fread(out, 1, out_len, f);
+        fclose(f);
+        if (n == out_len) {
+            fprintf(stderr,
+                    "[sso] WARNING: No %s set. Generated a random token secret.\n"
+                    "       This secret will change on every restart, invalidating\n"
+                    "       all previously issued tokens. Set %s for production use.\n",
+                    SSO_ENV_TOKEN_SECRET, SSO_ENV_TOKEN_SECRET);
+            return SSO_OK;
+        }
+    }
+
+    /* Fallback (should never happen on a normal system). */
+    fprintf(stderr,
+            "[sso] CRITICAL: Cannot read /dev/urandom and no %s set.\n"
+            "       Using a time-based fallback — TOKENS ARE NOT SECURE.\n",
+            SSO_ENV_TOKEN_SECRET);
+    sso_timestamp_t now = sso_timestamp_now();
+    memcpy(out, &now, sizeof(now) < out_len ? sizeof(now) : out_len);
+    return SSO_OK;
+}
+
 sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
                      const char *config_json) {
     if (!ctx) return SSO_ERR_INVALID_PARAM;
@@ -118,12 +174,20 @@ sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
         ctx->storage_backend = storage;
     }
 
-    /* 2. Token manager (default config — no secret means no tokens) */
+    /* 2. Token manager — load secret securely */
     token_manager_t *tmgr = (token_manager_t *)calloc(1, sizeof(token_manager_t));
     if (!tmgr) return SSO_ERR_OUT_OF_MEMORY;
-    /* Use a default time-based secret in production; for now, a fixed demo key */
-    token_manager_init(tmgr, (const unsigned char *)"sso-default-secret-change-me", 32,
+
+    unsigned char secret[SSO_SECRET_BYTES];
+    err = load_token_secret(secret, SSO_SECRET_BYTES);
+    if (err != SSO_OK) {
+        free(tmgr);
+        return err;
+    }
+    token_manager_init(tmgr, secret, SSO_SECRET_BYTES,
                        3600000LL); /* 1 hour default TTL */
+    /* Zero out the stack copy of the key after use. */
+    memset(secret, 0, SSO_SECRET_BYTES);
     ctx->token_mgr = tmgr;
 
     /* 3. Managers */
