@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSO 统一认证</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-primary:#0f1117;
+  --bg-secondary:#1a1d27;
+  --bg-tertiary:#242836;
+  --bg-input:#2a2e3d;
+  --border-color:#363b4d;
+  --border-focus:#5b6abf;
+  --text-primary:#e4e6ef;
+  --text-secondary:#9498ad;
+  --text-muted:#6b6f85;
+  --accent:#5b6abf;
+  --accent-hover:#6d7ad0;
+  --accent-active:#4f5aad;
+  --success:#3ecf8e;
+  --success-bg:rgba(62,207,142,.1);
+  --error:#ef5f5f;
+  --error-bg:rgba(239,95,95,.1);
+  --radius-sm:6px;
+  --radius-md:10px;
+  --radius-lg:14px;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.3);
+  --shadow-md:0 4px 16px rgba(0,0,0,.4);
+  --shadow-lg:0 8px 32px rgba(0,0,0,.5);
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-5:20px;
+  --space-6:24px;
+  --space-8:32px;
+  --space-10:40px;
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --font-mono:"SF Mono","Fira Code","Cascadia Code",monospace;
+  --text-xs:.75rem;
+  --text-sm:.8125rem;
+  --text-base:.9375rem;
+  --text-lg:1.125rem;
+  --text-xl:1.5rem;
+  --text-2xl:1.875rem;
+  --leading-normal:1.6;
+}
+html{font-size:16px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{
+  font-family:var(--font-sans);
+  background:var(--bg-primary);
+  color:var(--text-primary);
+  line-height:var(--leading-normal);
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:var(--space-4);
+}
+.container{
+  width:100%;
+  max-width:420px;
+}
+.card{
+  background:var(--bg-secondary);
+  border:1px solid var(--border-color);
+  border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-lg);
+  padding:var(--space-8);
+}
+.header{
+  text-align:center;
+  margin-bottom:var(--space-8);
+}
+.header h1{
+  font-size:var(--text-2xl);
+  font-weight:700;
+  letter-spacing:-.02em;
+  color:var(--text-primary);
+  margin-bottom:var(--space-2);
+}
+.header p{
+  font-size:var(--text-sm);
+  color:var(--text-secondary);
+}
+.form-group{
+  margin-bottom:var(--space-5);
+}
+.form-group label{
+  display:block;
+  font-size:var(--text-sm);
+  font-weight:500;
+  color:var(--text-secondary);
+  margin-bottom:var(--space-2);
+}
+.input-wrapper{
+  position:relative;
+}
+.input-wrapper input{
+  width:100%;
+  padding:var(--space-3) var(--space-4);
+  background:var(--bg-input);
+  border:1px solid var(--border-color);
+  border-radius:var(--radius-md);
+  color:var(--text-primary);
+  font-size:var(--text-base);
+  font-family:var(--font-sans);
+  outline:none;
+  transition:border-color .2s,box-shadow .2s;
+}
+.input-wrapper input::placeholder{
+  color:var(--text-muted);
+}
+.input-wrapper input:focus{
+  border-color:var(--border-focus);
+  box-shadow:0 0 0 3px rgba(91,106,191,.2);
+}
+.input-wrapper input.input-error{
+  border-color:var(--error);
+  box-shadow:0 0 0 3px rgba(239,95,95,.15);
+}
+.btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  padding:var(--space-3) var(--space-4);
+  border:none;
+  border-radius:var(--radius-md);
+  font-size:var(--text-base);
+  font-weight:600;
+  font-family:var(--font-sans);
+  cursor:pointer;
+  transition:background .2s,transform .1s,opacity .2s;
+  outline:none;
+}
+.btn:active{transform:scale(.98)}
+.btn-primary{
+  background:var(--accent);
+  color:#fff;
+}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-active)}
+.btn-primary:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  transform:none;
+}
+.btn-secondary{
+  background:var(--bg-tertiary);
+  color:var(--text-secondary);
+  border:1px solid var(--border-color);
+}
+.btn-secondary:hover{
+  background:var(--bg-input);
+  color:var(--text-primary);
+}
+.btn-copy{
+  background:var(--bg-tertiary);
+  color:var(--text-secondary);
+  border:1px solid var(--border-color);
+  padding:var(--space-2) var(--space-4);
+  font-size:var(--text-sm);
+  width:auto;
+}
+.btn-copy:hover{
+  background:var(--bg-input);
+  color:var(--text-primary);
+}
+.btn-copy.copied{
+  background:var(--success-bg);
+  color:var(--success);
+  border-color:var(--success);
+}
+.error-msg{
+  background:var(--error-bg);
+  color:var(--error);
+  border:1px solid rgba(239,95,95,.25);
+  border-radius:var(--radius-sm);
+  padding:var(--space-3) var(--space-4);
+  font-size:var(--text-sm);
+  margin-bottom:var(--space-5);
+  display:none;
+}
+.error-msg.visible{display:block}
+.success-section{
+  display:none;
+}
+.success-section.visible{display:block}
+.token-section{
+  margin-bottom:var(--space-5);
+}
+.token-section label{
+  display:block;
+  font-size:var(--text-sm);
+  font-weight:500;
+  color:var(--text-secondary);
+  margin-bottom:var(--space-2);
+}
+.token-area{
+  width:100%;
+  min-height:80px;
+  background:var(--bg-input);
+  border:1px solid var(--border-color);
+  border-radius:var(--radius-md);
+  color:var(--text-primary);
+  font-family:var(--font-mono);
+  font-size:var(--text-xs);
+  padding:var(--space-3);
+  resize:vertical;
+  outline:none;
+  word-break:break-all;
+}
+.token-actions{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:var(--space-2);
+}
+.user-info{
+  background:var(--bg-tertiary);
+  border:1px solid var(--border-color);
+  border-radius:var(--radius-md);
+  padding:var(--space-4);
+}
+.user-info h3{
+  font-size:var(--text-sm);
+  font-weight:600;
+  color:var(--text-secondary);
+  margin-bottom:var(--space-3);
+  text-transform:uppercase;
+  letter-spacing:.05em;
+}
+.user-info-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:var(--space-2) 0;
+  border-bottom:1px solid var(--border-color);
+}
+.user-info-row:last-child{border-bottom:none}
+.user-info-row .label{
+  font-size:var(--text-sm);
+  color:var(--text-muted);
+}
+.user-info-row .value{
+  font-size:var(--text-sm);
+  color:var(--text-primary);
+  font-weight:500;
+}
+.switch-link{
+  text-align:center;
+  margin-top:var(--space-5);
+  font-size:var(--text-sm);
+  color:var(--text-muted);
+}
+.switch-link a{
+  color:var(--accent);
+  text-decoration:none;
+  cursor:pointer;
+  font-weight:500;
+}
+.switch-link a:hover{
+  text-decoration:underline;
+}
+.spinner{
+  display:inline-block;
+  width:16px;
+  height:16px;
+  border:2px solid rgba(255,255,255,.3);
+  border-top-color:#fff;
+  border-radius:50%;
+  animation:spin .6s linear infinite;
+  margin-right:var(--space-2);
+  vertical-align:middle;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.form-section{display:none}
+.form-section.visible{display:block}
+.logout-section{
+  margin-top:var(--space-5);
+  text-align:center;
+}
+.field-error{
+  font-size:var(--text-xs);
+  color:var(--error);
+  margin-top:var(--space-1);
+  display:none;
+}
+.field-error.visible{display:block}
+@media(max-width:480px){
+  .card{padding:var(--space-6)}
+  .header h1{font-size:var(--text-xl)}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <!-- Login Form -->
+    <div id="loginSection" class="form-section visible">
+      <div class="header">
+        <h1>SSO 统一认证</h1>
+        <p>请登录您的账号</p>
+      </div>
+      <div id="loginError" class="error-msg"></div>
+      <form id="loginForm" novalidate>
+        <div class="form-group">
+          <label for="loginUsername">用户名</label>
+          <div class="input-wrapper">
+            <input type="text" id="loginUsername" name="username" placeholder="请输入用户名" autocomplete="username" required>
+          </div>
+          <div id="loginUsernameError" class="field-error">请输入用户名</div>
+        </div>
+        <div class="form-group">
+          <label for="loginPassword">密码</label>
+          <div class="input-wrapper">
+            <input type="password" id="loginPassword" name="password" placeholder="请输入密码" autocomplete="current-password" required>
+          </div>
+          <div id="loginPasswordError" class="field-error">请输入密码</div>
+        </div>
+        <button type="submit" id="loginBtn" class="btn btn-primary">登录</button>
+      </form>
+      <div class="switch-link">
+        还没有账号？<a id="showRegister">立即注册</a>
+      </div>
+    </div>
+
+    <!-- Register Form -->
+    <div id="registerSection" class="form-section">
+      <div class="header">
+        <h1>注册账号</h1>
+        <p>创建新的 SSO 账号</p>
+      </div>
+      <div id="registerError" class="error-msg"></div>
+      <form id="registerForm" novalidate>
+        <div class="form-group">
+          <label for="regUsername">用户名</label>
+          <div class="input-wrapper">
+            <input type="text" id="regUsername" name="username" placeholder="请输入用户名" autocomplete="username" required>
+          </div>
+          <div id="regUsernameError" class="field-error">请输入用户名</div>
+        </div>
+        <div class="form-group">
+          <label for="regDisplayName">显示名称</label>
+          <div class="input-wrapper">
+            <input type="text" id="regDisplayName" name="display_name" placeholder="请输入显示名称" required>
+          </div>
+          <div id="regDisplayNameError" class="field-error">请输入显示名称</div>
+        </div>
+        <div class="form-group">
+          <label for="regPassword">密码</label>
+          <div class="input-wrapper">
+            <input type="password" id="regPassword" name="password" placeholder="请输入密码" autocomplete="new-password" required>
+          </div>
+          <div id="regPasswordError" class="field-error">请输入密码</div>
+        </div>
+        <button type="submit" id="registerBtn" class="btn btn-primary">注册</button>
+      </form>
+      <div class="switch-link">
+        已有账号？<a id="showLogin">返回登录</a>
+      </div>
+    </div>
+
+    <!-- Success Section -->
+    <div id="successSection" class="success-section">
+      <div class="header">
+        <h1>登录成功</h1>
+        <p>认证令牌已生成</p>
+      </div>
+      <div class="token-section">
+        <label>认证令牌 (Token)</label>
+        <textarea id="tokenArea" class="token-area" readonly></textarea>
+        <div class="token-actions">
+          <button id="copyBtn" class="btn btn-copy">复制令牌</button>
+        </div>
+      </div>
+      <div class="user-info">
+        <h3>用户信息</h3>
+        <div class="user-info-row">
+          <span class="label">用户 ID</span>
+          <span id="infoUserId" class="value"></span>
+        </div>
+        <div class="user-info-row">
+          <span class="label">用户名</span>
+          <span id="infoUsername" class="value"></span>
+        </div>
+        <div class="user-info-row">
+          <span class="label">显示名称</span>
+          <span id="infoDisplayName" class="value"></span>
+        </div>
+      </div>
+      <div class="logout-section">
+        <button id="logoutBtn" class="btn btn-secondary">退出登录</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var loginSection = document.getElementById('loginSection');
+  var registerSection = document.getElementById('registerSection');
+  var successSection = document.getElementById('successSection');
+
+  var loginForm = document.getElementById('loginForm');
+  var registerForm = document.getElementById('registerForm');
+
+  var loginError = document.getElementById('loginError');
+  var registerError = document.getElementById('registerError');
+
+  var loginUsername = document.getElementById('loginUsername');
+  var loginPassword = document.getElementById('loginPassword');
+  var loginBtn = document.getElementById('loginBtn');
+
+  var regUsername = document.getElementById('regUsername');
+  var regDisplayName = document.getElementById('regDisplayName');
+  var regPassword = document.getElementById('regPassword');
+  var registerBtn = document.getElementById('registerBtn');
+
+  var tokenArea = document.getElementById('tokenArea');
+  var copyBtn = document.getElementById('copyBtn');
+  var logoutBtn = document.getElementById('logoutBtn');
+
+  var infoUserId = document.getElementById('infoUserId');
+  var infoUsername = document.getElementById('infoUsername');
+  var infoDisplayName = document.getElementById('infoDisplayName');
+
+  var showRegisterLink = document.getElementById('showRegister');
+  var showLoginLink = document.getElementById('showLogin');
+
+  function showSection(section) {
+    loginSection.classList.remove('visible');
+    registerSection.classList.remove('visible');
+    successSection.classList.remove('visible');
+    section.classList.add('visible');
+  }
+
+  function clearErrors() {
+    loginError.classList.remove('visible');
+    loginError.textContent = '';
+    registerError.classList.remove('visible');
+    registerError.textContent = '';
+    var fieldErrors = document.querySelectorAll('.field-error');
+    for (var i = 0; i < fieldErrors.length; i++) {
+      fieldErrors[i].classList.remove('visible');
+    }
+    var errorInputs = document.querySelectorAll('.input-error');
+    for (var j = 0; j < errorInputs.length; j++) {
+      errorInputs[j].classList.remove('input-error');
+    }
+  }
+
+  function showFieldError(inputEl, errorEl) {
+    inputEl.classList.add('input-error');
+    errorEl.classList.add('visible');
+  }
+
+  function setLoading(btn, loading) {
+    if (loading) {
+      btn.disabled = true;
+      btn.dataset.originalText = btn.textContent;
+      btn.innerHTML = '<span class="spinner"></span>处理中...';
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = btn.dataset.originalText || btn.textContent;
+    }
+  }
+
+  function showLoginError(msg) {
+    loginError.textContent = msg;
+    loginError.classList.add('visible');
+  }
+
+  function showRegisterError(msg) {
+    registerError.textContent = msg;
+    registerError.classList.add('visible');
+  }
+
+  function validateLoginForm() {
+    var valid = true;
+    if (!loginUsername.value.trim()) {
+      showFieldError(loginUsername, document.getElementById('loginUsernameError'));
+      valid = false;
+    }
+    if (!loginPassword.value.trim()) {
+      showFieldError(loginPassword, document.getElementById('loginPasswordError'));
+      valid = false;
+    }
+    return valid;
+  }
+
+  function validateRegisterForm() {
+    var valid = true;
+    if (!regUsername.value.trim()) {
+      showFieldError(regUsername, document.getElementById('regUsernameError'));
+      valid = false;
+    }
+    if (!regDisplayName.value.trim()) {
+      showFieldError(regDisplayName, document.getElementById('regDisplayNameError'));
+      valid = false;
+    }
+    if (!regPassword.value.trim()) {
+      showFieldError(regPassword, document.getElementById('regPasswordError'));
+      valid = false;
+    }
+    return valid;
+  }
+
+  loginForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    clearErrors();
+    if (!validateLoginForm()) return;
+
+    setLoading(loginBtn, true);
+
+    fetch('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: loginUsername.value.trim(),
+        password: loginPassword.value
+      })
+    })
+    .then(function(response) {
+      return response.json().then(function(data) {
+        if (!response.ok) {
+          throw new Error(data.error || '登录失败');
+        }
+        return data;
+      });
+    })
+    .then(function(data) {
+      tokenArea.value = data.token || '';
+      infoUserId.textContent = data.user_id != null ? data.user_id : '-';
+      infoUsername.textContent = data.username || '-';
+      infoDisplayName.textContent = data.display_name || '-';
+      showSection(successSection);
+    })
+    .catch(function(err) {
+      showLoginError(err.message || '网络错误，请稍后重试');
+    })
+    .finally(function() {
+      setLoading(loginBtn, false);
+    });
+  });
+
+  registerForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    clearErrors();
+    if (!validateRegisterForm()) return;
+
+    setLoading(registerBtn, true);
+
+    fetch('/api/v1/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: regUsername.value.trim(),
+        password: regPassword.value,
+        display_name: regDisplayName.value.trim()
+      })
+    })
+    .then(function(response) {
+      return response.json().then(function(data) {
+        if (!response.ok) {
+          throw new Error(data.error || '注册失败');
+        }
+        return data;
+      });
+    })
+    .then(function(data) {
+      loginUsername.value = regUsername.value.trim();
+      loginPassword.value = '';
+      clearErrors();
+      showSection(loginSection);
+      showLoginError('');
+      loginError.classList.remove('visible');
+      loginError.textContent = '';
+      loginUsername.focus();
+    })
+    .catch(function(err) {
+      showRegisterError(err.message || '网络错误，请稍后重试');
+    })
+    .finally(function() {
+      setLoading(registerBtn, false);
+    });
+  });
+
+  showRegisterLink.addEventListener('click', function(e) {
+    e.preventDefault();
+    clearErrors();
+    showSection(registerSection);
+    regUsername.focus();
+  });
+
+  showLoginLink.addEventListener('click', function(e) {
+    e.preventDefault();
+    clearErrors();
+    showSection(loginSection);
+    loginUsername.focus();
+  });
+
+  copyBtn.addEventListener('click', function() {
+    if (!tokenArea.value) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(tokenArea.value).then(function() {
+        copyBtn.textContent = '已复制';
+        copyBtn.classList.add('copied');
+        setTimeout(function() {
+          copyBtn.textContent = '复制令牌';
+          copyBtn.classList.remove('copied');
+        }, 2000);
+      });
+    } else {
+      tokenArea.select();
+      try {
+        document.execCommand('copy');
+        copyBtn.textContent = '已复制';
+        copyBtn.classList.add('copied');
+        setTimeout(function() {
+          copyBtn.textContent = '复制令牌';
+          copyBtn.classList.remove('copied');
+        }, 2000);
+      } catch (ex) {
+        // fallback: keep selected for manual copy
+      }
+    }
+  });
+
+  logoutBtn.addEventListener('click', function() {
+    tokenArea.value = '';
+    infoUserId.textContent = '';
+    infoUsername.textContent = '';
+    infoDisplayName.textContent = '';
+    loginUsername.value = '';
+    loginPassword.value = '';
+    clearErrors();
+    showSection(loginSection);
+  });
+
+  // Clear field error on input
+  var allInputs = document.querySelectorAll('input');
+  for (var k = 0; k < allInputs.length; k++) {
+    allInputs[k].addEventListener('input', function() {
+      this.classList.remove('input-error');
+      var sibling = this.parentElement.nextElementSibling;
+      if (sibling && sibling.classList.contains('field-error')) {
+        sibling.classList.remove('visible');
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>

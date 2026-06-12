@@ -15,7 +15,7 @@
 #   sudo apt-get install libsqlite3-dev libssl-dev
 
 CC       = gcc
-CFLAGS   = -Wall -Wextra -Wpedantic -std=c11 -O2 -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L
+CFLAGS   = -Wall -Wextra -Wpedantic -std=c11 -O2 -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings
 LDFLAGS  = -lsqlite3 -lssl -lcrypto
 INCLUDES = -Iinclude
 
@@ -44,7 +44,7 @@ OBJS     = $(ALL_SRCS:%=$(BUILDDIR)/%.o)
 TARGET   = sso_system
 
 # Debug target
-DEBUG_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O0 -DDEBUG
+DEBUG_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O0 -DDEBUG -Wno-overlength-strings
 
 .PHONY: all clean run server debug dirs
 

@@ -26,11 +26,26 @@
 #include "token.h"
 #include "storage.h"
 #include "server.h"
+#include "login_page.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+/* ========================================================================
+ * Built-in login page — serves the embedded HTML login/register UI
+ * ======================================================================== */
+static sso_error_t handle_login_page(sso_context_t *ctx,
+                                      const http_request_t *req,
+                                      http_response_t *resp) {
+    (void)ctx; (void)req;
+    resp->status_code = 200;
+    resp->body = strdup(LOGIN_PAGE_HTML);
+    resp->body_len = strlen(LOGIN_PAGE_HTML);
+    strcpy(resp->content_type, "text/html; charset=utf-8");
+    return SSO_OK;
+}
 
 /* ========================================================================
  * Demo — comprehensive walkthrough
@@ -952,7 +967,11 @@ static int run_server(void) {
 
     /* Define API routes */
     route_t routes[] = {
-        /* Public */
+        /* Public — login page */
+        {"/",                       HTTP_GET,  handle_login_page,       false},
+        {"/login",                  HTTP_GET,  handle_login_page,       false},
+
+        /* Public — API */
         {"/api/v1/health",          HTTP_GET,  handle_health,          false},
         {"/api/v1/auth/login",      HTTP_POST, handle_login,           false},
         {"/api/v1/auth/register",   HTTP_POST, handle_register,        false},
@@ -979,7 +998,8 @@ static int run_server(void) {
     sso_server_t server;
     sso_server_init(&server, &ctx, "0.0.0.0", 8080, routes, route_count);
 
-    printf("  API: http://localhost:8080/api/v1/health\n");
+    printf("  Login: http://localhost:%d/\n", 8080);
+    printf("  API: http://localhost:%d/api/v1/health\n", 8080);
     printf("  Auth: POST /api/v1/auth/login\n");
     printf("  Auth: POST /api/v1/auth/verify\n");
     printf("  Auth: POST /api/v1/auth/register\n");
