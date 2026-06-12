@@ -2,7 +2,9 @@
  * user.c — User manager implementation.
  *
  * Delegates all CRUD to the storage backend.  Password hashing uses
- * SHA-256 with a salt (in production, use bcrypt/argon2).
+ * libsodium crypto_pwhash_str (argon2id) — the current recommended
+ * password hashing algorithm (memory-hard, resistant to GPU/ASIC
+ * brute-force attacks).
  */
 
 #include "sso.h"
@@ -12,51 +14,30 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-
-/* Simple SHA-256 + salt "hash" — REPLACE with bcrypt/argon2 in production */
-#include <openssl/evp.h>
-
-#define SALT_LEN 16
+#include <sodium.h>
 
 struct user_manager {
     sso_context_t *ctx;
 };
 
 /* -----------------------------------------------------------------------
- * Internal: hash password with a random salt
+ * Internal: hash password with argon2id via libsodium.
+ *
+ * The output is a self-contained ASCII string of the form:
+ *   $argon2id$v=19$m=65536,t=2,p=1$<salt>$<hash>
+ * No separate salt storage is needed — salt and parameters are embedded.
  * ----------------------------------------------------------------------- */
-static void hash_password(const char *password, const unsigned char *salt,
-                          char *out_hash, size_t out_len) {
-    unsigned char hash[EVP_MAX_MD_SIZE];
-    unsigned int hash_len = 0;
-    EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
-    EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL);
-    EVP_DigestUpdate(mdctx, salt, SALT_LEN);
-    EVP_DigestUpdate(mdctx, password, strlen(password));
-    EVP_DigestFinal_ex(mdctx, hash, &hash_len);
-    EVP_MD_CTX_free(mdctx);
-
-    /* Encode as hex: salt + hash */
-    char *p = out_hash;
-    for (int i = 0; i < SALT_LEN && p < out_hash + out_len - 3; i++) {
-        p += snprintf(p, out_len - (size_t)(p - out_hash), "%02x", salt[i]);
+static void hash_password(const char *password, char *out_hash, size_t out_len) {
+    if (out_len < crypto_pwhash_STRBYTES) {
+        /* Buffer too small; truncate to be safe. */
+        if (out_len > 0) out_hash[0] = '\0';
+        return;
     }
-    for (unsigned int i = 0; i < hash_len && p < out_hash + out_len - 3; i++) {
-        p += snprintf(p, out_len - (size_t)(p - out_hash), "%02x", hash[i]);
-    }
-}
-
-static void generate_salt(unsigned char *salt) {
-    FILE *f = fopen("/dev/urandom", "r");
-    if (f) {
-        size_t r = fread(salt, 1, SALT_LEN, f);
-        (void)r;
-        fclose(f);
-    } else {
-        /* Fallback — not cryptographically secure */
-        for (int i = 0; i < SALT_LEN; i++) {
-            salt[i] = (unsigned char)(rand() & 0xFF);
-        }
+    if (crypto_pwhash_str(out_hash, password, strlen(password),
+                          crypto_pwhash_OPSLIMIT_MODERATE,
+                          crypto_pwhash_MEMLIMIT_MODERATE) != 0) {
+        /* Should not happen with valid parameters; fall back to a safe failure. */
+        if (out_len > 0) out_hash[0] = '\0';
     }
 }
 
@@ -96,10 +77,8 @@ sso_error_t user_create(user_manager_t *mgr, const char *username,
     user.created_at = sso_timestamp_now();
     user.updated_at = user.created_at;
 
-    /* Hash password */
-    unsigned char salt[SALT_LEN];
-    generate_salt(salt);
-    hash_password(password, salt, user.password_hash, sizeof(user.password_hash));
+    /* Hash password with argon2id */
+    hash_password(password, user.password_hash, sizeof(user.password_hash));
 
     sso_error_t err = sb->user_create(sb, &user);
     if (err == SSO_OK && out) {
@@ -160,19 +139,9 @@ sso_error_t user_authenticate(user_manager_t *mgr, const char *username,
 
     if (stored.status != USER_STATUS_ACTIVE) return SSO_ERR_AUTH_FAILED;
 
-    /* Extract salt from stored hash (first 32 hex chars = 16 bytes) */
-    unsigned char salt[SALT_LEN];
-    for (int i = 0; i < SALT_LEN; i++) {
-        unsigned int byte;
-        sscanf(&stored.password_hash[i * 2], "%02x", &byte);
-        salt[i] = (unsigned char)byte;
-    }
-
-    /* Hash input password with same salt */
-    char computed_hash[SSO_MAX_PASSWORD_HASH];
-    hash_password(password, salt, computed_hash, sizeof(computed_hash));
-
-    if (strcmp(computed_hash, stored.password_hash) != 0) {
+    /* Verify password against stored argon2id hash */
+    if (crypto_pwhash_str_verify(stored.password_hash, password,
+                                  strlen(password)) != 0) {
         return SSO_ERR_AUTH_FAILED;
     }
 
@@ -188,9 +157,7 @@ sso_error_t user_set_password(user_manager_t *mgr, sso_id_t user_id,
     sso_error_t err = user_get_by_id(mgr, user_id, &user);
     if (err != SSO_OK) return err;
 
-    unsigned char salt[SALT_LEN];
-    generate_salt(salt);
-    hash_password(new_password, salt, user.password_hash, sizeof(user.password_hash));
+    hash_password(new_password, user.password_hash, sizeof(user.password_hash));
 
     return user_update(mgr, &user);
 }

@@ -10,13 +10,14 @@
 # Dependencies:
 #   - SQLite3 (libsqlite3-dev)
 #   - OpenSSL (libssl-dev) — for SHA-256 and HMAC
+#   - libsodium — for argon2id password hashing
 #
 # Install deps on Debian/Ubuntu:
 #   sudo apt-get install libsqlite3-dev libssl-dev
 
 CC       = gcc
 CFLAGS   = -Wall -Wextra -Wpedantic -std=c11 -O2 -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP
-LDFLAGS  = -lsqlite3 -lssl -lcrypto
+LDFLAGS  = -lsodium -lsqlite3 -lssl -lcrypto
 INCLUDES = -Iinclude
 
 SRCDIR   = src

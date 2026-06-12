@@ -23,6 +23,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
+#include <sodium.h>
 
 /* ========================================================================
  * Error strings
@@ -164,6 +165,7 @@ sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
     memset(ctx, 0, sizeof(*ctx));
 
     sso_error_t err;
+    if (sodium_init() < 0) { fprintf(stderr, "[sso] Failed to init libsodium\n"); return SSO_ERR_GENERAL; }
 
     /* 1. Storage backend */
     if (storage) {
