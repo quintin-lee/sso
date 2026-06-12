@@ -141,6 +141,8 @@ static void send_response(int fd, const http_response_t *resp) {
         "Content-Length: %zu\r\n"
         "Connection: close\r\n"
         "Access-Control-Allow-Origin: *\r\n"
+        "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+        "Pragma: no-cache\r\n"
         "\r\n",
         resp->status_code,
         resp->status_code == 200 ? "OK" :
