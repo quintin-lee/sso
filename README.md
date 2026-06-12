@@ -1,16 +1,19 @@
 # SSO System — Lightweight Single Sign-On Service in C
 
-A lightweight, embeddable Single Sign-On (SSO) service written in C, providing unified authentication and authorization for microservices. Features three permission strategies (functional, API endpoint, data scope) with a DENY-overrides permission engine, HMAC-based stateless tokens, and an embedded HTTP API server.
+A lightweight, embeddable Single Sign-On (SSO) service written in C, providing unified authentication and authorization for microservices. Features six permission strategies (functional, API endpoint, data scope, RBAC, LBAC, ABAC) with a DENY-overrides permission engine, HMAC-based stateless tokens, and an embedded HTTP API server.
 
 ## Features
 
 - **Unified Authentication** — register, login, token verify/refresh/logout, self-info query
 - **Role-Based Access Control (RBAC)** — hierarchical roles with ancestry inheritance
 - **Group Management** — hierarchical groups with membership
-- **Three Permission Strategies** (pluggable via strategy pattern):
+- **Six Permission Strategies** (pluggable via strategy pattern):
   - **Functional** — feature/button-level permissions (`report:view`, `admin:*`)
   - **API Endpoint** — HTTP method + path matching with wildcards (`GET /api/v1/users/*`)
   - **Data Scope** — resource-scoped access with field-level filtering
+  - **RBAC** — role membership check against policy-defined role names
+  - **LBAC** — location-based access control via IP CIDR matching
+  - **ABAC** — attribute-based access control with multi-condition evaluation
 - **DENY-Overrides Engine** — explicit deny takes precedence; default-deny (fail closed)
 - **Stateless Tokens** — HMAC-SHA256 signed JWT-like tokens (no server-side session storage)
 - **Embedded HTTP Server** — POSIX socket-based, no external web server required
@@ -27,7 +30,8 @@ A lightweight, embeddable Single Sign-On (SSO) service written in C, providing u
 │  Manager │  Manager │  Manager │  Engine    │
 ├──────────┴──────────┴──────────┴────────────┤
 │        Permission Strategy Layer             │
-│  [Functional]  [API Endpoint]  [Data Scope]  │
+│  [Functional][API Endpoint][Data Scope]       │
+│  [RBAC]                [LBAC]    [ABAC]       │
 ├──────────────────────────────────────────────┤
 │           Token / Session Manager            │
 ├──────────────────────────────────────────────┤
@@ -66,6 +70,14 @@ Output: `./sso_system`
 
 ## Usage
 
+Three run modes:
+
+| Command | Mode | Description |
+|---------|------|-------------|
+| `./sso_system` | Demo | Comprehensive walkthrough of all features, then exits |
+| `./sso_system --interactive` | Interactive | Guided menu-driven configuration shell for all 6 strategies |
+| `./sso_system --server` | Server | Starts HTTP management API on port 8080 |
+
 ### Demo Mode
 
 Runs a comprehensive walkthrough of all features and exits:
@@ -77,10 +89,27 @@ Runs a comprehensive walkthrough of all features and exits:
 The demo demonstrates:
 1. System initialization with SQLite
 2. User, role, group CRUD
-3. Policy creation for all three strategy types
+3. Policy creation for all six strategy types
 4. Role/group hierarchy and inheritance
-5. Permission checks (functional, API, data)
+5. Permission checks (functional, API, data, RBAC, LBAC, ABAC)
 6. Token-based authentication
+
+### Interactive Configuration Mode
+
+Guided step-by-step shell for creating all six policy types interactively:
+
+```bash
+./sso_system --interactive
+```
+
+Presents a numbered menu with options for each strategy type plus actions:
+- **Strategy creation** (1-6): step-by-step prompts with defaults — no raw JSON needed
+- **Assign policies** (7): link a policy to a role by ID
+- **Test checks** (8): verify a user's permission against any strategy type
+- **List policies** (9): show all existing policies with rules
+- **Exit** (0): saves configuration to `sso_config.db` for reuse
+
+All prompts include inline help, examples, and sensible defaults. The database persists between sessions — re-run `--interactive` to continue where you left off, or delete `sso_config.db` for a fresh start.
 
 ### Server Mode
 
@@ -90,12 +119,11 @@ Starts the HTTP management API on port 8080:
 ./sso_system --server
 ```
 
-**First start** — bootstraps default admin user and roles/policies:
+**First start** — bootstraps default admin user, roles, groups, and 6 policy types:
 - Admin user: `admin` / `admin123`
 - Admin role, Editor role (child of Admin), Viewer role (child of Editor)
-- Functional policy: `admin:*`, `user:create`, `user:view` (allow); `user:delete` (deny)
-- API policy: `GET /api/v1/*`, `POST /api/v1/users` (allow)
-- All policies assigned to admin role → admin user
+- All policy types (functional, API, data, RBAC, LBAC, ABAC) with demo rules
+- All policies assigned to admin role → admin user inherits full access
 
 ```bash
 # Quick test
@@ -229,6 +257,45 @@ When allowed, the response may include a `fields` array for column-level filteri
 {"allowed":true,"user_id":1,"fields":["id","title","status"]}
 ```
 
+#### `POST /api/v1/check/rbac`
+Check if a user has a specific role (RBAC).
+
+**Request:**
+```json
+{"role_name":"admin","user_id":1}
+```
+
+**Response:**
+```json
+{"allowed":true,"user_id":1,"role":"admin"}
+```
+
+#### `POST /api/v1/check/lbac`
+Check if a user's request originates from an allowed location (LBAC).
+
+**Request:**
+```json
+{"source_ip":"127.0.0.1","user_id":1}
+```
+
+**Response:**
+```json
+{"allowed":true,"user_id":1,"source_ip":"127.0.0.1"}
+```
+
+#### `POST /api/v1/check/abac`
+Check if a user satisfies attribute-based conditions (ABAC).
+
+**Request:**
+```json
+{"subject_attrs":"{\"department\":\"engineering\"}","user_id":1}
+```
+
+**Response:**
+```json
+{"allowed":true,"user_id":1}
+```
+
 ### Management Endpoints
 
 #### `POST /api/v1/users`
@@ -265,13 +332,16 @@ or
 
 ### Strategy Pattern
 
-Three strategies are registered in the engine. Each policy declares its strategy type, and the engine dispatches evaluation to the correct strategy implementation.
+Six strategies are registered in the engine. Each policy declares its strategy type, and the engine dispatches evaluation to the correct strategy implementation.
 
 | Strategy | Type | Purpose | Rule Format |
 |----------|------|---------|-------------|
 | Functional | `PERM_STRATEGY_FUNCTIONAL` | Feature/menu/button permissions | `{"functions":[{"code":"report:view","effect":"allow"}]}` |
 | API | `PERM_STRATEGY_API` | HTTP method + path access control | `{"endpoints":[{"method":"GET","path":"/api/v1/*","effect":"allow"}]}` |
 | Data | `PERM_STRATEGY_DATA` | Resource-scoped field-level access | `{"resources":[{"type":"report","scope":"all","fields":["id","title"],"conditions":[...]}]}` |
+| RBAC | `PERM_STRATEGY_RBAC` | Role membership check | `{"roles":[{"name":"admin","effect":"allow"}]}` |
+| LBAC | `PERM_STRATEGY_LBAC` | IP/location-based access control | `{"locations":[{"type":"ip_cidr","value":"127.0.0.0/8","effect":"allow"}]}` |
+| ABAC | `PERM_STRATEGY_ABAC` | Attribute-based access control | `{"conditions":[{"source":"subject","attr":"department","op":"eq","value":"engineering"}],"logic":"and","effect":"allow"}` |
 
 ### Evaluation Logic
 
@@ -357,7 +427,10 @@ base64(json_header).hex(HMAC-SHA256(signing_key, base64(json_header)))
 └── strategies/              # Strategy implementations
     ├── func_perm.c          # Functional permission strategy
     ├── api_perm.c           # API endpoint permission strategy
-    └── data_perm.c          # Data scope permission strategy
+    ├── data_perm.c          # Data scope permission strategy
+    ├── rbac_perm.c          # RBAC (role membership) strategy
+    ├── lbac_perm.c          # LBAC (location-based) strategy
+    └── abac_perm.c          # ABAC (attribute-based) strategy
 ```
 
 ## Developer Notes
