@@ -1,0 +1,37 @@
+# Build artifacts
+build/
+sso_system
+*.o
+*.d
+
+# Database files
+*.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+\#*\#
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Core dumps
+core
+
+# AI coding tools
+.specstory/
+.codegraph/
+.opencode/
+.aider/
+.cursor/
+.windsurf/
+.codebuddy/
+.claude/
+.codex/
+.continue/
+.cline/
+.trae/
