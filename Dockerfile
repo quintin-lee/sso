@@ -46,6 +46,5 @@ EXPOSE 8080
 # Configure volumes for persistent data
 VOLUME /app/data
 
-# Run the system, passing a specific database file path via env var (if your app supports it, 
-# otherwise it creates sso_demo.db in the CWD, which is /app)
-CMD ["sso_system"]
+# Run the system in server mode on port 8080
+CMD ["sso_system", "--server"]
