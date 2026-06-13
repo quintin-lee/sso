@@ -2609,9 +2609,36 @@ static sso_error_t bootstrap_data(sso_context_t *ctx) {
     err = user_get_by_username(umgr, "admin", &admin_user);
     if (err == SSO_OK) return SSO_OK; /* already bootstrapped */
 
+    /* Determine initial admin password */
+    const char *admin_password = getenv("SSO_ADMIN_PASSWORD");
+    char random_pass[32];
+    bool using_random = false;
+
+    if (!admin_password || admin_password[0] == '\0') {
+        /* Generate a random password if none provided */
+        unsigned char rand_bytes[12];
+        FILE *f = fopen("/dev/urandom", "r");
+        if (f) {
+            fread(rand_bytes, 1, sizeof(rand_bytes), f);
+            fclose(f);
+        }
+        snprintf(random_pass, sizeof(random_pass), "admin-%02x%02x%02x%02x", 
+                 rand_bytes[0], rand_bytes[1], rand_bytes[2], rand_bytes[3]);
+        admin_password = random_pass;
+        using_random = true;
+    }
+
     /* Create admin user */
     printf("[bootstrap] Creating admin user...\n");
-    err = user_create(umgr, "admin", "admin123", "admin@example.com", "Admin", &admin_user);
+    if (using_random) {
+        printf("\n======================================================================\n");
+        printf("⚠️  WARNING: No SSO_ADMIN_PASSWORD set in environment.\n");
+        printf("⚠️  Generated initial admin password: %s\n", admin_password);
+        printf("⚠️  Please save this password! You can change it later via the API.\n");
+        printf("======================================================================\n\n");
+    }
+
+    err = user_create(umgr, "admin", admin_password, "admin@example.com", "Admin", &admin_user);
     if (err != SSO_OK) {
         fprintf(stderr, "[bootstrap] Failed to create admin: %s\n", sso_strerror(err));
         return err;
