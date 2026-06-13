@@ -1341,6 +1341,11 @@ static sso_error_t handle_register(sso_context_t *ctx, const http_request_t *req
         role_t member_role;
         if (role_get_by_name(rmgr, "user", &member_role) == SSO_OK) {
             role_assign_to_user(rmgr, member_role.id, user.id);
+        } else {
+            /* If 'user' role doesn't exist, try to create it */
+            if (role_create(rmgr, "user", "Regular member", SSO_ID_NONE, &member_role) == SSO_OK) {
+                role_assign_to_user(rmgr, member_role.id, user.id);
+            }
         }
     }
 
@@ -2239,7 +2244,8 @@ static sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *r
         size_t rc = 0;
         user_get_roles(umgr, u.id, role_ids, &rc, 16);
 
-        char roles_json[512] = "";
+        char roles_json[1024];
+        roles_json[0] = '\0';
         strcat(roles_json, "[");
         for (size_t j = 0; j < rc; j++) {
             role_t r;
@@ -2259,7 +2265,8 @@ static sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *r
         user_get_groups(umgr, u.id, group_ids, &gc, 16);
         group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
 
-        char groups_json[512] = "";
+        char groups_json[1024];
+        groups_json[0] = '\0';
         strcat(groups_json, "[");
         for (size_t j = 0; j < gc; j++) {
             group_t g;
@@ -2936,7 +2943,32 @@ static sso_error_t handle_unassign_policy(sso_context_t *ctx, const http_request
 /* GET /admin — serve the admin management page */
 static sso_error_t handle_admin_page(sso_context_t *ctx, const http_request_t *req,
                                        http_response_t *resp) {
-    (void)ctx; (void)req;
+    (void)ctx;
+    auth_context_t *auth = (auth_context_t *)req->userdata;
+    
+    /* If auth header was provided but role is not admin, reject immediately.
+     * If no auth header, we serve the HTML and let JS handle the initial login redirect. */
+    if (auth) {
+        user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+        role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+        sso_id_t roles[16];
+        size_t count = 0;
+        user_get_roles(umgr, auth->user.id, roles, &count, 16);
+
+        bool is_admin = false;
+        for (size_t i = 0; i < count; i++) {
+            role_t r;
+            if (role_get_by_id(rmgr, roles[i], &r) == SSO_OK) {
+                if (strcmp(r.name, "admin") == 0) { is_admin = true; break; }
+            }
+        }
+
+        if (!is_admin) {
+            sso_response_error(resp, 403, "Access denied: Admin role required");
+            return SSO_OK;
+        }
+    }
+
     resp->status_code = 200;
     resp->body = strdup(ADMIN_PAGE_HTML);
     resp->body_len = strlen(ADMIN_PAGE_HTML);

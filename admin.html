@@ -29,7 +29,7 @@ body{
   background:var(--bg-dark);
   color:var(--text-main);
   min-height:100vh;
-  display:flex;
+  display:none; /* Hide until auth check */
   overflow:hidden;
 }
 .sidebar{
@@ -761,11 +761,22 @@ function showModal(title, sub) { document.getElementById('modalTitle').textConte
 // Init
 const token = localStorage.getItem(TOKEN_KEY);
 if(token) {
-  api('/api/v1/auth/me').then(d => {
+  api('/api/v1/auth/me').then(async d => {
+    // Robust check: fetch full user details to confirm roles
+    const u = await api(`/api/v1/users/${d.user_id}`);
+    const isAdmin = (u.roles || []).some(r => r.name === 'admin');
+    
+    if(!isAdmin) {
+      alert('权限不足：仅管理员可以访问此页面');
+      logout();
+      return;
+    }
+
     document.getElementById('adminName').textContent = d.display_name || d.username;
     document.getElementById('avatar').textContent = (d.display_name || d.username)[0].toUpperCase();
+    document.body.style.display = 'flex'; // Unlock UI
     loadData();
-  }).catch(() => {});
+  }).catch(() => { logout(); });
 } else { window.location.href = '/login'; }
 </script>
 </body>
