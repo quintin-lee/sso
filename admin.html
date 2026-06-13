@@ -32,7 +32,6 @@ body{
   display:flex;
   overflow:hidden;
 }
-/* Sidebar */
 .sidebar{
   width:260px;
   background:var(--bg-sidebar);
@@ -131,8 +130,6 @@ body{
 .user-role{
   font-size:11px;
   color:var(--text-muted);
-  text-transform:uppercase;
-  letter-spacing:0.5px;
 }
 /* Main Content */
 .main{
@@ -140,7 +137,6 @@ body{
   display:flex;
   flex-direction:column;
   overflow:hidden;
-  position:relative;
 }
 .top-bar{
   height:72px;
@@ -156,7 +152,6 @@ body{
   font-size:22px;
   font-weight:700;
   color:var(--text-bright);
-  letter-spacing:-0.5px;
 }
 .content-area{
   flex:1;
@@ -178,9 +173,7 @@ body{
   display:flex;
   align-items:center;
   gap:20px;
-  transition:transform 0.2s;
 }
-.stat-card:hover{transform:translateY(-2px)}
 .stat-icon{
   width:56px;
   height:56px;
@@ -279,7 +272,7 @@ tr:hover td{background:rgba(255,255,255,0.015)}
 .btn-danger{
   background:rgba(247,118,142,0.1);
   color:var(--error);
-  border:1px solid rgba(247,118,142,0.2);
+  border: 1px solid rgba(247,118,142,0.1);
 }
 .btn-danger:hover{background:var(--error);color:#fff}
 .btn-sm{padding:6px 12px;font-size:12px;border-radius:6px}
@@ -303,6 +296,7 @@ tr:hover td{background:rgba(255,255,255,0.015)}
   font-weight:600;
   background:rgba(122,162,247,0.1);
   color:var(--accent);
+  margin-right: 4px;
 }
 
 /* Modal */
@@ -315,18 +309,18 @@ tr:hover td{background:rgba(255,255,255,0.015)}
   align-items:center;
   justify-content:center;
   z-index:1000;
-  animation:fadeIn 0.2s;
 }
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .modal-overlay.active{display:flex}
 .modal{
   background:var(--bg-card);
   border:1px solid var(--border);
-  width:540px;
+  width:640px;
   max-width:95%;
   border-radius:20px;
   padding:40px;
   box-shadow:0 30px 60px rgba(0,0,0,0.6);
+  max-height: 90vh;
+  overflow-y: auto;
 }
 .modal h3{font-size:22px;color:var(--text-bright);font-weight:700;margin-bottom:8px}
 .modal p{font-size:14px;color:var(--text-muted);margin-bottom:24px}
@@ -343,18 +337,32 @@ input, select, textarea{
   outline:none;
   transition:all 0.2s;
 }
-input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(122,162,247,0.15)}
+input:focus, select:focus, textarea:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(122,162,247,0.15)}
 .modal-footer{
   display:flex;
   justify-content:flex-end;
   gap:12px;
   margin-top:40px;
 }
-/* Scrollbar */
-::-webkit-scrollbar{width:8px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:10px}
-::-webkit-scrollbar-thumb:hover{background:var(--text-muted)}
+/* Rule Builder UI */
+.rule-builder{
+  background:var(--bg-dark);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:16px;
+  margin-top:10px;
+}
+.rule-item{
+  display:flex;
+  gap:10px;
+  margin-bottom:10px;
+  align-items: center;
+}
+.rule-item input, .rule-item select{ padding: 10px; font-size: 13px; }
+
+/* Toast */
+.toast-container{position:fixed;top:20px;right:20px;z-index:2000}
+.toast{padding:12px 24px;border-radius:8px;background:var(--bg-card);color:#fff;border:1px solid var(--border);box-shadow:var(--shadow);margin-bottom:10px;transition:opacity 0.3s;}
 </style>
 </head>
 <body>
@@ -365,11 +373,11 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(122,162,247,0.1
     <div class="logo-text">SSO Admin</div>
   </div>
   <div class="nav-links">
-    <div class="nav-item active" onclick="switchTab('users', this)"><span>👥</span> 用户管理</div>
-    <div class="nav-item" onclick="switchTab('roles', this)"><span>🔐</span> 角色权限</div>
-    <div class="nav-item" onclick="switchTab('groups', this)"><span>🏢</span> 组织架构</div>
-    <div class="nav-item" onclick="switchTab('policies', this)"><span>📜</span> 策略配置</div>
-    <div class="nav-item" onclick="switchTab('metrics', this)"><span>📊</span> 系统指标</div>
+    <div class="nav-item active" id="nav-users" onclick="switchTab('users')"><span>👥</span> 用户管理</div>
+    <div class="nav-item" id="nav-roles" onclick="switchTab('roles')"><span>🔐</span> 角色管理</div>
+    <div class="nav-item" id="nav-groups" onclick="switchTab('groups')"><span>🏢</span> 组织架构</div>
+    <div class="nav-item" id="nav-policies" onclick="switchTab('policies')"><span>📜</span> 策略配置</div>
+    <div class="nav-item" id="nav-metrics" onclick="switchTab('metrics')"><span>📊</span> 系统指标</div>
   </div>
   <div class="sidebar-footer">
     <div class="user-profile">
@@ -392,53 +400,40 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(122,162,247,0.1
   </div>
 
   <div class="content-area">
-    <!-- Stats Row -->
     <div class="grid">
       <div class="stat-card">
-        <div class="stat-icon" style="color:#7aa2f7;background:rgba(122,162,247,0.1)">👥</div>
-        <div class="stat-info">
-          <div class="stat-label">总用户数</div>
-          <div class="stat-value" id="countUsers">0</div>
-        </div>
+        <div class="stat-icon">👥</div>
+        <div class="stat-info"><div class="stat-label">总用户数</div><div class="stat-value" id="countUsers">0</div></div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon" style="color:#bb9af7;background:rgba(187,154,247,0.1)">🛡️</div>
-        <div class="stat-info">
-          <div class="stat-label">活跃策略</div>
-          <div class="stat-value" id="countPolicies">0</div>
-        </div>
+        <div class="stat-icon">🛡️</div>
+        <div class="stat-info"><div class="stat-label">活跃策略</div><div class="stat-value" id="countPolicies">0</div></div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon" style="color:#9ece6a;background:rgba(158,206,106,0.1)">⚡</div>
-        <div class="stat-info">
-          <div class="stat-label">鉴权 QPS</div>
-          <div class="stat-value" id="avgQps">0.0</div>
-        </div>
+        <div class="stat-icon">⚡</div>
+        <div class="stat-info"><div class="stat-label">鉴权次数</div><div class="stat-value" id="totalEvals">0</div></div>
       </div>
     </div>
 
-    <!-- Data Table -->
     <div class="card">
-      <div class="card-header">
-        <div class="card-title">数据概览</div>
-        <div style="font-size:12px;color:var(--text-muted)">实时同步中</div>
-      </div>
+      <div class="card-header"><div class="card-title">数据概览</div></div>
       <div class="table-wrapper" id="tableContainer">
-        <div style="padding:60px;text-align:center;color:var(--text-muted)">正在加载核心组件数据...</div>
+        <div style="padding:60px;text-align:center;color:var(--text-muted)">正在同步 SSO 核心数据...</div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Modal -->
+<div id="toastContainer" class="toast-container"></div>
+
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal">
-    <h3 id="modalTitle">新增用户</h3>
-    <p id="modalSub">请填写下方表单完成操作</p>
+    <h3 id="modalTitle">标题</h3>
+    <p id="modalSub">描述文字</p>
     <div id="modalContent"></div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal()">取消</button>
-      <button class="btn btn-primary" id="confirmBtn" onclick="confirmAdd()">保存提交</button>
+      <button class="btn btn-primary" id="confirmBtn">确定提交</button>
     </div>
   </div>
 </div>
@@ -446,14 +441,30 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(122,162,247,0.1
 <script>
 let currentTab = 'users';
 const TOKEN_KEY = 'sso_token';
+let allData = { users:[], roles:[], groups:[], policies:[] };
+let policyRules = [];
 
-function switchTab(tab, el) {
+function toast(msg, type='success') {
+  const container = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.style.borderLeft = `4px solid var(--${type === 'success' ? 'success' : 'error'})`;
+  t.textContent = msg;
+  container.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+}
+
+function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('pageTitle').textContent = el.textContent.trim().substring(2);
-  document.getElementById('addBtn').textContent = '+ 新增' + el.textContent.trim().substring(2);
-  document.getElementById('addBtn').style.display = tab === 'metrics' ? 'none' : 'flex';
+  const el = document.getElementById('nav-' + tab);
+  if(el) el.classList.add('active');
+  
+  const labels = { 'users': '用户管理', 'roles': '角色管理', 'groups': '组织架构', 'policies': '策略配置', 'metrics': '系统指标' };
+  document.getElementById('pageTitle').textContent = labels[tab];
+  const addBtn = document.getElementById('addBtn');
+  addBtn.textContent = '+ 新增' + labels[tab].substring(0, 2);
+  addBtn.style.display = tab === 'metrics' ? 'none' : 'flex';
   loadData();
 }
 
@@ -461,101 +472,213 @@ async function api(path, method='GET', body=null) {
   const token = localStorage.getItem(TOKEN_KEY);
   const headers = {'Content-Type':'application/json'};
   if(token) headers['Authorization'] = 'Bearer ' + token;
-  const r = await fetch(path, {method, headers, body: body ? JSON.stringify(body) : null});
-  if(r.status === 401) { logout(); return; }
-  return r.json();
+  try {
+    const r = await fetch(path, {method, headers, body: body ? JSON.stringify(body) : null});
+    if(r.status === 401) { logout(); return; }
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || '请求失败');
+    return data;
+  } catch(e) { toast(e.message, 'error'); throw e; }
 }
 
 function loadData() {
   const container = document.getElementById('tableContainer');
+  container.innerHTML = '<div style="padding:60px;text-align:center;color:var(--text-muted)">加载中...</div>';
+  
   if(currentTab === 'users') {
-    api('/api/v1/users').then(users => {
-      document.getElementById('countUsers').textContent = users.length;
-      let html = '<table><thead><tr><th>ID</th><th>用户名</th><th>邮箱</th><th>手机号</th><th>状态</th><th>操作</th></tr></thead><tbody>';
-      users.forEach(u => {
-        html += `<tr>
-          <td>#${u.id}</td>
-          <td style="color:var(--text-bright);font-weight:600">${u.username}</td>
-          <td>${u.email || '-'}</td>
-          <td>${u.phone || '-'}</td>
-          <td><span class="status-pill ${u.status === 1 ? 'status-active' : 'status-inactive'}">${u.status === 1 ? '● 正常' : '● 禁用'}</span></td>
-          <td>
-            <button class="btn btn-outline btn-sm" onclick="editUser(${u.id})">管理</button>
-          </td>
-        </tr>`;
+    api('/api/v1/users').then(data => {
+      allData.users = data;
+      document.getElementById('countUsers').textContent = data.length;
+      let html = '<table><thead><tr><th>ID</th><th>用户名</th><th>显示名称</th><th>状态</th><th>角色/分组</th><th>操作</th></tr></thead><tbody>';
+      data.forEach(u => {
+        const roles = (u.roles || []).map(r => `<span class="tag">${r.name}</span>`).join('');
+        html += `<tr><td>#${u.id}</td><td style="color:var(--text-bright);font-weight:600">${u.username}</td><td>${u.display_name||'-'}</td><td><span class="status-pill ${u.status === 1 ? 'status-active' : 'status-inactive'}">${u.status === 1 ? '● 正常' : '● 禁用'}</span></td><td>${roles||'-'}</td><td><button class="btn btn-outline btn-sm" onclick="showEditUser(${u.id})">管理</button> <button class="btn btn-danger btn-sm" onclick="deleteItem('users', ${u.id})">删除</button></td></tr>`;
+      });
+      container.innerHTML = html + '</tbody></table>';
+    });
+  } else if(currentTab === 'roles') {
+    api('/api/v1/roles').then(data => {
+      allData.roles = data;
+      let html = '<table><thead><tr><th>ID</th><th>角色名称</th><th>描述</th><th>父角色</th><th>操作</th></tr></thead><tbody>';
+      data.forEach(r => {
+        html += `<tr><td>#${r.id}</td><td style="color:var(--text-bright);font-weight:600">${r.name}</td><td>${r.description||'-'}</td><td>${r.parent_name||'-'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteItem('roles', ${r.id})">删除</button></td></tr>`;
+      });
+      container.innerHTML = html + '</tbody></table>';
+    });
+  } else if(currentTab === 'groups') {
+    api('/api/v1/groups').then(data => {
+      allData.groups = data;
+      let html = '<table><thead><tr><th>ID</th><th>分组名称</th><th>描述</th><th>父分组</th><th>操作</th></tr></thead><tbody>';
+      data.forEach(g => {
+        html += `<tr><td>#${g.id}</td><td style="color:var(--text-bright);font-weight:600">${g.name}</td><td>${g.description||'-'}</td><td>${g.parent_name||'-'}</td><td><button class="btn btn-danger btn-sm" onclick="deleteItem('groups', ${g.id})">删除</button></td></tr>`;
       });
       container.innerHTML = html + '</tbody></table>';
     });
   } else if(currentTab === 'policies') {
-    api('/api/v1/policies').then(policies => {
-      document.getElementById('countPolicies').textContent = policies.length;
+    api('/api/v1/policies').then(data => {
+      allData.policies = data;
+      document.getElementById('countPolicies').textContent = data.length;
       let html = '<table><thead><tr><th>ID</th><th>策略名称</th><th>类型</th><th>效果</th><th>操作</th></tr></thead><tbody>';
-      policies.forEach(p => {
-        html += `<tr>
-          <td>#${p.id}</td>
-          <td style="color:var(--text-bright);font-weight:600">${p.name}</td>
-          <td><span class="tag">${p.strategy_type}</span></td>
-          <td><span style="color:${p.effect === 1 ? 'var(--success)' : 'var(--error)'};font-weight:700">${p.effect === 1 ? 'ALLOW' : 'DENY'}</span></td>
-          <td><button class="btn btn-outline btn-sm">配置</button></td>
-        </tr>`;
+      const types = {1:'FUNC', 2:'API', 3:'DATA', 4:'RBAC', 5:'LOC', 6:'ABAC', 7:'LBAC'};
+      data.forEach(p => {
+        html += `<tr><td>#${p.id}</td><td style="color:var(--text-bright);font-weight:600">${p.name}</td><td><span class="tag">${types[p.strategy_type]}</span></td><td style="color:${p.effect? 'var(--success)':'var(--error)'}">${p.effect?'ALLOW':'DENY'}</td><td><button class="btn btn-outline btn-sm" onclick="showEditPolicy(${p.id})">配置</button> <button class="btn btn-danger btn-sm" onclick="deleteItem('policies', ${p.id})">删除</button></td></tr>`;
       });
       container.innerHTML = html + '</tbody></table>';
     });
   } else if(currentTab === 'metrics') {
     fetch('/metrics').then(r => r.text()).then(m => {
-      container.innerHTML = `<pre style="padding:32px;background:var(--bg-dark);color:#79dac8;font-family:monospace;font-size:13px;line-height:1.5">${m}</pre>`;
+      container.innerHTML = `<pre style="padding:32px;background:var(--bg-dark);color:#79dac8;font-family:monospace;font-size:13px">${m}</pre>`;
+      const match = m.match(/sso_perm_evals_total (\d+)/);
+      if(match) document.getElementById('totalEvals').textContent = match[1];
     });
   }
 }
 
-function logout() { localStorage.removeItem(TOKEN_KEY); window.location.href = '/login'; }
-function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
-function showModal(title, sub) { 
-  document.getElementById('modalTitle').textContent = title;
-  document.getElementById('modalSub').textContent = sub;
-  document.getElementById('modalOverlay').classList.add('active'); 
+async function deleteItem(type, id) {
+  if(!confirm('确定删除吗？')) return;
+  try {
+    await api(`/api/v1/${type}/${id}`, 'DELETE');
+    toast('删除成功'); loadData();
+  } catch(e) {}
 }
 
 function handleAdd() {
-  showModal('新增' + document.getElementById('pageTitle').textContent, '请填写基础信息以创建新资源');
-  const content = document.getElementById('modalContent');
-  if(currentTab === 'users') {
-    content.innerHTML = `
-      <div class="form-group"><label>用户名</label><input id="new_user" placeholder="必填"></div>
-      <div class="form-group"><label>密码</label><input type="password" id="new_pass" placeholder="必填"></div>
-      <div class="form-group"><label>手机号</label><input id="new_phone" placeholder="可选"></div>
+  if(currentTab === 'users') showEditUser(null);
+  else if(currentTab === 'policies') showEditPolicy(null);
+  else if(currentTab === 'roles' || currentTab === 'groups') {
+    showModal('新增' + currentTab, '输入基础信息以创建新资源');
+    document.getElementById('modalContent').innerHTML = `
+      <div class="form-group"><label>名称</label><input id="f_name"></div>
+      <div class="form-group"><label>描述</label><input id="f_desc"></div>
     `;
-  }
-}
-
-async function confirmAdd() {
-  if(currentTab === 'users') {
-    const user = {
-      username: document.getElementById('new_user').value,
-      password: document.getElementById('new_pass').value,
-      phone: document.getElementById('new_phone').value
+    document.getElementById('confirmBtn').onclick = async () => {
+      const name = document.getElementById('f_name').value;
+      if(!name) return toast('名称必填', 'error');
+      await api(`/api/v1/${currentTab}`, 'POST', { name, description:document.getElementById('f_desc').value });
+      toast('创建成功'); closeModal(); loadData();
     };
-    await api('/api/v1/users', 'POST', user);
-    closeModal();
-    loadData();
   }
 }
 
-// Initial
-const token = localStorage.getItem(TOKEN_KEY) || (window.location.hash.length > 1 ? decodeURIComponent(window.location.hash.substring(1)) : null);
-if(token) {
-  localStorage.setItem(TOKEN_KEY, token);
-  window.location.hash = '';
-  api('/api/v1/auth/me').then(d => {
-    if(d && d.username) {
-      document.getElementById('adminName').textContent = d.display_name || d.username;
-      document.getElementById('avatar').textContent = (d.display_name || d.username)[0].toUpperCase();
+function showEditUser(id) {
+  const u = id ? allData.users.find(x => x.id === id) : {username:'', email:'', display_name:'', phone:''};
+  showModal(id ? '编辑用户' : '新增用户', '管理 SSO 账号');
+  document.getElementById('modalContent').innerHTML = `
+    <div class="form-group"><label>用户名</label><input id="f_user" value="${u.username}" ${id?'readonly':''}></div>
+    ${!id ? '<div class="form-group"><label>初始密码</label><input type="password" id="f_pass"></div>' : ''}
+    <div class="form-group"><label>显示名称</label><input id="f_display" value="${u.display_name||''}"></div>
+    <div class="form-group"><label>邮箱地址</label><input id="f_email" value="${u.email||''}"></div>
+    <div class="form-group"><label>手机号</label><input id="f_phone" value="${u.phone||''}"></div>
+  `;
+  document.getElementById('confirmBtn').onclick = async () => {
+    const payload = {
+      username: document.getElementById('f_user').value,
+      email: document.getElementById('f_email').value,
+      display_name: document.getElementById('f_display').value,
+      phone: document.getElementById('f_phone').value,
+      status: 1
+    };
+    if(!id) {
+      if(!payload.username || !document.getElementById('f_pass').value) return toast('请填全信息', 'error');
+      payload.password = document.getElementById('f_pass').value;
     }
-  }).catch(() => { /* handled by api() */ });
-  loadData();
-} else {
-  window.location.href = '/login';
+    await api(id ? `/api/v1/users/${id}` : '/api/v1/users', id ? 'PUT' : 'POST', payload);
+    toast('保存成功'); closeModal(); loadData();
+  };
 }
+
+function showEditPolicy(id) {
+  const p = id ? allData.policies.find(x => x.id === id) : {name:'', strategy_type:1, effect:1, priority:50, rules:'{}'};
+  showModal(id ? '配置策略' : '新增策略', '定义访问控制规则');
+  document.getElementById('modalContent').innerHTML = `
+    <div class="form-group"><label>策略名称</label><input id="p_name" value="${p.name}"></div>
+    <div style="display:flex;gap:10px">
+      <div class="form-group" style="flex:1"><label>策略引擎类型</label>
+        <select id="p_type" onchange="renderRuleBuilder(parseInt(this.value))">
+          <option value="1" ${p.strategy_type==1?'selected':''}>功能权限 (FUNC)</option>
+          <option value="2" ${p.strategy_type==2?'selected':''}>API 权限 (API)</option>
+          <option value="4" ${p.strategy_type==4?'selected':''}>角色权限 (RBAC)</option>
+          <option value="3" ${p.strategy_type==3?'selected':''}>数据权限 (DATA)</option>
+          <option value="6" ${p.strategy_type==6?'selected':''}>属性权限 (ABAC)</option>
+        </select>
+      </div>
+      <div class="form-group" style="width:120px"><label>效果</label>
+        <select id="p_effect"><option value="1" ${p.effect?'selected':''}>ALLOW</option><option value="0" ${!p.effect?'selected':''}>DENY</option></select>
+      </div>
+    </div>
+    <div id="ruleBuilder" class="rule-builder"></div>
+  `;
+  
+  try {
+    const r = JSON.parse(p.rules);
+    if(p.strategy_type==1) policyRules = (r.functions||[]).map(x=>({k:x.code, v:x.effect||'allow'}));
+    else if(p.strategy_type==2) policyRules = (r.endpoints||[]).map(x=>({k:x.path, v:x.method||'GET'}));
+    else if(p.strategy_type==4) policyRules = (r.roles||[]).map(x=>({k:x.name, v:x.effect||'allow'}));
+    else if(p.strategy_type==6) policyRules = (r.conditions||[]).map(x=>({k:x.attr, v:x.value, op:x.op, src:x.source}));
+    else policyRules = [];
+  } catch(e) { policyRules = []; }
+  
+  renderRuleBuilder(p.strategy_type);
+
+  document.getElementById('confirmBtn').onclick = async () => {
+    const type = parseInt(document.getElementById('p_type').value);
+    let rules = {};
+    if(type==1) rules = {functions: policyRules.map(x=>({code:x.k, effect:x.v}))};
+    else if(type==2) rules = {endpoints: policyRules.map(x=>({path:x.k, method:x.v}))};
+    else if(type==4) rules = {roles: policyRules.map(x=>({name:x.k, effect:x.v}))};
+    else if(type==6) rules = {conditions: policyRules.map(x=>({source:x.src, attr:x.k, op:x.op, value:x.v}))};
+    
+    const payload = { name:document.getElementById('p_name').value, strategy_type:type, effect:parseInt(document.getElementById('p_effect').value), priority:50, rules:JSON.stringify(rules), status:1 };
+    await api(id ? `/api/v1/policies/${id}` : '/api/v1/policies', id ? 'PUT' : 'POST', payload);
+    toast('保存成功'); closeModal(); loadData();
+  };
+}
+
+function renderRuleBuilder(type) {
+  const container = document.getElementById('ruleBuilder');
+  container.innerHTML = '<div id="rulesList"></div><button class="btn btn-outline btn-sm" onclick="addRuleItem('+type+')">+ 添加规则项</button>';
+  refreshRulesList(type);
+}
+
+function addRuleItem(t) {
+  if(t==6) policyRules.push({k:'', v:'', op:'eq', src:'subject'});
+  else policyRules.push({k:'', v:t==2?'GET':'allow'});
+  refreshRulesList(t);
+}
+
+function refreshRulesList(type) {
+  const container = document.getElementById('rulesList');
+  container.innerHTML = policyRules.map((r, i) => {
+    if(type == 6) { // ABAC
+      return `<div class="rule-item">
+        <select style="flex:1" onchange="policyRules[${i}].src=this.value"><option value="subject" ${r.src=='subject'?'selected':''}>主体</option><option value="resource" ${r.src=='resource'?'selected':''}>资源</option></select>
+        <input style="flex:1" placeholder="属性" value="${r.k}" oninput="policyRules[${i}].k=this.value">
+        <select style="flex:0.8" onchange="policyRules[${i}].op=this.value"><option value="eq" ${r.op=='eq'?'selected':''}>=</option><option value="gt" ${r.op=='gt'?'selected':''}>></option></select>
+        <input style="flex:1" placeholder="值" value="${r.v}" oninput="policyRules[${i}].v=this.value">
+        <button class="btn btn-danger btn-sm" onclick="policyRules.splice(${i},1);refreshRulesList(${type})">×</button>
+      </div>`;
+    }
+    return `<div class="rule-item">
+      <input style="flex:2" placeholder="${type==2?'API 路径':'标识'}" value="${r.k}" oninput="policyRules[${i}].k=this.value">
+      <input style="flex:1" placeholder="${type==2?'HTTP 方法':'效果'}" value="${r.v}" oninput="policyRules[${i}].v=this.value">
+      <button class="btn btn-danger btn-sm" onclick="policyRules.splice(${i},1);refreshRulesList(${type})">×</button>
+    </div>`;
+  }).join('');
+}
+
+function logout() { localStorage.removeItem(TOKEN_KEY); window.location.href = '/login'; }
+function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
+function showModal(title, sub) { document.getElementById('modalTitle').textContent=title; document.getElementById('modalSub').textContent=sub; document.getElementById('modalOverlay').classList.add('active'); }
+
+// Init
+const token = localStorage.getItem(TOKEN_KEY);
+if(token) {
+  api('/api/v1/auth/me').then(d => {
+    document.getElementById('adminName').textContent = d.display_name || d.username;
+    document.getElementById('avatar').textContent = (d.display_name || d.username)[0].toUpperCase();
+    loadData();
+  }).catch(() => {});
+} else { window.location.href = '/login'; }
 </script>
 </body>
 </html>
