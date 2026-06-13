@@ -64,6 +64,21 @@ permission_strategy_t *perm_engine_get_strategy(permission_engine_t *engine,
                                                 perm_strategy_type_t type);
 
 /* -----------------------------------------------------------------------
+ * Cache management
+ * ----------------------------------------------------------------------- */
+
+/* Clear the decision cache for a specific user. Call this when a user's roles
+ * or groups change to ensure immediate consistency. */
+void        perm_engine_cache_invalidate_user(permission_engine_t *engine, sso_id_t user_id);
+
+/* Clear the compiled rule cache for a specific policy. Call this when
+ * a policy's rules JSON is updated. */
+void        perm_engine_cache_invalidate_policy(permission_engine_t *engine, sso_id_t policy_id);
+
+/* Clear all caches (compiled rules and results). */
+void        perm_engine_cache_invalidate_all(permission_engine_t *engine);
+
+/* -----------------------------------------------------------------------
  * Evaluation
  * ----------------------------------------------------------------------- */
 

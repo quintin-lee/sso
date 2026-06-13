@@ -17,6 +17,7 @@
 #include "role.h"
 #include "group.h"
 #include "storage.h"
+#include "permission.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -88,14 +89,22 @@ sso_error_t policy_update(policy_manager_t *mgr, const policy_t *policy) {
     if (!sb || !sb->policy_update) return SSO_ERR_NOT_IMPLEMENTED;
     policy_t updated = *policy;
     updated.updated_at = sso_timestamp_now();
-    return sb->policy_update(sb, &updated);
+    sso_error_t err = sb->policy_update(sb, &updated);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_policy((permission_engine_t *)mgr->ctx->perm_engine, policy->id);
+    }
+    return err;
 }
 
 sso_error_t policy_delete(policy_manager_t *mgr, sso_id_t id) {
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->policy_delete) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->policy_delete(sb, id);
+    sso_error_t err = sb->policy_delete(sb, id);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_policy((permission_engine_t *)mgr->ctx->perm_engine, id);
+    }
+    return err;
 }
 
 sso_error_t policy_list(policy_manager_t *mgr, sso_id_t *ids, size_t *count, size_t max) {
@@ -113,7 +122,16 @@ sso_error_t policy_assign_to(policy_manager_t *mgr, sso_id_t policy_id,
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->assign_policy) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->assign_policy(sb, policy_id, target_type, target_id);
+    sso_error_t err = sb->assign_policy(sb, policy_id, target_type, target_id);
+    if (err == SSO_OK) {
+        if (target_type == POLICY_TARGET_USER) {
+            perm_engine_cache_invalidate_user((permission_engine_t *)mgr->ctx->perm_engine, target_id);
+        } else {
+            /* Roles/Groups affect multiple users, clear all results */
+            perm_engine_cache_invalidate_all((permission_engine_t *)mgr->ctx->perm_engine);
+        }
+    }
+    return err;
 }
 
 sso_error_t policy_unassign_from(policy_manager_t *mgr, sso_id_t policy_id,
@@ -121,7 +139,15 @@ sso_error_t policy_unassign_from(policy_manager_t *mgr, sso_id_t policy_id,
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->unassign_policy) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->unassign_policy(sb, policy_id, target_type, target_id);
+    sso_error_t err = sb->unassign_policy(sb, policy_id, target_type, target_id);
+    if (err == SSO_OK) {
+        if (target_type == POLICY_TARGET_USER) {
+            perm_engine_cache_invalidate_user((permission_engine_t *)mgr->ctx->perm_engine, target_id);
+        } else {
+            perm_engine_cache_invalidate_all((permission_engine_t *)mgr->ctx->perm_engine);
+        }
+    }
+    return err;
 }
 
 sso_error_t policy_get_targets(policy_manager_t *mgr, sso_id_t policy_id,

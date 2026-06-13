@@ -8,6 +8,7 @@
 #include "sso.h"
 #include "role.h"
 #include "storage.h"
+#include "permission.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -75,14 +76,22 @@ sso_error_t role_update(role_manager_t *mgr, const role_t *role) {
     if (!sb || !sb->role_update) return SSO_ERR_NOT_IMPLEMENTED;
     role_t updated = *role;
     updated.updated_at = sso_timestamp_now();
-    return sb->role_update(sb, &updated);
+    sso_error_t err = sb->role_update(sb, &updated);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_all((permission_engine_t *)mgr->ctx->perm_engine);
+    }
+    return err;
 }
 
 sso_error_t role_delete(role_manager_t *mgr, sso_id_t id) {
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->role_delete) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->role_delete(sb, id);
+    sso_error_t err = sb->role_delete(sb, id);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_all((permission_engine_t *)mgr->ctx->perm_engine);
+    }
+    return err;
 }
 
 sso_error_t role_list(role_manager_t *mgr, sso_id_t *ids, size_t *count, size_t max) {
@@ -141,28 +150,44 @@ sso_error_t role_assign_to_user(role_manager_t *mgr, sso_id_t role_id, sso_id_t 
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->assign_role_to_user) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->assign_role_to_user(sb, role_id, user_id);
+    sso_error_t err = sb->assign_role_to_user(sb, role_id, user_id);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_user((permission_engine_t *)mgr->ctx->perm_engine, user_id);
+    }
+    return err;
 }
 
 sso_error_t role_unassign_from_user(role_manager_t *mgr, sso_id_t role_id, sso_id_t user_id) {
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->unassign_role_from_user) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->unassign_role_from_user(sb, role_id, user_id);
+    sso_error_t err = sb->unassign_role_from_user(sb, role_id, user_id);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_user((permission_engine_t *)mgr->ctx->perm_engine, user_id);
+    }
+    return err;
 }
 
 sso_error_t role_assign_to_group(role_manager_t *mgr, sso_id_t role_id, sso_id_t group_id) {
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->assign_role_to_group) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->assign_role_to_group(sb, role_id, group_id);
+    sso_error_t err = sb->assign_role_to_group(sb, role_id, group_id);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_all((permission_engine_t *)mgr->ctx->perm_engine);
+    }
+    return err;
 }
 
 sso_error_t role_unassign_from_group(role_manager_t *mgr, sso_id_t role_id, sso_id_t group_id) {
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->unassign_role_from_group) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->unassign_role_from_group(sb, role_id, group_id);
+    sso_error_t err = sb->unassign_role_from_group(sb, role_id, group_id);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_all((permission_engine_t *)mgr->ctx->perm_engine);
+    }
+    return err;
 }
 
 sso_error_t role_get_users(role_manager_t *mgr, sso_id_t role_id,

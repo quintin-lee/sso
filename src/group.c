@@ -9,6 +9,7 @@
 #include "sso.h"
 #include "group.h"
 #include "storage.h"
+#include "permission.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -76,14 +77,22 @@ sso_error_t group_update(group_manager_t *mgr, const group_t *group) {
     if (!sb || !sb->group_update) return SSO_ERR_NOT_IMPLEMENTED;
     group_t updated = *group;
     updated.updated_at = sso_timestamp_now();
-    return sb->group_update(sb, &updated);
+    sso_error_t err = sb->group_update(sb, &updated);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_all((permission_engine_t *)mgr->ctx->perm_engine);
+    }
+    return err;
 }
 
 sso_error_t group_delete(group_manager_t *mgr, sso_id_t id) {
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->group_delete) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->group_delete(sb, id);
+    sso_error_t err = sb->group_delete(sb, id);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_all((permission_engine_t *)mgr->ctx->perm_engine);
+    }
+    return err;
 }
 
 sso_error_t group_list(group_manager_t *mgr, sso_id_t *ids, size_t *count, size_t max) {
@@ -141,14 +150,22 @@ sso_error_t group_add_user(group_manager_t *mgr, sso_id_t group_id, sso_id_t use
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->add_user_to_group) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->add_user_to_group(sb, group_id, user_id);
+    sso_error_t err = sb->add_user_to_group(sb, group_id, user_id);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_user((permission_engine_t *)mgr->ctx->perm_engine, user_id);
+    }
+    return err;
 }
 
 sso_error_t group_remove_user(group_manager_t *mgr, sso_id_t group_id, sso_id_t user_id) {
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->remove_user_from_group) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->remove_user_from_group(sb, group_id, user_id);
+    sso_error_t err = sb->remove_user_from_group(sb, group_id, user_id);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_user((permission_engine_t *)mgr->ctx->perm_engine, user_id);
+    }
+    return err;
 }
 
 sso_error_t group_get_members(group_manager_t *mgr, sso_id_t group_id,

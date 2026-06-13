@@ -10,6 +10,7 @@
 #include "sso.h"
 #include "user.h"
 #include "storage.h"
+#include "permission.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -109,14 +110,22 @@ sso_error_t user_update(user_manager_t *mgr, const user_t *user) {
     /* Update timestamp */
     user_t updated = *user;
     updated.updated_at = sso_timestamp_now();
-    return sb->user_update(sb, &updated);
+    sso_error_t err = sb->user_update(sb, &updated);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_user((permission_engine_t *)mgr->ctx->perm_engine, user->id);
+    }
+    return err;
 }
 
 sso_error_t user_delete(user_manager_t *mgr, sso_id_t id) {
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->user_delete) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->user_delete(sb, id);
+    sso_error_t err = sb->user_delete(sb, id);
+    if (err == SSO_OK) {
+        perm_engine_cache_invalidate_user((permission_engine_t *)mgr->ctx->perm_engine, id);
+    }
+    return err;
 }
 
 sso_error_t user_list(user_manager_t *mgr, sso_id_t *ids, size_t *count, size_t max) {

@@ -40,12 +40,21 @@ extern permission_strategy_t lbac_perm_strategy;
 #define MAX_STRATEGIES 16
 #define MAX_POLICY_CACHE 256
 #define RESULT_CACHE_SIZE 1024
+#define POLICY_RES_CACHE_SIZE 128
 
 typedef struct {
     sso_id_t policy_id;
     void    *compiled;
     perm_strategy_type_t strategy_type;
 } policy_cache_entry_t;
+
+typedef struct {
+    sso_id_t user_id;
+    policy_t policies[64];
+    size_t   count;
+    uint64_t timestamp;
+    bool     valid;
+} policy_res_cache_entry_t;
 
 typedef struct {
     sso_id_t user_id;
@@ -66,6 +75,9 @@ struct permission_engine {
     /* Policy compilation cache */
     policy_cache_entry_t    cache[MAX_POLICY_CACHE];
     size_t                  cache_count;
+
+    /* Policy resolution cache (L1) */
+    policy_res_cache_entry_t res_cache[POLICY_RES_CACHE_SIZE];
 
     /* Result cache (L2) */
     result_cache_entry_t    result_cache[RESULT_CACHE_SIZE];
@@ -170,6 +182,80 @@ static void perm_engine_cache_rule(permission_engine_t *engine, sso_id_t policy_
     engine->cache[engine->cache_count].strategy_type = type;
     engine->cache[engine->cache_count].compiled = compiled;
     engine->cache_count++;
+}
+
+void perm_engine_cache_invalidate_user(permission_engine_t *engine, sso_id_t user_id) {
+    if (!engine) return;
+    pthread_rwlock_wrlock(&engine->lock);
+    
+    /* Clear Result Cache (L2) */
+    for (size_t i = 0; i < RESULT_CACHE_SIZE; i++) {
+        if (engine->result_cache[i].valid && engine->result_cache[i].user_id == user_id) {
+            engine->result_cache[i].valid = false;
+        }
+    }
+
+    /* Clear Resolution Cache (L1) */
+    for (size_t i = 0; i < POLICY_RES_CACHE_SIZE; i++) {
+        if (engine->res_cache[i].valid && engine->res_cache[i].user_id == user_id) {
+            engine->res_cache[i].valid = false;
+        }
+    }
+
+    pthread_rwlock_unlock(&engine->lock);
+}
+
+void perm_engine_cache_invalidate_policy(permission_engine_t *engine, sso_id_t policy_id) {
+    if (!engine) return;
+    pthread_rwlock_wrlock(&engine->lock);
+    
+    /* 1. Invalidate compiled rule */
+    for (size_t i = 0; i < engine->cache_count; i++) {
+        if (engine->cache[i].policy_id == policy_id) {
+            permission_strategy_t *strat = perm_engine_get_strategy(engine, engine->cache[i].strategy_type);
+            if (strat && strat->free_compiled_rules) {
+                strat->free_compiled_rules(strat, engine->cache[i].compiled);
+            }
+            /* Shift others down */
+            for (size_t j = i; j < engine->cache_count - 1; j++) {
+                engine->cache[j] = engine->cache[j + 1];
+            }
+            engine->cache_count--;
+            break; 
+        }
+    }
+
+    /* 2. Clear all result and resolution caches as this policy might affect anyone */
+    for (size_t i = 0; i < RESULT_CACHE_SIZE; i++) {
+        engine->result_cache[i].valid = false;
+    }
+    for (size_t i = 0; i < POLICY_RES_CACHE_SIZE; i++) {
+        engine->res_cache[i].valid = false;
+    }
+
+    pthread_rwlock_unlock(&engine->lock);
+}
+
+void perm_engine_cache_invalidate_all(permission_engine_t *engine) {
+    if (!engine) return;
+    pthread_rwlock_wrlock(&engine->lock);
+
+    for (size_t i = 0; i < engine->cache_count; i++) {
+        permission_strategy_t *strat = perm_engine_get_strategy(engine, engine->cache[i].strategy_type);
+        if (strat && strat->free_compiled_rules) {
+            strat->free_compiled_rules(strat, engine->cache[i].compiled);
+        }
+    }
+    engine->cache_count = 0;
+
+    for (size_t i = 0; i < RESULT_CACHE_SIZE; i++) {
+        engine->result_cache[i].valid = false;
+    }
+    for (size_t i = 0; i < POLICY_RES_CACHE_SIZE; i++) {
+        engine->res_cache[i].valid = false;
+    }
+
+    pthread_rwlock_unlock(&engine->lock);
 }
 
 /* ========================================================================
@@ -314,6 +400,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
 
     uint32_t phash = hash_params(ctx);
     size_t cache_idx = phash % RESULT_CACHE_SIZE;
+    size_t l1_idx = ctx->user_id % POLICY_RES_CACHE_SIZE;
     uint64_t now = get_time_ms();
 
     pthread_rwlock_rdlock(&engine->lock);
@@ -344,20 +431,36 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
     if (decision_trace) *decision_trace = NULL;
 
     /* 1. Resolve all policies applicable to this user */
-    policy_manager_t *pmgr = (policy_manager_t *)engine->ctx->policy_mgr;
-    if (!pmgr) {
-        pthread_rwlock_unlock(&engine->lock);
-        return SSO_ERR_GENERAL;
-    }
-
-    policy_t policies[64];
+    policy_t policies_buf[64];
+    policy_t *policies = policies_buf;
     size_t policy_count = 0;
     size_t max_policies = 64;
 
-    err = policy_resolve_for_user(pmgr, ctx->user_id, policies, &policy_count, max_policies);
-    if (err != SSO_OK && err != SSO_ERR_NOT_FOUND) {
-        pthread_rwlock_unlock(&engine->lock);
-        return err;
+    /* Check Resolution Cache (L1) */
+    if (engine->res_cache[l1_idx].valid &&
+        engine->res_cache[l1_idx].user_id == ctx->user_id &&
+        (now - engine->res_cache[l1_idx].timestamp) < 60000) { /* 60s TTL */
+        policies = engine->res_cache[l1_idx].policies;
+        policy_count = engine->res_cache[l1_idx].count;
+    } else {
+        policy_manager_t *pmgr = (policy_manager_t *)engine->ctx->policy_mgr;
+        if (!pmgr) {
+            pthread_rwlock_unlock(&engine->lock);
+            return SSO_ERR_GENERAL;
+        }
+
+        err = policy_resolve_for_user(pmgr, ctx->user_id, policies_buf, &policy_count, max_policies);
+        if (err != SSO_OK && err != SSO_ERR_NOT_FOUND) {
+            pthread_rwlock_unlock(&engine->lock);
+            return err;
+        }
+
+        /* Update L1 Cache */
+        engine->res_cache[l1_idx].user_id = ctx->user_id;
+        memcpy(engine->res_cache[l1_idx].policies, policies_buf, sizeof(policy_t) * policy_count);
+        engine->res_cache[l1_idx].count = policy_count;
+        engine->res_cache[l1_idx].timestamp = now;
+        engine->res_cache[l1_idx].valid = true;
     }
 
     if (policy_count == 0) {
