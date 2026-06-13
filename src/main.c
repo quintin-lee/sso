@@ -37,6 +37,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
+
+static uint64_t get_time_ms() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
+}
 
 /* ========================================================================
  * Built-in login page — serves the embedded HTML login/register UI
@@ -183,21 +190,12 @@ static int run_demo(void) {
                         PERM_STRATEGY_DATA, POLICY_EFFECT_ALLOW,
                         80,
                         "{"
-                        "  \"rules\": ["
-                        "    {"
-                        "      \"resource\": \"order\","
-                        "      \"scope\": \"organization\","
-                        "      \"conditions\": ["
-                        "        {\"field\": \"status\", \"op\": \"in\", \"value\": [\"pending\", \"processing\"]}"
-                        "      ],"
-                        "      \"fields\": [\"id\", \"title\", \"status\", \"amount\"]"
-                        "    },"
-                        "    {"
-                        "      \"resource\": \"customer\","
-                        "      \"scope\": \"all\","
-                        "      \"fields\": [\"id\", \"name\", \"email\"]"
-                        "    }"
-                        "  ]"
+                        "  \"resource_type\": \"order\","
+                        "  \"conditions\": ["
+                        "    {\"field\": \"status\", \"op\": \"eq\", \"value\": \"pending\"}"
+                        "  ],"
+                        "  \"allowed_fields\": [\"id\", \"title\", \"status\"],"
+                        "  \"effect\": \"allow\""
                         "}",
                         &data_policy);
     printf("  policy id=%lu status=%s\n",
@@ -314,11 +312,12 @@ static int run_demo(void) {
     char **fields = NULL;
     size_t field_count = 0;
 
+    /* Test 1: Condition matches (status=pending) */
     bool data_allowed = false;
     perm_check_data(&ctx, alice_user.id, "order",
-                    "{\"id\":1,\"title\":\"Test\",\"status\":\"pending\",\"amount\":100}",
+                    "{\"id\":101,\"title\":\"MacBook Pro\",\"status\":\"pending\",\"amount\":1999}",
                     &data_allowed, &fields, &field_count);
-    printf("  alice  order access  → %s  fields=", data_allowed ? "ALLOW" : "DENY");
+    printf("  alice  order(pending) → %s  allowed_fields=", data_allowed ? "ALLOW" : "DENY");
     if (fields) {
         printf("[");
         for (size_t i = 0; i < field_count; i++) {
@@ -329,6 +328,23 @@ static int run_demo(void) {
         free(fields);
     }
     printf("\n");
+
+    /* Test 2: Condition fails (status=shipped) */
+    perm_check_data(&ctx, alice_user.id, "order",
+                    "{\"id\":102,\"title\":\"iPad\",\"status\":\"shipped\",\"amount\":799}",
+                    &data_allowed, &fields, &field_count);
+    printf("  alice  order(shipped) → %s\n", data_allowed ? "ALLOW" : "DENY");
+
+    /* ---- 16b. Cache Performance Stress Test ---- */
+    printf("\n[16b] Cache Performance Stress Test (1000 iterations)...\n");
+    uint64_t start_time = get_time_ms();
+    for (int i = 0; i < 1000; i++) {
+        perm_check_function(&ctx, admin_user.id, "user:create", &allowed);
+    }
+    uint64_t duration = get_time_ms() - start_time;
+    printf("  1000 functional checks: %lums (%.3fms per check)\n", 
+           (long)duration, (double)duration / 1000.0);
+    printf("  OK (Check stderr for telemetry)\n");
 
     /* ---- 17. RBAC permission check ---- */
     printf("\n[17] RBAC permission checks:\n");

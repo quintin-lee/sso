@@ -39,12 +39,21 @@ extern permission_strategy_t lbac_perm_strategy;
  * ======================================================================== */
 #define MAX_STRATEGIES 16
 #define MAX_POLICY_CACHE 256
+#define RESULT_CACHE_SIZE 1024
 
 typedef struct {
     sso_id_t policy_id;
     void    *compiled;
     perm_strategy_type_t strategy_type;
 } policy_cache_entry_t;
+
+typedef struct {
+    sso_id_t user_id;
+    uint32_t params_hash;
+    bool     allowed;
+    uint64_t timestamp;
+    bool     valid;
+} result_cache_entry_t;
 
 struct permission_engine {
     sso_context_t          *ctx;
@@ -57,7 +66,29 @@ struct permission_engine {
     /* Policy compilation cache */
     policy_cache_entry_t    cache[MAX_POLICY_CACHE];
     size_t                  cache_count;
+
+    /* Result cache (L2) */
+    result_cache_entry_t    result_cache[RESULT_CACHE_SIZE];
 };
+
+/* -----------------------------------------------------------------------
+ * Hashing for result cache
+ * ----------------------------------------------------------------------- */
+static uint32_t hash_params(eval_context_t *ctx) {
+    uint32_t hash = 5381;
+    unsigned char *p = (unsigned char *)&ctx->params;
+    size_t len = sizeof(ctx->params);
+    for (size_t i = 0; i < len; i++) {
+        hash = ((hash << 5) + hash) + p[i];
+    }
+    return hash;
+}
+
+static uint64_t get_time_ms() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
+}
 
 /* ========================================================================
  * Lifecycle
@@ -281,7 +312,29 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
     if (!engine || !ctx || !result) return SSO_ERR_INVALID_PARAM;
     if (!ctx->user && ctx->user_id == 0) return SSO_ERR_INVALID_PARAM;
 
+    uint32_t phash = hash_params(ctx);
+    size_t cache_idx = phash % RESULT_CACHE_SIZE;
+    uint64_t now = get_time_ms();
+
     pthread_rwlock_rdlock(&engine->lock);
+
+    /* 0. Check Result Cache (L2) */
+    if (engine->result_cache[cache_idx].valid &&
+        engine->result_cache[cache_idx].user_id == ctx->user_id &&
+        engine->result_cache[cache_idx].params_hash == phash &&
+        (now - engine->result_cache[cache_idx].timestamp) < 30000) { /* 30s TTL */
+        *result = engine->result_cache[cache_idx].allowed;
+        if (decision_trace) *decision_trace = strdup("Decision from Result Cache (L2)");
+        pthread_rwlock_unlock(&engine->lock);
+
+        /* Telemetry: Cache Hit */
+        uint64_t duration = get_time_ms() - now;
+        if (duration > 5) {
+             fprintf(stderr, "[perm] CACHE HIT (SLOW): user=%ld duration=%lums\n", 
+                     (long)ctx->user_id, (long)duration);
+        }
+        return SSO_OK;
+    }
 
     *result = false; /* default: deny */
     sso_error_t err;
@@ -341,6 +394,14 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
                 strncat(full_trace, "Result: DENIED (Override by policy)\n", sizeof(full_trace) - strlen(full_trace) - 1);
                 *decision_trace = strdup(full_trace);
             }
+
+            /* Update cache for DENY */
+            engine->result_cache[cache_idx].user_id = ctx->user_id;
+            engine->result_cache[cache_idx].params_hash = phash;
+            engine->result_cache[cache_idx].allowed = false;
+            engine->result_cache[cache_idx].timestamp = now;
+            engine->result_cache[cache_idx].valid = true;
+
             pthread_rwlock_unlock(&engine->lock);
             return SSO_OK;
         }
@@ -353,7 +414,23 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         strncat(full_trace, any_allowed ? "Result: ALLOWED\n" : "Result: DENIED (No matching allow rule)\n", sizeof(full_trace) - strlen(full_trace) - 1);
         *decision_trace = strdup(full_trace);
     }
+
+    /* Update cache for final result */
+    engine->result_cache[cache_idx].user_id = ctx->user_id;
+    engine->result_cache[cache_idx].params_hash = phash;
+    engine->result_cache[cache_idx].allowed = any_allowed;
+    engine->result_cache[cache_idx].timestamp = now;
+    engine->result_cache[cache_idx].valid = true;
+
     pthread_rwlock_unlock(&engine->lock);
+
+    /* Telemetry: Log evaluation time */
+    uint64_t duration = get_time_ms() - now;
+    if (duration > 10) { /* Log only slow evaluations (>10ms) */
+        fprintf(stderr, "[perm] SLOW EVAL: user=%ld duration=%lums cache=MISS\n", 
+                (long)ctx->user_id, (long)duration);
+    }
+
     return SSO_OK;
 }
 
