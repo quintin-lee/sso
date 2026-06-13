@@ -29,9 +29,15 @@ typedef void        (*storage_close_fn)(storage_backend_t *self);
 typedef sso_error_t (*storage_user_create_fn)(storage_backend_t *self, user_t *user);
 typedef sso_error_t (*storage_user_get_by_id_fn)(storage_backend_t *self, sso_id_t id, user_t *user);
 typedef sso_error_t (*storage_user_get_by_name_fn)(storage_backend_t *self, const char *name, user_t *user);
+typedef sso_error_t (*storage_user_get_by_phone_fn)(storage_backend_t *self, const char *phone, user_t *user);
 typedef sso_error_t (*storage_user_update_fn)(storage_backend_t *self, const user_t *user);
 typedef sso_error_t (*storage_user_delete_fn)(storage_backend_t *self, sso_id_t id);
 typedef sso_error_t (*storage_user_list_fn)(storage_backend_t *self, sso_id_t *ids, size_t *count, size_t max);
+
+/* SMS */
+typedef sso_error_t (*storage_save_sms_code_fn)(storage_backend_t *self, const char *phone, const char *code, sso_timestamp_t expires_at);
+typedef sso_error_t (*storage_get_sms_code_fn)(storage_backend_t *self, const char *phone, char *code_out);
+typedef sso_error_t (*storage_delete_sms_code_fn)(storage_backend_t *self, const char *phone);
 
 /* Role CRUD */
 typedef sso_error_t (*storage_role_create_fn)(storage_backend_t *self, role_t *role);
@@ -108,9 +114,15 @@ struct storage_backend {
     storage_user_create_fn          user_create;
     storage_user_get_by_id_fn       user_get_by_id;
     storage_user_get_by_name_fn     user_get_by_name;
+    storage_user_get_by_phone_fn    user_get_by_phone;
     storage_user_update_fn          user_update;
     storage_user_delete_fn          user_delete;
     storage_user_list_fn            user_list;
+
+    /* SMS */
+    storage_save_sms_code_fn        save_sms_code;
+    storage_get_sms_code_fn         get_sms_code;
+    storage_delete_sms_code_fn      delete_sms_code;
 
     /* Role */
     storage_role_create_fn          role_create;

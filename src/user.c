@@ -88,6 +88,30 @@ sso_error_t user_create(user_manager_t *mgr, const char *username,
     return err;
 }
 
+sso_error_t user_create_by_phone(user_manager_t *mgr, const char *phone, user_t *out) {
+    if (!mgr || !phone) return SSO_ERR_INVALID_PARAM;
+
+    storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
+    if (!sb || !sb->user_create) return SSO_ERR_NOT_IMPLEMENTED;
+
+    user_t user;
+    memset(&user, 0, sizeof(user));
+
+    strncpy(user.phone, phone, SSO_MAX_PHONE - 1);
+    /* For SMS users, we don't have a password. Set username to phone for uniqueness if needed,
+     * or leave it blank based on DB schema support. Let's set it to phone. */
+    strncpy(user.username, phone, SSO_MAX_USERNAME - 1);
+    user.status = USER_STATUS_ACTIVE;
+    user.created_at = sso_timestamp_now();
+    user.updated_at = user.created_at;
+
+    sso_error_t err = sb->user_create(sb, &user);
+    if (err == SSO_OK && out) {
+        *out = user;
+    }
+    return err;
+}
+
 sso_error_t user_get_by_id(user_manager_t *mgr, sso_id_t id, user_t *out) {
     if (!mgr || !out) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
@@ -100,6 +124,13 @@ sso_error_t user_get_by_username(user_manager_t *mgr, const char *username, user
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->user_get_by_name) return SSO_ERR_NOT_IMPLEMENTED;
     return sb->user_get_by_name(sb, username, out);
+}
+
+sso_error_t user_get_by_phone(user_manager_t *mgr, const char *phone, user_t *out) {
+    if (!mgr || !phone || !out) return SSO_ERR_INVALID_PARAM;
+    storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
+    if (!sb || !sb->user_get_by_phone) return SSO_ERR_NOT_IMPLEMENTED;
+    return sb->user_get_by_phone(sb, phone, out);
 }
 
 sso_error_t user_update(user_manager_t *mgr, const user_t *user) {

@@ -50,14 +50,22 @@ typedef struct {
 static const char *SCHEMA_SQL =
     "CREATE TABLE IF NOT EXISTS users ("
     "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-    "  username TEXT UNIQUE NOT NULL,"
-    "  password_hash TEXT NOT NULL,"
+    "  username TEXT UNIQUE,"
+    "  phone TEXT UNIQUE,"
+    "  password_hash TEXT,"
     "  email TEXT DEFAULT '',"
     "  display_name TEXT DEFAULT '',"
     "  status INTEGER DEFAULT 1,"
     "  created_at INTEGER DEFAULT 0,"
     "  updated_at INTEGER DEFAULT 0,"
     "  attributes TEXT DEFAULT '{}'"
+    ");"
+
+    "CREATE TABLE IF NOT EXISTS sms_codes ("
+    "  phone TEXT PRIMARY KEY,"
+    "  code TEXT NOT NULL,"
+    "  expires_at INTEGER NOT NULL,"
+    "  attempts INTEGER DEFAULT 0"
     ");"
 
     "CREATE TABLE IF NOT EXISTS roles ("
@@ -119,30 +127,37 @@ static const char *SCHEMA_SQL =
  * Generic binding helpers
  * ======================================================================== */
 
-/* Bind a user_t to a prepared INSERT statement (indices 1-9). */
+/* Bind a user_t to a prepared INSERT statement (indices 1-10). */
 static void bind_user(sqlite3_stmt *stmt, const user_t *u) {
     sqlite3_bind_text(stmt, 1, u->username, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 2, u->password_hash, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 3, u->email, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 4, u->display_name, -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 5, u->status);
-    sqlite3_bind_int64(stmt, 6, u->created_at);
-    sqlite3_bind_int64(stmt, 7, u->updated_at);
-    sqlite3_bind_text(stmt, 8, u->attributes, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, u->phone, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, u->password_hash, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 4, u->email, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, u->display_name, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 6, u->status);
+    sqlite3_bind_int64(stmt, 7, u->created_at);
+    sqlite3_bind_int64(stmt, 8, u->updated_at);
+    sqlite3_bind_text(stmt, 9, u->attributes, -1, SQLITE_STATIC);
 }
 
-/* Read columns into a user_t (indices 0-8). */
+/* Read columns into a user_t (indices 0-9). */
 static void read_user(sqlite3_stmt *stmt, user_t *u) {
     memset(u, 0, sizeof(*u));
     u->id = (sso_id_t)sqlite3_column_int64(stmt, 0);
-    strncpy(u->username, (const char *)sqlite3_column_text(stmt, 1), SSO_MAX_USERNAME - 1);
-    strncpy(u->password_hash, (const char *)sqlite3_column_text(stmt, 2), SSO_MAX_PASSWORD_HASH - 1);
-    strncpy(u->email, (const char *)sqlite3_column_text(stmt, 3), SSO_MAX_EMAIL - 1);
-    strncpy(u->display_name, (const char *)sqlite3_column_text(stmt, 4), SSO_MAX_DISPLAY_NAME - 1);
-    u->status = (user_status_t)sqlite3_column_int(stmt, 5);
-    u->created_at = sqlite3_column_int64(stmt, 6);
-    u->updated_at = sqlite3_column_int64(stmt, 7);
-    const char *attrs = (const char *)sqlite3_column_text(stmt, 8);
+    const char *username = (const char *)sqlite3_column_text(stmt, 1);
+    if (username) strncpy(u->username, username, SSO_MAX_USERNAME - 1);
+    const char *phone = (const char *)sqlite3_column_text(stmt, 2);
+    if (phone) strncpy(u->phone, phone, SSO_MAX_PHONE - 1);
+    const char *phash = (const char *)sqlite3_column_text(stmt, 3);
+    if (phash) strncpy(u->password_hash, phash, SSO_MAX_PASSWORD_HASH - 1);
+    const char *email = (const char *)sqlite3_column_text(stmt, 4);
+    if (email) strncpy(u->email, email, SSO_MAX_EMAIL - 1);
+    const char *disp = (const char *)sqlite3_column_text(stmt, 5);
+    if (disp) strncpy(u->display_name, disp, SSO_MAX_DISPLAY_NAME - 1);
+    u->status = (user_status_t)sqlite3_column_int(stmt, 6);
+    u->created_at = sqlite3_column_int64(stmt, 7);
+    u->updated_at = sqlite3_column_int64(stmt, 8);
+    const char *attrs = (const char *)sqlite3_column_text(stmt, 9);
     if (attrs) strncpy(u->attributes, attrs, SSO_MAX_ATTRIBUTES - 1);
 }
 
@@ -269,9 +284,9 @@ static sso_error_t sqlite_user_create(storage_backend_t *self, user_t *user) {
     sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
     if (!priv || !priv->db) return SSO_ERR_STORAGE;
 
-    const char *sql = "INSERT INTO users (username, password_hash, email, display_name, "
+    const char *sql = "INSERT INTO users (username, phone, password_hash, email, display_name, "
                       "status, created_at, updated_at, attributes) "
-                      "VALUES (?1,?2,?3,?4,?5,?6,?7,?8)";
+                      "VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)";
     sqlite3_stmt *stmt = NULL;
     if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) {
         return SSO_ERR_STORAGE;
@@ -343,6 +358,26 @@ static sso_error_t sqlite_user_get_by_name(storage_backend_t *self, const char *
     return SSO_OK;
 }
 
+/* --- user_get_by_phone --- */
+static sso_error_t sqlite_user_get_by_phone(storage_backend_t *self, const char *phone, user_t *out) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db) return SSO_ERR_STORAGE;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(priv->db, "SELECT * FROM users WHERE phone=?1", -1, &stmt, NULL) != SQLITE_OK)
+        return SSO_ERR_STORAGE;
+    sqlite3_bind_text(stmt, 1, phone, -1, SQLITE_STATIC);
+
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        return SSO_ERR_NOT_FOUND;
+    }
+    read_user(stmt, out);
+    sqlite3_finalize(stmt);
+    return SSO_OK;
+}
+
 #define MAKE_GET_BY_NAME(name_type, table, reader) \
 static sso_error_t sqlite_##name_type##_get_by_name(storage_backend_t *self, const char *name, name_type##_t *out) { \
     sqlite_priv_t *priv = (sqlite_priv_t *)self->handle; \
@@ -373,18 +408,19 @@ static sso_error_t sqlite_user_update(storage_backend_t *self, const user_t *use
     if (!priv || !priv->db) return SSO_ERR_STORAGE;
 
     sqlite3_stmt *stmt = NULL;
-    const char *sql = "UPDATE users SET password_hash=?1, email=?2, display_name=?3, "
-                      "status=?4, updated_at=?5, attributes=?6 WHERE id=?7";
+    const char *sql = "UPDATE users SET phone=?1, password_hash=?2, email=?3, display_name=?4, "
+                      "status=?5, updated_at=?6, attributes=?7 WHERE id=?8";
     if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK)
         return SSO_ERR_STORAGE;
 
-    sqlite3_bind_text(stmt, 1, user->password_hash, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 2, user->email, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 3, user->display_name, -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 4, user->status);
-    sqlite3_bind_int64(stmt, 5, user->updated_at);
-    sqlite3_bind_text(stmt, 6, user->attributes, -1, SQLITE_STATIC);
-    sqlite3_bind_int64(stmt, 7, (sqlite3_int64)user->id);
+    sqlite3_bind_text(stmt, 1, user->phone, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, user->password_hash, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, user->email, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 4, user->display_name, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 5, user->status);
+    sqlite3_bind_int64(stmt, 6, user->updated_at);
+    sqlite3_bind_text(stmt, 7, user->attributes, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 8, (sqlite3_int64)user->id);
 
     int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
@@ -838,6 +874,80 @@ static sso_error_t sqlite_get_user_roles_with_ancestors(storage_backend_t *self,
 }
 
 /* ========================================================================
+ * SMS Storage
+ * ======================================================================== */
+
+static sso_error_t sqlite_save_sms_code(storage_backend_t *self, const char *phone, const char *code, sso_timestamp_t expires_at) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db) return SSO_ERR_STORAGE;
+
+    const char *sql = "INSERT INTO sms_codes (phone, code, expires_at, attempts) VALUES (?1, ?2, ?3, 0) "
+                      "ON CONFLICT(phone) DO UPDATE SET code=excluded.code, expires_at=excluded.expires_at, attempts=0";
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        return SSO_ERR_STORAGE;
+    }
+
+    sqlite3_bind_text(stmt, 1, phone, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, code, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 3, expires_at);
+
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+}
+
+static sso_error_t sqlite_get_sms_code(storage_backend_t *self, const char *phone, char *code_out) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db) return SSO_ERR_STORAGE;
+
+    const char *sql = "SELECT code, expires_at FROM sms_codes WHERE phone=?1";
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        return SSO_ERR_STORAGE;
+    }
+
+    sqlite3_bind_text(stmt, 1, phone, -1, SQLITE_STATIC);
+
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        return SSO_ERR_NOT_FOUND;
+    }
+
+    sso_timestamp_t expires_at = sqlite3_column_int64(stmt, 1);
+    if (sso_timestamp_now() > expires_at) {
+        sqlite3_finalize(stmt);
+        return SSO_ERR_TOKEN_EXPIRED; /* Reusing token expired error */
+    }
+
+    const char *code = (const char *)sqlite3_column_text(stmt, 0);
+    if (code) {
+        strncpy(code_out, code, 15);
+        code_out[15] = '\0';
+    } else {
+        code_out[0] = '\0';
+    }
+
+    sqlite3_finalize(stmt);
+    return SSO_OK;
+}
+
+static sso_error_t sqlite_delete_sms_code(storage_backend_t *self, const char *phone) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db) return SSO_ERR_STORAGE;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(priv->db, "DELETE FROM sms_codes WHERE phone=?1", -1, &stmt, NULL) != SQLITE_OK)
+        return SSO_ERR_STORAGE;
+
+    sqlite3_bind_text(stmt, 1, phone, -1, SQLITE_STATIC);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+}
+
+/* ========================================================================
  * Backend constructor
  * ======================================================================== */
 sso_error_t storage_sqlite_create(storage_backend_t **backend) {
@@ -853,6 +963,7 @@ sso_error_t storage_sqlite_create(storage_backend_t **backend) {
         return SSO_ERR_OUT_OF_MEMORY;
     }
 
+    (*backend)->handle = priv;
     strncpy((*backend)->name, "sqlite", sizeof((*backend)->name) - 1);
 
     /* Lifecycle */
@@ -863,9 +974,15 @@ sso_error_t storage_sqlite_create(storage_backend_t **backend) {
     (*backend)->user_create       = sqlite_user_create;
     (*backend)->user_get_by_id    = sqlite_user_get_by_id;
     (*backend)->user_get_by_name  = sqlite_user_get_by_name;
+    (*backend)->user_get_by_phone = sqlite_user_get_by_phone;
     (*backend)->user_update       = sqlite_user_update;
     (*backend)->user_delete       = sqlite_users_delete;
     (*backend)->user_list         = sqlite_users_list;
+
+    /* SMS */
+    (*backend)->save_sms_code     = sqlite_save_sms_code;
+    (*backend)->get_sms_code      = sqlite_get_sms_code;
+    (*backend)->delete_sms_code   = sqlite_delete_sms_code;
 
     /* Role */
     (*backend)->role_create       = sqlite_role_create;

@@ -20,6 +20,7 @@ extern "C" {
 struct user {
     sso_id_t          id;
     char              username[SSO_MAX_USERNAME];
+    char              phone[SSO_MAX_PHONE];
     char              password_hash[SSO_MAX_PASSWORD_HASH];
     char              email[SSO_MAX_EMAIL];
     char              display_name[SSO_MAX_DISPLAY_NAME];
@@ -49,9 +50,13 @@ sso_error_t user_create(user_manager_t *mgr, const char *username,
                         const char *password, const char *email,
                         const char *display_name, user_t *out);
 
-/* Lookup by ID or username. */
+/* Create a new user by phone (no password required). */
+sso_error_t user_create_by_phone(user_manager_t *mgr, const char *phone, user_t *out);
+
+/* Lookup by ID, username, or phone. */
 sso_error_t user_get_by_id(user_manager_t *mgr, sso_id_t id, user_t *out);
 sso_error_t user_get_by_username(user_manager_t *mgr, const char *username, user_t *out);
+sso_error_t user_get_by_phone(user_manager_t *mgr, const char *phone, user_t *out);
 
 /* Update user fields (id must be set; pass NULL/0 for fields not being updated). */
 sso_error_t user_update(user_manager_t *mgr, const user_t *user);

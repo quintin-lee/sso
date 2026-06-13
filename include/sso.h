@@ -44,6 +44,7 @@ extern "C" {
  * Constants
  * ======================================================================== */
 #define SSO_MAX_USERNAME      64
+#define SSO_MAX_PHONE         32
 #define SSO_MAX_EMAIL         128
 #define SSO_MAX_DISPLAY_NAME  128
 #define SSO_MAX_PASSWORD_HASH 256
@@ -83,6 +84,7 @@ typedef enum {
     SSO_ERR_RULE_INVALID     = -12,
     SSO_ERR_OUT_OF_MEMORY    = -13,
     SSO_ERR_NOT_IMPLEMENTED  = -14,
+    SSO_ERR_RATE_LIMIT       = -15,
 } sso_error_t;
 
 /* Return a human-readable string for an error code. */

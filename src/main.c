@@ -1069,6 +1069,134 @@ static sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
     return SSO_OK;
 }
 
+/* POST /api/v1/auth/send_sms */
+static sso_error_t handle_send_sms(sso_context_t *ctx, const http_request_t *req,
+                                   http_response_t *resp) {
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *phone = json_str_value(req->body, "phone");
+    if (!phone) {
+        sso_response_error(resp, 400, "phone required");
+        return SSO_OK;
+    }
+
+    /* 1. 安全防刷检查：这里应包含 IP 限流等。本 demo 略。 */
+
+    /* 2. 生成 6 位随机验证码 */
+    char code[8];
+    snprintf(code, sizeof(code), "%06d", rand() % 1000000);
+
+    /* 3. 存储到数据库 sms_codes 表，设置 5 分钟 (300秒) 过期 */
+    storage_backend_t *sb = (storage_backend_t *)ctx->storage_backend;
+    sso_error_t err = SSO_ERR_NOT_IMPLEMENTED;
+    if (sb && sb->save_sms_code) {
+        err = sb->save_sms_code(sb, phone, code, sso_timestamp_now() + 300000);
+    }
+
+    if (err != SSO_OK) {
+        free(phone);
+        sso_response_error(resp, 500, "Failed to generate SMS code");
+        return SSO_OK;
+    }
+
+    /* 4. 模拟调用外部短信服务网关 */
+    printf("[SMS] Code %s sent to %s\n", code, phone);
+    
+    free(phone);
+    sso_response_ok(resp, "{\"status\":\"sent\"}");
+    return SSO_OK;
+}
+
+/* POST /api/v1/auth/login_by_sms */
+static sso_error_t handle_login_by_sms(sso_context_t *ctx, const http_request_t *req,
+                                       http_response_t *resp) {
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *phone = json_str_value(req->body, "phone");
+    char *code  = json_str_value(req->body, "code");
+
+    if (!phone || !code) {
+        if (phone) free(phone);
+        if (code) free(code);
+        sso_response_error(resp, 400, "phone and code required");
+        return SSO_OK;
+    }
+
+    storage_backend_t *sb = (storage_backend_t *)ctx->storage_backend;
+    if (!sb || !sb->get_sms_code || !sb->delete_sms_code) {
+        free(phone); free(code);
+        sso_response_error(resp, 500, "SMS feature not enabled in storage backend");
+        return SSO_OK;
+    }
+
+    /* 1. 验证码校验 */
+    char expected_code[16];
+    sso_error_t err = sb->get_sms_code(sb, phone, expected_code);
+    if (err != SSO_OK || strcmp(code, expected_code) != 0) {
+        free(phone); free(code);
+        sso_response_error(resp, 401, "Invalid or expired verification code");
+        return SSO_OK;
+    }
+
+    /* 验证成功即销毁，防重放 */
+    sb->delete_sms_code(sb, phone);
+    free(code);
+
+    /* 2. 获取用户 (如果不存在则自动注册) */
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    user_t user;
+    err = user_get_by_phone(umgr, phone, &user);
+    if (err == SSO_ERR_NOT_FOUND) {
+        /* 自动注册：对于手机验证码登录，无需密码 */
+        err = user_create_by_phone(umgr, phone, &user);
+    }
+    
+    if (err != SSO_OK || user.status != USER_STATUS_ACTIVE) {
+        free(phone);
+        sso_response_error(resp, 403, "Account disabled or error");
+        return SSO_OK;
+    }
+    free(phone);
+
+    /* 3. 签发 JWT Token (复用现有的 token_issue) */
+    sso_id_t roles[16], groups[16];
+    size_t rc = 0, gc = 0;
+    user_get_roles(umgr, user.id, roles, &rc, 16);
+    user_get_groups(umgr, user.id, groups, &gc, 16);
+
+    token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
+    token_t token;
+    err = token_issue(tmgr, &user, roles, rc, groups, gc, 3600000, &token);
+    
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to issue token");
+        return SSO_OK;
+    }
+
+    /* 4. 返回标准 Token */
+    char buf[2048];
+    snprintf(buf, sizeof(buf),
+        "{"
+        "\"token\":\"%s\","
+        "\"user_id\":%llu,"
+        "\"username\":\"%s\","
+        "\"phone\":\"%s\""
+        "}",
+        token.token_str,
+        (unsigned long long)user.id,
+        user.username,
+        user.phone);
+    sso_response_ok(resp, buf);
+
+    return SSO_OK;
+}
+
 /* POST /api/v1/auth/register */
 static sso_error_t handle_register(sso_context_t *ctx, const http_request_t *req,
                                     http_response_t *resp) {
@@ -2723,6 +2851,8 @@ static int run_server(void) {
         /* Public — API */
         {"/api/v1/health",          HTTP_GET,  handle_health,          false},
         {"/api/v1/auth/login",      HTTP_POST, handle_login,           false},
+        {"/api/v1/auth/send_sms",   HTTP_POST, handle_send_sms,        false},
+        {"/api/v1/auth/login_by_sms",HTTP_POST, handle_login_by_sms,   false},
         {"/api/v1/auth/register",   HTTP_POST, handle_register,        false},
 
         /* Auth required */

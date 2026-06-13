@@ -43,9 +43,10 @@ const char *sso_strerror(sso_error_t err) {
         case SSO_ERR_STRATEGY_CONFLICT: return "Strategy already registered";
         case SSO_ERR_STRATEGY_NOT_FOUND:return "Strategy not found";
         case SSO_ERR_RULE_INVALID:      return "Invalid policy rule";
-        case SSO_ERR_OUT_OF_MEMORY:     return "Out of memory";
-        case SSO_ERR_NOT_IMPLEMENTED:   return "Not implemented";
-        default:                        return "Unknown error";
+        case SSO_ERR_OUT_OF_MEMORY:    return "Out of memory";
+        case SSO_ERR_NOT_IMPLEMENTED:  return "Not implemented";
+        case SSO_ERR_RATE_LIMIT:       return "Rate limit exceeded";
+        default:                       return "Unknown error";
     }
 }
 
