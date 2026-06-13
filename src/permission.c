@@ -391,6 +391,32 @@ sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
     return SSO_OK;
 }
 
+static void audit_log_decision(eval_context_t *ctx, bool allowed, const char *trace, uint64_t duration_ms, bool cache_hit) {
+    FILE *f = fopen("audit.log", "a");
+    if (!f) return;
+
+    /* Simple escaping for trace string */
+    char escaped_trace[8192] = {0};
+    if (trace) {
+        size_t j = 0;
+        for (size_t i = 0; trace[i] && j < sizeof(escaped_trace) - 3; i++) {
+            if (trace[i] == '"') { escaped_trace[j++] = '\\'; escaped_trace[j++] = '"'; }
+            else if (trace[i] == '\n') { escaped_trace[j++] = '\\'; escaped_trace[j++] = 'n'; }
+            else if (trace[i] == '\t') { escaped_trace[j++] = '\\'; escaped_trace[j++] = 't'; }
+            else escaped_trace[j++] = trace[i];
+        }
+    }
+
+    fprintf(f, "{\"timestamp_ms\": %llu, \"user_id\": %llu, \"decision\": \"%s\", \"duration_ms\": %llu, \"cache_hit\": %s, \"trace\": \"%s\"}\n",
+            (unsigned long long)get_time_ms(),
+            (unsigned long long)ctx->user_id,
+            allowed ? "ALLOW" : "DENY",
+            (unsigned long long)duration_ms,
+            cache_hit ? "true" : "false",
+            escaped_trace);
+    fclose(f);
+}
+
 sso_error_t perm_engine_evaluate(permission_engine_t *engine,
                                  eval_context_t *ctx,
                                  bool *result,
@@ -420,6 +446,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
              fprintf(stderr, "[perm] CACHE HIT (SLOW): user=%ld duration=%lums\n", 
                      (long)ctx->user_id, (long)duration);
         }
+        audit_log_decision(ctx, *result, "Decision from Result Cache (L2)", duration, true);
         return SSO_OK;
     }
 
@@ -446,12 +473,14 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         policy_manager_t *pmgr = (policy_manager_t *)engine->ctx->policy_mgr;
         if (!pmgr) {
             pthread_rwlock_unlock(&engine->lock);
+            audit_log_decision(ctx, false, "Error: policy manager not found", get_time_ms() - now, false);
             return SSO_ERR_GENERAL;
         }
 
         err = policy_resolve_for_user(pmgr, ctx->user_id, policies_buf, &policy_count, max_policies);
         if (err != SSO_OK && err != SSO_ERR_NOT_FOUND) {
             pthread_rwlock_unlock(&engine->lock);
+            audit_log_decision(ctx, false, "Error: policy resolution failed", get_time_ms() - now, false);
             return err;
         }
 
@@ -466,6 +495,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
     if (policy_count == 0) {
         if (decision_trace) *decision_trace = strdup("Default DENY: No policies found");
         pthread_rwlock_unlock(&engine->lock);
+        audit_log_decision(ctx, false, "Default DENY: No policies found", get_time_ms() - now, false);
         return SSO_OK;
     }
 
@@ -483,8 +513,8 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
             strncat(full_trace, "] ", sizeof(full_trace) - strlen(full_trace) - 1);
             strncat(full_trace, policy_trace, sizeof(full_trace) - strlen(full_trace) - 1);
             strncat(full_trace, "\n", sizeof(full_trace) - strlen(full_trace) - 1);
-            free(policy_trace);
         }
+        if (policy_trace) free(policy_trace);
 
         if (err == SSO_ERR_NOT_FOUND) {
             continue; 
@@ -506,6 +536,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
             engine->result_cache[cache_idx].valid = true;
 
             pthread_rwlock_unlock(&engine->lock);
+            audit_log_decision(ctx, false, full_trace, get_time_ms() - now, false);
             return SSO_OK;
         }
 
@@ -534,6 +565,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
                 (long)ctx->user_id, (long)duration);
     }
 
+    audit_log_decision(ctx, any_allowed, full_trace, duration, false);
     return SSO_OK;
 }
 

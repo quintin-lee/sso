@@ -237,6 +237,10 @@ static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
         return SSO_ERR_STORAGE;
     }
 
+    /* Performance optimization: WAL mode + NORMAL synchronous */
+    sqlite3_exec(priv->db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL);
+    sqlite3_exec(priv->db, "PRAGMA synchronous=NORMAL;", NULL, NULL, NULL);
+
     /* Create tables */
     char *errmsg = NULL;
     rc = sqlite3_exec(priv->db, SCHEMA_SQL, NULL, NULL, &errmsg);
