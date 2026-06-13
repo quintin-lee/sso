@@ -4,7 +4,7 @@ A lightweight, enterprise-ready Single Sign-On (SSO) service written in C11, pro
 
 [![C11](https://img.shields.io/badge/C-11-blue.svg)](https://en.wikipedia.org/wiki/C11_(C_standard_revision))
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![CI](https://github.com/anomalyco/sso/actions/workflows/ci.yml/badge.svg)](https://github.com/anomalyco/sso/actions/workflows/ci.yml)
+[![CI](https://github.com/quintin-lee/sso/actions/workflows/ci.yml/badge.svg)](https://github.com/quintin-lee/sso/actions/workflows/ci.yml)
 
 ## Table of Contents
 
