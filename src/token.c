@@ -11,6 +11,7 @@
 #include "sso.h"
 #include "token.h"
 #include "user.h"
+#include "cJSON.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -80,62 +81,6 @@ static size_t base64_decode(const char *input, unsigned char *output, size_t out
         i += 4;
     }
     return o;
-}
-
-/* Minimal JSON payload builder.  In production, use cjson. */
-static void build_token_payload(const token_t *token, char *payload, size_t payload_len) {
-    /* Build JSON: {"jti":"...","sub":...,"iat":...,"exp":...,"roles":[...],"groups":[...]} */
-    char roles_str[256] = "";
-    if (token->role_count > 0) {
-        strcat(roles_str, "[");
-        for (size_t i = 0; i < token->role_count; i++) {
-            char buf[32];
-            snprintf(buf, sizeof(buf), "%lu%s",
-                     (unsigned long)token->role_ids[i],
-                     i < token->role_count - 1 ? "," : "");
-            strcat(roles_str, buf);
-        }
-        strcat(roles_str, "]");
-    } else {
-        strcat(roles_str, "[]");
-    }
-
-    char groups_str[256] = "";
-    if (token->group_count > 0) {
-        strcat(groups_str, "[");
-        for (size_t i = 0; i < token->group_count; i++) {
-            char buf[32];
-            snprintf(buf, sizeof(buf), "%lu%s",
-                     (unsigned long)token->group_ids[i],
-                     i < token->group_count - 1 ? "," : "");
-            strcat(groups_str, buf);
-        }
-        strcat(groups_str, "]");
-    } else {
-        strcat(groups_str, "[]");
-    }
-
-    snprintf(payload, payload_len,
-             "{\"jti\":\"%s\",\"sub\":%lu,\"iat\":%lld,\"exp\":%lld,"
-             "\"roles\":%s,\"groups\":%s}",
-             token->jti,
-             (unsigned long)token->user_id,
-             (long long)token->issued_at,
-             (long long)token->expires_at,
-             roles_str, groups_str);
-}
-
-/* Minimal JSON parser to extract values from token payload. */
-static const char *json_get_value(const char *json, const char *key) {
-    char search[64];
-    snprintf(search, sizeof(search), "\"%s\"", key);
-    const char *p = strstr(json, search);
-    if (!p) return NULL;
-    p += strlen(search);
-    while (*p && *p != ':' && *p != ',') p++;
-    if (*p == ':') p++;
-    while (*p && (*p == ' ' || *p == '\t' || *p == '\n')) p++;
-    return p;
 }
 
 /* ========================================================================
@@ -218,13 +163,33 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
         memcpy(out->group_ids, group_ids, group_count * sizeof(sso_id_t));
     }
 
-    /* Build and sign the token */
-    char payload[1024];
-    build_token_payload(out, payload, sizeof(payload));
+    /* Build the token payload using cJSON */
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "jti", out->jti);
+    cJSON_AddNumberToObject(root, "sub", (double)out->user_id);
+    cJSON_AddNumberToObject(root, "iat", (double)out->issued_at);
+    cJSON_AddNumberToObject(root, "exp", (double)out->expires_at);
+
+    cJSON *roles_arr = cJSON_CreateArray();
+    for (size_t i = 0; i < role_count; i++) {
+        cJSON_AddItemToArray(roles_arr, cJSON_CreateNumber((double)role_ids[i]));
+    }
+    cJSON_AddItemToObject(root, "roles", roles_arr);
+
+    cJSON *groups_arr = cJSON_CreateArray();
+    for (size_t i = 0; i < group_count; i++) {
+        cJSON_AddItemToArray(groups_arr, cJSON_CreateNumber((double)group_ids[i]));
+    }
+    cJSON_AddItemToObject(root, "groups", groups_arr);
+
+    char *payload_str = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!payload_str) return SSO_ERR_OUT_OF_MEMORY;
 
     /* Base64-encode the payload */
-    char b64_payload[1536];
-    base64_encode((unsigned char *)payload, strlen(payload), b64_payload, sizeof(b64_payload));
+    char b64_payload[2048];
+    base64_encode((unsigned char *)payload_str, strlen(payload_str), b64_payload, sizeof(b64_payload));
+    free(payload_str);
 
     /* HMAC-SHA256 */
     unsigned char hmac_result[EVP_MAX_MD_SIZE];
@@ -253,7 +218,8 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
     if (!dot) return SSO_ERR_TOKEN_INVALID;
 
     size_t b64_len = (size_t)(dot - token_str);
-    char b64_payload[1536];
+    char b64_payload[2048];
+    if (b64_len >= sizeof(b64_payload)) return SSO_ERR_TOKEN_INVALID;
     strncpy(b64_payload, token_str, b64_len);
     b64_payload[b64_len] = '\0';
 
@@ -274,89 +240,66 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
     }
 
     /* Decode payload */
-    unsigned char decoded[2048];
+    unsigned char decoded[4096];
     size_t decoded_len = base64_decode(b64_payload, decoded, sizeof(decoded) - 1);
     if (decoded_len == 0) return SSO_ERR_TOKEN_INVALID;
     decoded[decoded_len] = '\0';
 
-    const char *payload = (const char *)decoded;
+    /* Extract fields using cJSON */
+    cJSON *root = cJSON_Parse((const char *)decoded);
+    if (!root) return SSO_ERR_TOKEN_INVALID;
 
-    /* Extract fields (minimal JSON parsing) */
-    const char *v;
+    cJSON *jti_item = cJSON_GetObjectItem(root, "jti");
+    if (cJSON_IsString(jti_item)) {
+        strncpy(out->jti, jti_item->valuestring, sizeof(out->jti) - 1);
+    }
 
-    v = json_get_value(payload, "jti");
-    if (v && *v == '"') {
-        v++;
-        const char *end = strchr(v, '"');
-        if (end) {
-            size_t len = (size_t)(end - v);
-            if (len >= sizeof(out->jti)) len = sizeof(out->jti) - 1;
-            strncpy(out->jti, v, len);
-            out->jti[len] = '\0';
+    cJSON *sub_item = cJSON_GetObjectItem(root, "sub");
+    if (cJSON_IsNumber(sub_item)) {
+        out->user_id = (sso_id_t)sub_item->valuedouble;
+    }
+
+    cJSON *iat_item = cJSON_GetObjectItem(root, "iat");
+    if (cJSON_IsNumber(iat_item)) {
+        out->issued_at = (sso_timestamp_t)iat_item->valuedouble;
+    }
+
+    cJSON *exp_item = cJSON_GetObjectItem(root, "exp");
+    if (cJSON_IsNumber(exp_item)) {
+        out->expires_at = (sso_timestamp_t)exp_item->valuedouble;
+    }
+
+    /* Roles */
+    cJSON *roles_arr = cJSON_GetObjectItem(root, "roles");
+    if (cJSON_IsArray(roles_arr)) {
+        out->role_count = (size_t)cJSON_GetArraySize(roles_arr);
+        if (out->role_count > 0) {
+            out->role_ids = (sso_id_t *)calloc(out->role_count, sizeof(sso_id_t));
+            for (size_t i = 0; i < out->role_count; i++) {
+                cJSON *r = cJSON_GetArrayItem(roles_arr, (int)i);
+                if (cJSON_IsNumber(r)) out->role_ids[i] = (sso_id_t)r->valuedouble;
+            }
         }
     }
 
-    v = json_get_value(payload, "sub");
-    if (v) out->user_id = strtoull(v, NULL, 10);
+    /* Groups */
+    cJSON *groups_arr = cJSON_GetObjectItem(root, "groups");
+    if (cJSON_IsArray(groups_arr)) {
+        out->group_count = (size_t)cJSON_GetArraySize(groups_arr);
+        if (out->group_count > 0) {
+            out->group_ids = (sso_id_t *)calloc(out->group_count, sizeof(sso_id_t));
+            for (size_t i = 0; i < out->group_count; i++) {
+                cJSON *g = cJSON_GetArrayItem(groups_arr, (int)i);
+                if (cJSON_IsNumber(g)) out->group_ids[i] = (sso_id_t)g->valuedouble;
+            }
+        }
+    }
 
-    v = json_get_value(payload, "iat");
-    if (v) out->issued_at = strtoll(v, NULL, 10);
+    cJSON_Delete(root);
 
-    v = json_get_value(payload, "exp");
-    if (v) out->expires_at = strtoll(v, NULL, 10);
-
-    /* Check expiry */
-    sso_timestamp_t now = sso_timestamp_now();
-    if (now > out->expires_at) {
+    if (sso_timestamp_now() > out->expires_at) {
+        token_destroy(out);
         return SSO_ERR_TOKEN_EXPIRED;
-    }
-
-    /* Extract roles array */
-    v = json_get_value(payload, "roles");
-    if (v) {
-        if (*v == '[') {
-            v++;
-            sso_id_t roles[64];
-            size_t rc = 0;
-            while (*v && *v != ']' && rc < 64) {
-                if (*v >= '0' && *v <= '9') {
-                    roles[rc++] = strtoull(v, (char **)&v, 10);
-                } else {
-                    v++;
-                }
-            }
-            if (rc > 0) {
-                out->role_ids = (sso_id_t *)malloc(rc * sizeof(sso_id_t));
-                if (out->role_ids) {
-                    memcpy(out->role_ids, roles, rc * sizeof(sso_id_t));
-                    out->role_count = rc;
-                }
-            }
-        }
-    }
-
-    /* Extract groups array */
-    v = json_get_value(payload, "groups");
-    if (v) {
-        if (*v == '[') {
-            v++;
-            sso_id_t groups[64];
-            size_t gc = 0;
-            while (*v && *v != ']' && gc < 64) {
-                if (*v >= '0' && *v <= '9') {
-                    groups[gc++] = strtoull(v, (char **)&v, 10);
-                } else {
-                    v++;
-                }
-            }
-            if (gc > 0) {
-                out->group_ids = (sso_id_t *)malloc(gc * sizeof(sso_id_t));
-                if (out->group_ids) {
-                    memcpy(out->group_ids, groups, gc * sizeof(sso_id_t));
-                    out->group_count = gc;
-                }
-            }
-        }
     }
 
     return SSO_OK;
