@@ -140,6 +140,30 @@ body::after{
   font-size:var(--text-sm);
   color:var(--text-secondary);
 }
+.tabs{
+  display:flex;
+  gap:var(--space-2);
+  margin-bottom:var(--space-6);
+  padding:4px;
+  background:var(--bg-tertiary);
+  border-radius:var(--radius-md);
+}
+.tab{
+  flex:1;
+  padding:var(--space-2);
+  text-align:center;
+  font-size:var(--text-sm);
+  font-weight:500;
+  color:var(--text-secondary);
+  cursor:pointer;
+  border-radius:var(--radius-sm);
+  transition:all .2s;
+}
+.tab.active{
+  background:var(--bg-input);
+  color:var(--text-primary);
+  box-shadow:var(--shadow-sm);
+}
 .form-group{
   margin-bottom:var(--space-5);
 }
@@ -176,6 +200,10 @@ body::after{
   border-color:var(--error);
   box-shadow:0 0 0 3px rgba(239,95,95,.15);
 }
+.input-with-btn{
+  display:flex;
+  gap:var(--space-2);
+}
 .btn{
   display:inline-flex;
   align-items:center;
@@ -211,6 +239,12 @@ body::after{
 .btn-secondary:hover{
   background:var(--bg-input);
   color:var(--text-primary);
+}
+.btn-sms{
+  width:auto;
+  white-space:nowrap;
+  font-size:var(--text-sm);
+  padding:var(--space-2) var(--space-4);
 }
 .btn-copy{
   background:var(--bg-tertiary);
@@ -362,7 +396,15 @@ body::after{
         <h1>SSO 统一认证</h1>
         <p>请登录您的账号</p>
       </div>
+
+      <div class="tabs">
+        <div class="tab active" id="tabPassword">密码登录</div>
+        <div class="tab" id="tabSms">验证码登录</div>
+      </div>
+
       <div id="loginError" class="error-msg"></div>
+
+      <!-- Password Login -->
       <form id="loginForm" novalidate>
         <div class="form-group">
           <label for="loginUsername">用户名</label>
@@ -380,6 +422,29 @@ body::after{
         </div>
         <button type="submit" id="loginBtn" class="btn btn-primary">登录</button>
       </form>
+
+      <!-- SMS Login -->
+      <form id="smsLoginForm" style="display:none" novalidate>
+        <div class="form-group">
+          <label for="smsPhone">手机号</label>
+          <div class="input-with-btn">
+            <div class="input-wrapper" style="flex:1">
+              <input type="tel" id="smsPhone" name="phone" placeholder="请输入手机号" autocomplete="tel" required>
+            </div>
+            <button type="button" id="sendSmsBtn" class="btn btn-secondary btn-sms">获取验证码</button>
+          </div>
+          <div id="smsPhoneError" class="field-error">请输入正确的手机号</div>
+        </div>
+        <div class="form-group">
+          <label for="smsCode">验证码</label>
+          <div class="input-wrapper">
+            <input type="text" id="smsCode" name="code" placeholder="6位验证码" maxlength="6" required>
+          </div>
+          <div id="smsCodeError" class="field-error">请输入6位验证码</div>
+        </div>
+        <button type="submit" id="smsLoginBtn" class="btn btn-primary">登录 / 注册</button>
+      </form>
+
       <div class="switch-link">
         还没有账号？<a id="showRegister">立即注册</a>
       </div>
@@ -465,6 +530,7 @@ body::after{
   var successSection = document.getElementById('successSection');
 
   var loginForm = document.getElementById('loginForm');
+  var smsLoginForm = document.getElementById('smsLoginForm');
   var registerForm = document.getElementById('registerForm');
 
   var loginError = document.getElementById('loginError');
@@ -473,6 +539,11 @@ body::after{
   var loginUsername = document.getElementById('loginUsername');
   var loginPassword = document.getElementById('loginPassword');
   var loginBtn = document.getElementById('loginBtn');
+
+  var smsPhone = document.getElementById('smsPhone');
+  var smsCode = document.getElementById('smsCode');
+  var sendSmsBtn = document.getElementById('sendSmsBtn');
+  var smsLoginBtn = document.getElementById('smsLoginBtn');
 
   var regUsername = document.getElementById('regUsername');
   var regDisplayName = document.getElementById('regDisplayName');
@@ -489,6 +560,9 @@ body::after{
 
   var showRegisterLink = document.getElementById('showRegister');
   var showLoginLink = document.getElementById('showLogin');
+  
+  var tabPassword = document.getElementById('tabPassword');
+  var tabSms = document.getElementById('tabSms');
 
   function showSection(section) {
     loginSection.classList.remove('visible');
@@ -536,6 +610,91 @@ body::after{
   function showRegisterError(msg) {
     registerError.textContent = msg;
     registerError.classList.add('visible');
+  }
+
+  tabPassword.addEventListener('click', function() {
+    tabPassword.classList.add('active');
+    tabSms.classList.remove('active');
+    loginForm.style.display = 'block';
+    smsLoginForm.style.display = 'none';
+    clearErrors();
+  });
+
+  tabSms.addEventListener('click', function() {
+    tabSms.classList.add('active');
+    tabPassword.classList.remove('active');
+    loginForm.style.display = 'none';
+    smsLoginForm.style.display = 'block';
+    clearErrors();
+  });
+
+  sendSmsBtn.addEventListener('click', function() {
+    var phone = smsPhone.value.trim();
+    if (!phone || phone.length < 11) {
+      showFieldError(smsPhone, document.getElementById('smsPhoneError'));
+      return;
+    }
+
+    setLoading(sendSmsBtn, true);
+    fetch('/api/v1/auth/send_sms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phone })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.error) throw new Error(data.error);
+      var countdown = 60;
+      sendSmsBtn.disabled = true;
+      var timer = setInterval(function() {
+        countdown--;
+        sendSmsBtn.textContent = countdown + 's 后重发';
+        if (countdown <= 0) {
+          clearInterval(timer);
+          sendSmsBtn.disabled = false;
+          sendSmsBtn.textContent = '获取验证码';
+        }
+      }, 1000);
+    })
+    .catch(function(err) {
+      showLoginError(err.message || '发送失败');
+      setLoading(sendSmsBtn, false);
+    });
+  });
+
+  smsLoginForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    clearErrors();
+    var phone = smsPhone.value.trim();
+    var code = smsCode.value.trim();
+    if (!phone) { showFieldError(smsPhone, document.getElementById('smsPhoneError')); return; }
+    if (!code || code.length !== 6) { showFieldError(smsCode, document.getElementById('smsCodeError')); return; }
+
+    setLoading(smsLoginBtn, true);
+    fetch('/api/v1/auth/login_by_sms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phone, code: code })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.error) throw new Error(data.error);
+      handleLoginSuccess(data);
+    })
+    .catch(function(err) {
+      showLoginError(err.message || '登录失败');
+    })
+    .finally(function() {
+      setLoading(smsLoginBtn, false);
+    });
+  });
+
+  function handleLoginSuccess(data) {
+    tokenArea.value = data.token || '';
+    infoUserId.textContent = data.user_id != null ? data.user_id : '-';
+    infoUsername.textContent = data.username || '-';
+    infoDisplayName.textContent = data.display_name || data.phone || '-';
+    showSection(successSection);
   }
 
   function validateLoginForm() {
@@ -592,11 +751,7 @@ body::after{
       });
     })
     .then(function(data) {
-      tokenArea.value = data.token || '';
-      infoUserId.textContent = data.user_id != null ? data.user_id : '-';
-      infoUsername.textContent = data.username || '-';
-      infoDisplayName.textContent = data.display_name || '-';
-      showSection(successSection);
+      handleLoginSuccess(data);
     })
     .catch(function(err) {
       showLoginError(err.message || '网络错误，请稍后重试');
