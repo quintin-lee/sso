@@ -33,6 +33,7 @@ SRCS = $(SRCDIR)/sso.c           \
        $(SRCDIR)/policy.c        \
        $(SRCDIR)/token.c         \
        $(SRCDIR)/storage_sqlite.c \
+       $(SRCDIR)/storage_memory.c \
        $(SRCDIR)/server.c        \
        $(SRCDIR)/ratelimit.c     \
        $(SRCDIR)/cJSON.c         \
