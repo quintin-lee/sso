@@ -3,6 +3,7 @@ build/
 sso_system
 *.o
 *.d
+compile_commands.json
 
 # Database files
 *.db
@@ -21,6 +22,9 @@ Thumbs.db
 
 # Core dumps
 core
+
+# Cache / tooling
+.cache/
 
 # AI coding tools
 .specstory/
