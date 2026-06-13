@@ -1015,6 +1015,23 @@ static sso_error_t handle_health(sso_context_t *ctx, const http_request_t *req,
     return SSO_OK;
 }
 
+/* GET /metrics */
+static sso_error_t handle_metrics(sso_context_t *ctx, const http_request_t *req,
+                                   http_response_t *resp) {
+    (void)req;
+    char buf[4096];
+    if (perm_engine_get_metrics((permission_engine_t *)ctx->perm_engine, buf, sizeof(buf)) != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to retrieve metrics");
+        return SSO_OK;
+    }
+    
+    resp->status_code = 200;
+    resp->body = strdup(buf);
+    resp->body_len = strlen(buf);
+    strcpy(resp->content_type, "text/plain; version=0.0.4; charset=utf-8");
+    return SSO_OK;
+}
+
 /* POST /api/v1/auth/login */
 static sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
                                  http_response_t *resp) {
@@ -2874,6 +2891,7 @@ static int run_server(void) {
         {"/admin",                  HTTP_GET,  handle_admin_page,       false},
 
         /* Public — API */
+        {"/metrics",                HTTP_GET,  handle_metrics,         false},
         {"/api/v1/health",          HTTP_GET,  handle_health,          false},
         {"/api/v1/auth/login",      HTTP_POST, handle_login,           false},
         {"/api/v1/auth/send_sms",   HTTP_POST, handle_send_sms,        false},

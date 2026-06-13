@@ -22,6 +22,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 /* ========================================================================
  * Built-in strategy declarations (defined in strategies/ dir)
@@ -64,6 +65,15 @@ typedef struct {
     bool     valid;
 } result_cache_entry_t;
 
+typedef struct {
+    atomic_ullong total_evals;
+    atomic_ullong cache_hits_l1;
+    atomic_ullong cache_hits_l2;
+    atomic_ullong allows;
+    atomic_ullong denys;
+    atomic_ullong total_duration_us;
+} engine_metrics_t;
+
 struct permission_engine {
     sso_context_t          *ctx;
     permission_strategy_t  *strategies[MAX_STRATEGIES];
@@ -81,6 +91,9 @@ struct permission_engine {
 
     /* Result cache (L2) */
     result_cache_entry_t    result_cache[RESULT_CACHE_SIZE];
+
+    /* Metrics */
+    engine_metrics_t        metrics;
 };
 
 /* -----------------------------------------------------------------------
@@ -330,6 +343,39 @@ permission_strategy_t *perm_engine_get_strategy(permission_engine_t *engine,
 }
 
 /* ========================================================================
+ * Metrics implementation
+ * ======================================================================== */
+sso_error_t perm_engine_get_metrics(permission_engine_t *engine, char *buf, size_t max) {
+    if (!engine || !buf) return SSO_ERR_INVALID_PARAM;
+
+    unsigned long long evals = atomic_load(&engine->metrics.total_evals);
+    unsigned long long l1_hits = atomic_load(&engine->metrics.cache_hits_l1);
+    unsigned long long l2_hits = atomic_load(&engine->metrics.cache_hits_l2);
+    unsigned long long allows = atomic_load(&engine->metrics.allows);
+    unsigned long long denys = atomic_load(&engine->metrics.denys);
+    unsigned long long duration = atomic_load(&engine->metrics.total_duration_us);
+
+    snprintf(buf, max,
+        "# HELP sso_perm_evals_total Total number of permission evaluations\n"
+        "# TYPE sso_perm_evals_total counter\n"
+        "sso_perm_evals_total %llu\n"
+        "# HELP sso_perm_cache_hits_total Total number of cache hits\n"
+        "# TYPE sso_perm_cache_hits_total counter\n"
+        "sso_perm_cache_hits_total{level=\"l1\"} %llu\n"
+        "sso_perm_cache_hits_total{level=\"l2\"} %llu\n"
+        "# HELP sso_perm_decisions_total Total number of allows/denys\n"
+        "# TYPE sso_perm_decisions_total counter\n"
+        "sso_perm_decisions_total{effect=\"allow\"} %llu\n"
+        "sso_perm_decisions_total{effect=\"deny\"} %llu\n"
+        "# HELP sso_perm_eval_duration_us_total Cumulative evaluation duration in microseconds\n"
+        "# TYPE sso_perm_eval_duration_us_total counter\n"
+        "sso_perm_eval_duration_us_total %llu\n",
+        evals, l1_hits, l2_hits, allows, denys, duration);
+
+    return SSO_OK;
+}
+
+/* ========================================================================
  * Evaluation — core decision logic
  * ======================================================================== */
 
@@ -438,6 +484,12 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         (now - engine->result_cache[cache_idx].timestamp) < 30000) { /* 30s TTL */
         *result = engine->result_cache[cache_idx].allowed;
         if (decision_trace) *decision_trace = strdup("Decision from Result Cache (L2)");
+        
+        atomic_fetch_add(&engine->metrics.cache_hits_l2, 1);
+        atomic_fetch_add(&engine->metrics.total_evals, 1);
+        if (*result) atomic_fetch_add(&engine->metrics.allows, 1);
+        else atomic_fetch_add(&engine->metrics.denys, 1);
+
         pthread_rwlock_unlock(&engine->lock);
 
         /* Telemetry: Cache Hit */
@@ -469,6 +521,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         (now - engine->res_cache[l1_idx].timestamp) < 60000) { /* 60s TTL */
         policies = engine->res_cache[l1_idx].policies;
         policy_count = engine->res_cache[l1_idx].count;
+        atomic_fetch_add(&engine->metrics.cache_hits_l1, 1);
     } else {
         policy_manager_t *pmgr = (policy_manager_t *)engine->ctx->policy_mgr;
         if (!pmgr) {
@@ -556,10 +609,15 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
     engine->result_cache[cache_idx].timestamp = now;
     engine->result_cache[cache_idx].valid = true;
 
+    atomic_fetch_add(&engine->metrics.total_evals, 1);
+    if (any_allowed) atomic_fetch_add(&engine->metrics.allows, 1);
+    else atomic_fetch_add(&engine->metrics.denys, 1);
+
     pthread_rwlock_unlock(&engine->lock);
 
     /* Telemetry: Log evaluation time */
     uint64_t duration = get_time_ms() - now;
+    atomic_fetch_add(&engine->metrics.total_duration_us, (unsigned long long)duration * 1000);
     if (duration > 10) { /* Log only slow evaluations (>10ms) */
         fprintf(stderr, "[perm] SLOW EVAL: user=%ld duration=%lums cache=MISS\n", 
                 (long)ctx->user_id, (long)duration);

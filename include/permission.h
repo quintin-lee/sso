@@ -79,6 +79,13 @@ void        perm_engine_cache_invalidate_policy(permission_engine_t *engine, sso
 void        perm_engine_cache_invalidate_all(permission_engine_t *engine);
 
 /* -----------------------------------------------------------------------
+ * Metrics
+ * ----------------------------------------------------------------------- */
+
+/* Retrieve Prometheus-compatible metrics. */
+sso_error_t perm_engine_get_metrics(permission_engine_t *engine, char *buf, size_t max);
+
+/* -----------------------------------------------------------------------
  * Evaluation
  * ----------------------------------------------------------------------- */
 
