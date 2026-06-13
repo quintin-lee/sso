@@ -16,7 +16,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libsqlite3-dev libsodium-dev libssl-dev
+        sudo apt-get install -y build-essential libsqlite3-dev libsodium-dev libssl-dev libcurl4-openssl-dev
 
     - name: Build the project
       run: make

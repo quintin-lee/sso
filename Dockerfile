@@ -7,7 +7,8 @@ RUN apk add --no-cache \
     make \
     sqlite-dev \
     libsodium-dev \
-    openssl-dev
+    openssl-dev \
+    curl-dev
 
 WORKDIR /app
 
@@ -25,7 +26,8 @@ FROM alpine:3.18
 RUN apk add --no-cache \
     sqlite-libs \
     libsodium \
-    openssl
+    openssl \
+    libcurl
 
 WORKDIR /app
 

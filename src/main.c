@@ -39,11 +39,68 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <curl/curl.h>
 
 static uint64_t get_time_ms() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
+}
+
+/* -----------------------------------------------------------------------
+ * Real SMS sending via libcurl (Generic JSON API)
+ * ----------------------------------------------------------------------- */
+static sso_error_t send_real_sms(const char *phone, const char *code) {
+    CURL *curl;
+    CURLcode res;
+    sso_error_t err = SSO_OK;
+
+    curl = curl_easy_init();
+    if (!curl) return SSO_ERR_GENERAL;
+
+    /* Configuration: in production, load these from environment variables */
+    const char *url = getenv("SSO_SMS_GATEWAY_URL");
+    const char *api_key = getenv("SSO_SMS_API_KEY");
+
+    if (!url) {
+        /* Fallback for demo: just log and return OK */
+        printf("[SMS] MOCK SEND: Code %s sent to %s (Set SSO_SMS_GATEWAY_URL for real send)\n", code, phone);
+        curl_easy_cleanup(curl);
+        return SSO_OK;
+    }
+
+    /* Construct JSON body */
+    char post_data[512];
+    snprintf(post_data, sizeof(post_data), 
+             "{\"phone\":\"%s\",\"code\":\"%s\",\"api_key\":\"%s\"}", 
+             phone, code, api_key ? api_key : "");
+
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_data);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L); /* 5s timeout */
+
+    res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        fprintf(stderr, "[SMS] curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        err = SSO_ERR_GENERAL;
+    } else {
+        long http_code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+        if (http_code >= 200 && http_code < 300) {
+            printf("[SMS] Real SMS request sent to %s (HTTP %ld)\n", phone, http_code);
+        } else {
+            fprintf(stderr, "[SMS] Gateway returned error: HTTP %ld\n", http_code);
+            err = SSO_ERR_GENERAL;
+        }
+    }
+
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    return err;
 }
 
 /* ========================================================================
@@ -1144,8 +1201,13 @@ static sso_error_t handle_send_sms(sso_context_t *ctx, const http_request_t *req
         return SSO_OK;
     }
 
-    /* 4. 模拟调用外部短信服务网关 */
-    printf("[SMS] Code %s sent to %s\n", code, phone);
+    /* 4. 调用真实发送逻辑 (libcurl) */
+    err = send_real_sms(phone, code);
+    if (err != SSO_OK) {
+        free(phone);
+        sso_response_error(resp, 500, "SMS gateway error");
+        return SSO_OK;
+    }
     
     free(phone);
     sso_response_ok(resp, "{\"status\":\"sent\"}");

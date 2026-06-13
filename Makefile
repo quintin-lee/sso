@@ -17,7 +17,7 @@
 
 CC       = gcc
 CFLAGS   = -Wall -Wextra -Wpedantic -std=c11 -O2 -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP
-LDFLAGS  = -lsodium -lsqlite3 -lssl -lcrypto
+LDFLAGS  = -lsodium -lsqlite3 -lssl -lcrypto -lcurl
 INCLUDES = -Iinclude
 
 SRCDIR   = src
