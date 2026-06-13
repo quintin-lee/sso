@@ -2936,33 +2936,7 @@ static sso_error_t handle_unassign_policy(sso_context_t *ctx, const http_request
 /* GET /admin — serve the admin management page */
 static sso_error_t handle_admin_page(sso_context_t *ctx, const http_request_t *req,
                                        http_response_t *resp) {
-    (void)ctx;
-    auth_context_t *auth = (auth_context_t *)req->userdata;
-    if (!auth) {
-        sso_response_error(resp, 401, "Authentication required");
-        return SSO_OK;
-    }
-
-    /* Role check: only 'admin' role can access dashboard */
-    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
-    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
-    sso_id_t roles[16];
-    size_t count = 0;
-    user_get_roles(umgr, auth->user.id, roles, &count, 16);
-
-    bool is_admin = false;
-    for (size_t i = 0; i < count; i++) {
-        role_t r;
-        if (role_get_by_id(rmgr, roles[i], &r) == SSO_OK) {
-            if (strcmp(r.name, "admin") == 0) { is_admin = true; break; }
-        }
-    }
-
-    if (!is_admin) {
-        sso_response_error(resp, 403, "Admin role required to access dashboard");
-        return SSO_OK;
-    }
-
+    (void)ctx; (void)req;
     resp->status_code = 200;
     resp->body = strdup(ADMIN_PAGE_HTML);
     resp->body_len = strlen(ADMIN_PAGE_HTML);
@@ -3094,8 +3068,8 @@ static int run_server(void) {
         {"/",                       HTTP_GET,  handle_login_page,       false},
         {"/login",                  HTTP_GET,  handle_login_page,       false},
 
-        /* Admin page — requires authentication and role check */
-        {"/admin",                  HTTP_GET,  handle_admin_page,       true},
+        /* Admin page — serve HTML publicly; JS handles auth/role check */
+        {"/admin",                  HTTP_GET,  handle_admin_page,       false},
 
         /* Public — API */
         {"/metrics",                HTTP_GET,  handle_metrics,         false},
