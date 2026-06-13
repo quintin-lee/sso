@@ -63,6 +63,7 @@ typedef enum {
 typedef struct {
     http_method_t    method;
     char             path[SSO_MAX_PATH];
+    char             client_ip[64];     /* requester IP address */
     char             *body;
     size_t           body_len;
     char             **query_params;    /* "key=value" strings, NULL-terminated */

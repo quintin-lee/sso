@@ -43,7 +43,8 @@ static sso_server_t *g_server = NULL;
 #define QUEUE_SIZE 1024
 
 typedef struct {
-    int client_fd;
+    int  client_fd;
+    char client_ip[64];
 } task_t;
 
 typedef struct {
@@ -60,7 +61,7 @@ typedef struct {
 
 static thread_pool_t g_pool;
 
-static void handle_client(sso_server_t *server, int client_fd);
+static void handle_client(sso_server_t *server, int client_fd, const char *client_ip);
 
 static void *worker_thread(void *arg) {
     (void)arg;
@@ -80,7 +81,7 @@ static void *worker_thread(void *arg) {
         pthread_mutex_unlock(&g_pool.lock);
 
         /* Handle connection */
-        handle_client(g_pool.server, task.client_fd);
+        handle_client(g_pool.server, task.client_fd, task.client_ip);
     }
     return NULL;
 }
@@ -99,10 +100,12 @@ static void pool_init(sso_server_t *server) {
     }
 }
 
-static void pool_submit(int client_fd) {
+static void pool_submit(int client_fd, const char *client_ip) {
     pthread_mutex_lock(&g_pool.lock);
     if (g_pool.count < QUEUE_SIZE) {
         g_pool.queue[g_pool.tail].client_fd = client_fd;
+        strncpy(g_pool.queue[g_pool.tail].client_ip, client_ip, 63);
+        g_pool.queue[g_pool.tail].client_ip[63] = '\0';
         g_pool.tail = (g_pool.tail + 1) % QUEUE_SIZE;
         g_pool.count++;
         pthread_cond_signal(&g_pool.notify);
@@ -309,7 +312,7 @@ static sso_error_t authenticate_request(sso_server_t *server, const http_request
 /* ========================================================================
  * Handle a single client connection
  * ======================================================================== */
-static void handle_client(sso_server_t *server, int client_fd) {
+static void handle_client(sso_server_t *server, int client_fd, const char *client_ip) {
     http_request_t req;
     http_response_t resp;
 
@@ -317,6 +320,8 @@ static void handle_client(sso_server_t *server, int client_fd) {
         close(client_fd);
         return;
     }
+    strncpy(req.client_ip, client_ip, sizeof(req.client_ip) - 1);
+    req.client_ip[sizeof(req.client_ip) - 1] = '\0';
 
     memset(&resp, 0, sizeof(resp));
     resp.body = NULL;
@@ -481,8 +486,12 @@ sso_error_t sso_server_start(sso_server_t *server) {
             break;
         }
 
+        /* Get client IP */
+        char client_ip[64] = "unknown";
+        inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
+
         /* Submit connection to thread pool */
-        pool_submit(client_fd);
+        pool_submit(client_fd, client_ip);
     }
 
     pool_shutdown();

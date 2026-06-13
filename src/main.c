@@ -30,6 +30,7 @@
 #include "token.h"
 #include "storage.h"
 #include "server.h"
+#include "ratelimit.h"
 #include "login_page.h"
 #include "admin_page.h"
 
@@ -1022,6 +1023,16 @@ static sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
         return SSO_OK;
     }
 
+    /* Rate limiting: 5 attempts per minute per IP */
+    if (ctx->rate_limiter) {
+        sso_error_t rerr = rate_limiter_check((rate_limiter_t *)ctx->rate_limiter, 
+                                               req->client_ip, 60000, 5);
+        if (rerr != SSO_OK) {
+            sso_response_error(resp, 429, "Too many login attempts. Please wait.");
+            return SSO_OK;
+        }
+    }
+
     char *username = json_str_value(req->body, "username");
     char *password = json_str_value(req->body, "password");
     if (!username || !password) {
@@ -1038,6 +1049,11 @@ static sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
     if (err != SSO_OK) {
         sso_response_error(resp, 401, "Invalid credentials");
         return SSO_OK;
+    }
+
+    /* Success: reset rate limit for this IP */
+    if (ctx->rate_limiter) {
+        rate_limiter_reset((rate_limiter_t *)ctx->rate_limiter, req->client_ip);
     }
 
     sso_id_t roles[16], groups[16];
@@ -1083,7 +1099,16 @@ static sso_error_t handle_send_sms(sso_context_t *ctx, const http_request_t *req
         return SSO_OK;
     }
 
-    /* 1. 安全防刷检查：这里应包含 IP 限流等。本 demo 略。 */
+    /* 1. 安全防刷检查：IP 限流 (1 min / 1 request) */
+    if (ctx->rate_limiter) {
+        sso_error_t rerr = rate_limiter_check((rate_limiter_t *)ctx->rate_limiter, 
+                                               req->client_ip, 60000, 1);
+        if (rerr != SSO_OK) {
+            free(phone);
+            sso_response_error(resp, 429, "Too many SMS requests. Please wait 1 minute.");
+            return SSO_OK;
+        }
+    }
 
     /* 2. 生成 6 位随机验证码 */
     char code[8];

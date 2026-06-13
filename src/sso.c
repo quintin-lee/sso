@@ -18,6 +18,7 @@
 #include "permission.h"
 #include "token.h"
 #include "storage.h"
+#include "ratelimit.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -185,7 +186,13 @@ sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
         ctx->storage_backend = storage;
     }
 
-    /* 2. Token manager — load secret securely */
+    /* 2. Rate Limiter (e.g. 10000 IPs) */
+    rate_limiter_t *rl = NULL;
+    err = rate_limiter_create(&rl, 10000);
+    if (err != SSO_OK) goto fail;
+    ctx->rate_limiter = rl;
+
+    /* 3. Token manager — load secret securely */
     token_manager_t *tmgr = (token_manager_t *)calloc(1, sizeof(token_manager_t));
     if (!tmgr) return SSO_ERR_OUT_OF_MEMORY;
 
@@ -233,6 +240,7 @@ fail:
 void sso_destroy(sso_context_t *ctx) {
     if (!ctx) return;
 
+    if (ctx->rate_limiter)  rate_limiter_destroy((rate_limiter_t *)ctx->rate_limiter);
     if (ctx->perm_engine)   perm_engine_destroy((permission_engine_t *)ctx->perm_engine);
     if (ctx->policy_mgr)    policy_manager_destroy((policy_manager_t *)ctx->policy_mgr);
     if (ctx->group_mgr)     group_manager_destroy((group_manager_t *)ctx->group_mgr);

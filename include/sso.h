@@ -171,6 +171,7 @@ struct sso_context {
     void                *role_mgr;
     void                *group_mgr;
     void                *policy_mgr;
+    void                *rate_limiter;
 
     /* Configuration (set during sso_init) */
     void                *config;
