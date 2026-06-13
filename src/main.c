@@ -1311,7 +1311,7 @@ static sso_error_t handle_login_by_sms(sso_context_t *ctx, const http_request_t 
 
 /* POST /api/v1/auth/register */
 static sso_error_t handle_register(sso_context_t *ctx, const http_request_t *req,
-                                    http_response_t *resp) {
+                                     http_response_t *resp) {
     if (!req->body) {
         sso_response_error(resp, 400, "Request body required");
         return SSO_OK;
@@ -1334,6 +1334,16 @@ static sso_error_t handle_register(sso_context_t *ctx, const http_request_t *req
                                   email ? email : "",
                                   display ? display : username,
                                   &user);
+
+    if (err == SSO_OK) {
+        /* Assign default 'user' role */
+        role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+        role_t member_role;
+        if (role_get_by_name(rmgr, "user", &member_role) == SSO_OK) {
+            role_assign_to_user(rmgr, member_role.id, user.id);
+        }
+    }
+
     free(username); free(password); free(email); free(display);
 
     if (err == SSO_ERR_ALREADY_EXISTS) {
@@ -1456,6 +1466,40 @@ static sso_error_t handle_logout(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"logged_out\":true}");
+    return SSO_OK;
+}
+
+/* POST /api/v1/auth/change_password */
+static sso_error_t handle_change_password(sso_context_t *ctx, const http_request_t *req,
+                                           http_response_t *resp) {
+    auth_context_t *auth = (auth_context_t *)req->userdata;
+    if (!auth) {
+        sso_response_error(resp, 401, "Authentication required");
+        return SSO_OK;
+    }
+
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *new_pass = json_str_value(req->body, "password");
+    if (!new_pass || strlen(new_pass) < 6) {
+        if (new_pass) free(new_pass);
+        sso_response_error(resp, 400, "Password must be at least 6 characters");
+        return SSO_OK;
+    }
+
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    sso_error_t err = user_set_password(umgr, auth->user.id, new_pass);
+    free(new_pass);
+
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to update password");
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"updated\":true}");
     return SSO_OK;
 }
 
@@ -2891,8 +2935,34 @@ static sso_error_t handle_unassign_policy(sso_context_t *ctx, const http_request
 
 /* GET /admin — serve the admin management page */
 static sso_error_t handle_admin_page(sso_context_t *ctx, const http_request_t *req,
-                                      http_response_t *resp) {
-    (void)ctx; (void)req;
+                                       http_response_t *resp) {
+    (void)ctx;
+    auth_context_t *auth = (auth_context_t *)req->userdata;
+    if (!auth) {
+        sso_response_error(resp, 401, "Authentication required");
+        return SSO_OK;
+    }
+
+    /* Role check: only 'admin' role can access dashboard */
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+    sso_id_t roles[16];
+    size_t count = 0;
+    user_get_roles(umgr, auth->user.id, roles, &count, 16);
+
+    bool is_admin = false;
+    for (size_t i = 0; i < count; i++) {
+        role_t r;
+        if (role_get_by_id(rmgr, roles[i], &r) == SSO_OK) {
+            if (strcmp(r.name, "admin") == 0) { is_admin = true; break; }
+        }
+    }
+
+    if (!is_admin) {
+        sso_response_error(resp, 403, "Admin role required to access dashboard");
+        return SSO_OK;
+    }
+
     resp->status_code = 200;
     resp->body = strdup(ADMIN_PAGE_HTML);
     resp->body_len = strlen(ADMIN_PAGE_HTML);
@@ -2951,12 +3021,14 @@ static sso_error_t bootstrap_data(sso_context_t *ctx) {
     printf("[bootstrap] admin id=%lu\n", (unsigned long)admin_user.id);
 
     /* Create roles */
-    role_t admin_role, editor_role, viewer_role;
+    role_t admin_role, editor_role, viewer_role, member_role;
     err = role_create(rmgr, "admin",  "Full system access",     SSO_ID_NONE, &admin_role);
     if (err != SSO_OK) return err;
     err = role_create(rmgr, "editor", "Can edit content",       admin_role.id, &editor_role);
     if (err != SSO_OK) return err;
     err = role_create(rmgr, "viewer", "Read-only access",       editor_role.id, &viewer_role);
+    if (err != SSO_OK) return err;
+    err = role_create(rmgr, "user",   "Regular member",         SSO_ID_NONE, &member_role);
     if (err != SSO_OK) return err;
 
     /* Assign admin role to admin user */
@@ -3022,8 +3094,8 @@ static int run_server(void) {
         {"/",                       HTTP_GET,  handle_login_page,       false},
         {"/login",                  HTTP_GET,  handle_login_page,       false},
 
-        /* Public — admin page (auth is handled by the frontend) */
-        {"/admin",                  HTTP_GET,  handle_admin_page,       false},
+        /* Admin page — requires authentication and role check */
+        {"/admin",                  HTTP_GET,  handle_admin_page,       true},
 
         /* Public — API */
         {"/metrics",                HTTP_GET,  handle_metrics,         false},
@@ -3037,6 +3109,7 @@ static int run_server(void) {
         {"/api/v1/auth/verify",     HTTP_POST, handle_verify,           false},
         {"/api/v1/auth/refresh",    HTTP_POST, handle_refresh,          true},
         {"/api/v1/auth/logout",     HTTP_POST, handle_logout,           true},
+        {"/api/v1/auth/password",   HTTP_POST, handle_change_password,  true},
         {"/api/v1/auth/me",         HTTP_GET,  handle_me,               true},
 
         /* Permission checks */
