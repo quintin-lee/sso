@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSO 管理后台</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-dark:#0f111a;
+  --bg-card:#161925;
+  --bg-sidebar:#1a1d2c;
+  --bg-input:#1f2335;
+  --accent:#7aa2f7;
+  --accent-light:#bb9af7;
+  --accent-gradient:linear-gradient(135deg, #7aa2f7, #bb9af7);
+  --text-main:#a9b1d6;
+  --text-bright:#c0caf5;
+  --text-muted:#565f89;
+  --border:#292e42;
+  --success:#9ece6a;
+  --error:#f7768e;
+  --warning:#e0af68;
+  --radius:12px;
+  --shadow:0 10px 30px rgba(0,0,0,0.5);
+}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background:var(--bg-dark);
+  color:var(--text-main);
+  min-height:100vh;
+  display:flex;
+  overflow:hidden;
+}
+/* Sidebar */
+.sidebar{
+  width:260px;
+  background:var(--bg-sidebar);
+  border-right:1px solid var(--border);
+  display:flex;
+  flex-direction:column;
+  flex-shrink:0;
+  z-index:100;
+}
+.sidebar-header{
+  padding:40px 24px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.logo-icon{
+  width:36px;
+  height:36px;
+  background:var(--accent-gradient);
+  border-radius:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#fff;
+  font-weight:bold;
+  font-size:20px;
+  box-shadow:0 0 20px rgba(122,162,247,0.3);
+}
+.logo-text{
+  font-size:20px;
+  font-weight:800;
+  color:var(--text-bright);
+  letter-spacing:-0.5px;
+}
+.nav-links{
+  padding:0 16px;
+  flex:1;
+}
+.nav-item{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:14px 16px;
+  color:var(--text-main);
+  text-decoration:none;
+  border-radius:var(--radius);
+  margin-bottom:6px;
+  transition:all 0.2s;
+  cursor:pointer;
+  font-size:14px;
+  font-weight:500;
+}
+.nav-item:hover{
+  background:rgba(255,255,255,0.04);
+  color:var(--text-bright);
+}
+.nav-item.active{
+  background:rgba(122,162,247,0.1);
+  color:var(--accent);
+}
+.sidebar-footer{
+  padding:24px;
+  border-top:1px solid var(--border);
+  background:rgba(0,0,0,0.1);
+}
+.user-profile{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-bottom:20px;
+}
+.user-avatar{
+  width:40px;
+  height:40px;
+  background:var(--bg-input);
+  border:1px solid var(--border);
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--accent);
+  font-weight:bold;
+}
+.user-meta{
+  flex:1;
+  min-width:0;
+}
+.user-name{
+  font-size:14px;
+  font-weight:600;
+  color:var(--text-bright);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.user-role{
+  font-size:11px;
+  color:var(--text-muted);
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+}
+/* Main Content */
+.main{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  position:relative;
+}
+.top-bar{
+  height:72px;
+  padding:0 40px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid var(--border);
+  background:rgba(15, 17, 26, 0.7);
+  backdrop-filter:blur(20px);
+}
+.page-title{
+  font-size:22px;
+  font-weight:700;
+  color:var(--text-bright);
+  letter-spacing:-0.5px;
+}
+.content-area{
+  flex:1;
+  padding:40px;
+  overflow-y:auto;
+}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+  gap:24px;
+  margin-bottom:40px;
+}
+/* Stats Card */
+.stat-card{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:24px;
+  display:flex;
+  align-items:center;
+  gap:20px;
+  transition:transform 0.2s;
+}
+.stat-card:hover{transform:translateY(-2px)}
+.stat-icon{
+  width:56px;
+  height:56px;
+  border-radius:14px;
+  background:var(--bg-input);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:24px;
+  color:var(--accent);
+}
+.stat-info .stat-label{
+  font-size:12px;
+  color:var(--text-muted);
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:1px;
+  margin-bottom:6px;
+}
+.stat-info .stat-value{
+  font-size:28px;
+  font-weight:800;
+  color:var(--text-bright);
+}
+/* Table Card */
+.card{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow:var(--shadow);
+}
+.card-header{
+  padding:24px 32px;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.card-title{
+  font-size:18px;
+  font-weight:700;
+  color:var(--text-bright);
+}
+.table-wrapper{
+  overflow-x:auto;
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+}
+th{
+  background:rgba(0,0,0,0.15);
+  padding:14px 32px;
+  text-align:left;
+  font-size:12px;
+  text-transform:uppercase;
+  color:var(--text-muted);
+  font-weight:700;
+  letter-spacing:1px;
+}
+td{
+  padding:18px 32px;
+  border-bottom:1px solid var(--border);
+  font-size:14px;
+  color:var(--text-main);
+}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,0.015)}
+/* Components */
+.btn{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:10px 20px;
+  border-radius:var(--radius);
+  font-size:14px;
+  font-weight:600;
+  cursor:pointer;
+  transition:all 0.2s;
+  border:none;
+  outline:none;
+}
+.btn-primary{
+  background:var(--accent-gradient);
+  color:#fff;
+  box-shadow:0 4px 15px rgba(122,162,247,0.3);
+}
+.btn-primary:hover{opacity:0.9;transform:translateY(-1px);box-shadow:0 6px 20px rgba(122,162,247,0.4)}
+.btn-outline{
+  background:rgba(255,255,255,0.03);
+  border:1px solid var(--border);
+  color:var(--text-bright);
+}
+.btn-outline:hover{background:var(--bg-input);border-color:var(--text-muted)}
+.btn-danger{
+  background:rgba(247,118,142,0.1);
+  color:var(--error);
+  border:1px solid rgba(247,118,142,0.2);
+}
+.btn-danger:hover{background:var(--error);color:#fff}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:6px}
+
+.status-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  font-weight:600;
+  padding:4px 12px;
+  border-radius:20px;
+}
+.status-active{background:rgba(158,206,106,0.1);color:var(--success)}
+.status-inactive{background:rgba(247,118,142,0.1);color:var(--error)}
+
+.tag{
+  padding:2px 8px;
+  border-radius:4px;
+  font-size:11px;
+  font-weight:600;
+  background:rgba(122,162,247,0.1);
+  color:var(--accent);
+}
+
+/* Modal */
+.modal-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.8);
+  backdrop-filter:blur(8px);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:1000;
+  animation:fadeIn 0.2s;
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal-overlay.active{display:flex}
+.modal{
+  background:var(--bg-card);
+  border:1px solid var(--border);
+  width:540px;
+  max-width:95%;
+  border-radius:20px;
+  padding:40px;
+  box-shadow:0 30px 60px rgba(0,0,0,0.6);
+}
+.modal h3{font-size:22px;color:var(--text-bright);font-weight:700;margin-bottom:8px}
+.modal p{font-size:14px;color:var(--text-muted);margin-bottom:24px}
+.form-group{margin-bottom:24px}
+.form-group label{display:block;font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px}
+input, select, textarea{
+  width:100%;
+  background:var(--bg-input);
+  border:1px solid var(--border);
+  padding:14px 18px;
+  border-radius:var(--radius);
+  color:var(--text-bright);
+  font-size:15px;
+  outline:none;
+  transition:all 0.2s;
+}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(122,162,247,0.15)}
+.modal-footer{
+  display:flex;
+  justify-content:flex-end;
+  gap:12px;
+  margin-top:40px;
+}
+/* Scrollbar */
+::-webkit-scrollbar{width:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:10px}
+::-webkit-scrollbar-thumb:hover{background:var(--text-muted)}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    <div class="logo-icon">S</div>
+    <div class="logo-text">SSO Admin</div>
+  </div>
+  <div class="nav-links">
+    <div class="nav-item active" onclick="switchTab('users', this)"><span>👥</span> 用户管理</div>
+    <div class="nav-item" onclick="switchTab('roles', this)"><span>🔐</span> 角色权限</div>
+    <div class="nav-item" onclick="switchTab('groups', this)"><span>🏢</span> 组织架构</div>
+    <div class="nav-item" onclick="switchTab('policies', this)"><span>📜</span> 策略配置</div>
+    <div class="nav-item" onclick="switchTab('metrics', this)"><span>📊</span> 系统指标</div>
+  </div>
+  <div class="sidebar-footer">
+    <div class="user-profile">
+      <div class="user-avatar" id="avatar">A</div>
+      <div class="user-meta">
+        <div class="user-name" id="adminName">Administrator</div>
+        <div class="user-role">Super Admin</div>
+      </div>
+    </div>
+    <button class="btn btn-outline" style="width:100%;justify-content:center" onclick="logout()">退出登录</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="top-bar">
+    <div class="page-title" id="pageTitle">用户管理</div>
+    <div class="top-actions">
+      <button class="btn btn-primary" id="addBtn" onclick="handleAdd()">+ 新增用户</button>
+    </div>
+  </div>
+
+  <div class="content-area">
+    <!-- Stats Row -->
+    <div class="grid">
+      <div class="stat-card">
+        <div class="stat-icon" style="color:#7aa2f7;background:rgba(122,162,247,0.1)">👥</div>
+        <div class="stat-info">
+          <div class="stat-label">总用户数</div>
+          <div class="stat-value" id="countUsers">0</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="color:#bb9af7;background:rgba(187,154,247,0.1)">🛡️</div>
+        <div class="stat-info">
+          <div class="stat-label">活跃策略</div>
+          <div class="stat-value" id="countPolicies">0</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="color:#9ece6a;background:rgba(158,206,106,0.1)">⚡</div>
+        <div class="stat-info">
+          <div class="stat-label">鉴权 QPS</div>
+          <div class="stat-value" id="avgQps">0.0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">数据概览</div>
+        <div style="font-size:12px;color:var(--text-muted)">实时同步中</div>
+      </div>
+      <div class="table-wrapper" id="tableContainer">
+        <div style="padding:60px;text-align:center;color:var(--text-muted)">正在加载核心组件数据...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle">新增用户</h3>
+    <p id="modalSub">请填写下方表单完成操作</p>
+    <div id="modalContent"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" id="confirmBtn" onclick="confirmAdd()">保存提交</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentTab = 'users';
+const TOKEN_KEY = 'sso_token';
+
+function switchTab(tab, el) {
+  currentTab = tab;
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('pageTitle').textContent = el.textContent.trim().substring(2);
+  document.getElementById('addBtn').textContent = '+ 新增' + el.textContent.trim().substring(2);
+  document.getElementById('addBtn').style.display = tab === 'metrics' ? 'none' : 'flex';
+  loadData();
+}
+
+async function api(path, method='GET', body=null) {
+  const token = localStorage.getItem(TOKEN_KEY);
+  const headers = {'Content-Type':'application/json'};
+  if(token) headers['Authorization'] = 'Bearer ' + token;
+  const r = await fetch(path, {method, headers, body: body ? JSON.stringify(body) : null});
+  if(r.status === 401) { logout(); return; }
+  return r.json();
+}
+
+function loadData() {
+  const container = document.getElementById('tableContainer');
+  if(currentTab === 'users') {
+    api('/api/v1/users').then(users => {
+      document.getElementById('countUsers').textContent = users.length;
+      let html = '<table><thead><tr><th>ID</th><th>用户名</th><th>邮箱</th><th>手机号</th><th>状态</th><th>操作</th></tr></thead><tbody>';
+      users.forEach(u => {
+        html += `<tr>
+          <td>#${u.id}</td>
+          <td style="color:var(--text-bright);font-weight:600">${u.username}</td>
+          <td>${u.email || '-'}</td>
+          <td>${u.phone || '-'}</td>
+          <td><span class="status-pill ${u.status === 1 ? 'status-active' : 'status-inactive'}">${u.status === 1 ? '● 正常' : '● 禁用'}</span></td>
+          <td>
+            <button class="btn btn-outline btn-sm" onclick="editUser(${u.id})">管理</button>
+          </td>
+        </tr>`;
+      });
+      container.innerHTML = html + '</tbody></table>';
+    });
+  } else if(currentTab === 'policies') {
+    api('/api/v1/policies').then(policies => {
+      document.getElementById('countPolicies').textContent = policies.length;
+      let html = '<table><thead><tr><th>ID</th><th>策略名称</th><th>类型</th><th>效果</th><th>操作</th></tr></thead><tbody>';
+      policies.forEach(p => {
+        html += `<tr>
+          <td>#${p.id}</td>
+          <td style="color:var(--text-bright);font-weight:600">${p.name}</td>
+          <td><span class="tag">${p.strategy_type}</span></td>
+          <td><span style="color:${p.effect === 1 ? 'var(--success)' : 'var(--error)'};font-weight:700">${p.effect === 1 ? 'ALLOW' : 'DENY'}</span></td>
+          <td><button class="btn btn-outline btn-sm">配置</button></td>
+        </tr>`;
+      });
+      container.innerHTML = html + '</tbody></table>';
+    });
+  } else if(currentTab === 'metrics') {
+    fetch('/metrics').then(r => r.text()).then(m => {
+      container.innerHTML = `<pre style="padding:32px;background:var(--bg-dark);color:#79dac8;font-family:monospace;font-size:13px;line-height:1.5">${m}</pre>`;
+    });
+  }
+}
+
+function logout() { localStorage.removeItem(TOKEN_KEY); window.location.href = '/login'; }
+function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
+function showModal(title, sub) { 
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalSub').textContent = sub;
+  document.getElementById('modalOverlay').classList.add('active'); 
+}
+
+function handleAdd() {
+  showModal('新增' + document.getElementById('pageTitle').textContent, '请填写基础信息以创建新资源');
+  const content = document.getElementById('modalContent');
+  if(currentTab === 'users') {
+    content.innerHTML = `
+      <div class="form-group"><label>用户名</label><input id="new_user" placeholder="必填"></div>
+      <div class="form-group"><label>密码</label><input type="password" id="new_pass" placeholder="必填"></div>
+      <div class="form-group"><label>手机号</label><input id="new_phone" placeholder="可选"></div>
+    `;
+  }
+}
+
+async function confirmAdd() {
+  if(currentTab === 'users') {
+    const user = {
+      username: document.getElementById('new_user').value,
+      password: document.getElementById('new_pass').value,
+      phone: document.getElementById('new_phone').value
+    };
+    await api('/api/v1/users', 'POST', user);
+    closeModal();
+    loadData();
+  }
+}
+
+// Initial
+const token = localStorage.getItem(TOKEN_KEY) || (window.location.hash.length > 1 ? decodeURIComponent(window.location.hash.substring(1)) : null);
+if(token) {
+  localStorage.setItem(TOKEN_KEY, token);
+  window.location.hash = '';
+  api('/api/v1/auth/me').then(d => {
+    if(d && d.username) {
+      document.getElementById('adminName').textContent = d.display_name || d.username;
+      document.getElementById('avatar').textContent = (d.display_name || d.username)[0].toUpperCase();
+    }
+  }).catch(() => { /* handled by api() */ });
+  loadData();
+} else {
+  window.location.href = '/login';
+}
+</script>
+</body>
+</html>
