@@ -1247,6 +1247,160 @@ static sso_error_t handle_me(sso_context_t *ctx, const http_request_t *req,
     return SSO_OK;
 }
 
+static sso_error_t handle_check_permission(sso_context_t *ctx, const http_request_t *req,
+                                         http_response_t *resp) {
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    sso_id_t user_id = (sso_id_t)json_int_value(req->body, "user_id", 0);
+    if (user_id == 0) {
+        auth_context_t *auth = (auth_context_t *)req->userdata;
+        if (auth) user_id = auth->user.id;
+    }
+    if (user_id == 0) {
+        sso_response_error(resp, 400, "user_id or authentication required");
+        return SSO_OK;
+    }
+
+    eval_context_t ectx;
+    user_t user;
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    if (user_get_by_id(umgr, user_id, &user) != SSO_OK) {
+        sso_response_error(resp, 404, "User not found");
+        return SSO_OK;
+    }
+
+    eval_context_init(&ectx, &user);
+
+    /* Populate the context with all available parameters from the JSON body */
+    char *function_code = json_str_value(req->body, "function_code");
+    if (function_code) {
+        strncpy(ectx.params.functional.function_code, function_code, sizeof(ectx.params.functional.function_code) - 1);
+        free(function_code);
+    }
+
+    char *api_method = json_str_value(req->body, "api_method");
+    char *api_path = json_str_value(req->body, "api_path");
+    if (api_method && api_path) {
+        strncpy(ectx.params.api.http_method, api_method, sizeof(ectx.params.api.http_method) - 1);
+        strncpy(ectx.params.api.request_path, api_path, sizeof(ectx.params.api.request_path) - 1);
+        free(api_method); free(api_path);
+    }
+
+    char *resource_type = json_str_value(req->body, "resource_type");
+    if (resource_type) {
+        strncpy(ectx.params.data.resource_type, resource_type, sizeof(ectx.params.data.resource_type) - 1);
+        free(resource_type);
+        
+        char *record = json_str_value(req->body, "record");
+        if (record) {
+             ectx.params.data.record = record; /* Must be freed later */
+        }
+    }
+
+    char *role_name = json_str_value(req->body, "role_name");
+    if (role_name) {
+        strncpy(ectx.params.rbac.role_name, role_name, sizeof(ectx.params.rbac.role_name) - 1);
+        free(role_name);
+    }
+
+    char *source_ip = json_str_value(req->body, "source_ip");
+    if (source_ip) {
+        strncpy(ectx.params.location.source_ip, source_ip, sizeof(ectx.params.location.source_ip) - 1);
+        free(source_ip);
+    }
+
+    char *lbac_user_labels = json_str_value(req->body, "lbac_user_labels");
+    char *lbac_resource_label = json_str_value(req->body, "lbac_resource_label");
+    if (lbac_user_labels && lbac_resource_label) {
+        strncpy(ectx.params.lbac.user_labels, lbac_user_labels, sizeof(ectx.params.lbac.user_labels) - 1);
+        strncpy(ectx.params.lbac.resource_label, lbac_resource_label, sizeof(ectx.params.lbac.resource_label) - 1);
+        free(lbac_user_labels); free(lbac_resource_label);
+    }
+
+    char *abac_subject_attrs = json_str_value(req->body, "abac_subject_attrs");
+    char *abac_resource_attrs = json_str_value(req->body, "abac_resource_attrs");
+    char *abac_action = json_str_value(req->body, "abac_action");
+    if (abac_subject_attrs) {
+        strncpy(ectx.params.abac.subject_attrs, abac_subject_attrs, sizeof(ectx.params.abac.subject_attrs) - 1);
+        free(abac_subject_attrs);
+    }
+    if (abac_resource_attrs) {
+        strncpy(ectx.params.abac.resource_attrs, abac_resource_attrs, sizeof(ectx.params.abac.resource_attrs) - 1);
+        free(abac_resource_attrs);
+    }
+    if (abac_action) {
+        strncpy(ectx.params.abac.action, abac_action, sizeof(ectx.params.abac.action) - 1);
+        free(abac_action);
+    }
+
+    char *env_attrs = json_str_value(req->body, "environment");
+    if (env_attrs) {
+        strncpy(ectx.environment, env_attrs, sizeof(ectx.environment) - 1);
+        free(env_attrs);
+    }
+
+    bool allowed = false;
+    char *trace = NULL;
+    sso_error_t err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, &allowed, &trace);
+
+    if (err != SSO_OK) {
+        if (ectx.params.data.record) free((void *)ectx.params.data.record);
+        if (trace) free(trace);
+        eval_context_destroy(&ectx);
+        sso_response_error(resp, 500, "Permission evaluation failed");
+        return SSO_OK;
+    }
+
+    /* Build JSON response */
+    char buf[8192];
+    
+    /* Safely format trace for JSON if present */
+    char escaped_trace[4096] = "";
+    if (trace) {
+        size_t j = 0;
+        for (size_t i = 0; trace[i] && j < sizeof(escaped_trace) - 3; i++) {
+            if (trace[i] == '"') { escaped_trace[j++] = '\\'; escaped_trace[j++] = '"'; }
+            else if (trace[i] == '\n') { escaped_trace[j++] = '\\'; escaped_trace[j++] = 'n'; }
+            else if (trace[i] == '\t') { escaped_trace[j++] = '\\'; escaped_trace[j++] = 't'; }
+            else escaped_trace[j++] = trace[i];
+        }
+    }
+
+    /* Serialize allowed fields if present */
+    char fields_buf[1024] = "[]";
+    if (ectx.params.data.field_filter_count > 0) {
+        strcpy(fields_buf, "[");
+        for (size_t i = 0; i < ectx.params.data.field_filter_count; i++) {
+            char fbuf[128];
+            snprintf(fbuf, sizeof(fbuf), "\"%s\"%s", ectx.params.data.field_filter[i],
+                     i < ectx.params.data.field_filter_count - 1 ? "," : "");
+            strncat(fields_buf, fbuf, sizeof(fields_buf) - strlen(fields_buf) - 1);
+        }
+        strcat(fields_buf, "]");
+    }
+
+    snprintf(buf, sizeof(buf),
+             "{"
+             "\"allowed\":%s,"
+             "\"allowed_fields\":%s,"
+             "\"trace\":\"%s\""
+             "}",
+             allowed ? "true" : "false",
+             fields_buf,
+             trace ? escaped_trace : "");
+
+    sso_response_ok(resp, buf);
+
+    if (ectx.params.data.record) free((void *)ectx.params.data.record);
+    if (trace) free(trace);
+    eval_context_destroy(&ectx);
+    
+    return SSO_OK;
+}
+
 /* POST /api/v1/check/functional */
 static sso_error_t handle_check_functional(sso_context_t *ctx, const http_request_t *req,
                                             http_response_t *resp) {
@@ -2551,6 +2705,7 @@ static int run_server(void) {
         {"/api/v1/auth/me",         HTTP_GET,  handle_me,               true},
 
         /* Permission checks */
+        {"/api/v1/check",           HTTP_POST, handle_check_permission,  true},
         {"/api/v1/check/functional",HTTP_POST, handle_check_functional,  true},
         {"/api/v1/check/api",       HTTP_POST, handle_check_api,         true},
         {"/api/v1/check/data",      HTTP_POST, handle_check_data,        true},
