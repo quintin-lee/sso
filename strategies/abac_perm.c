@@ -181,29 +181,19 @@ static void abac_free_compiled(permission_strategy_t *self,
     free(compiled);
 }
 
-static const char *get_attr_from_json(const char *json, const char *attr_name) {
-    if (!json || !attr_name) return NULL;
-    cJSON *root = cJSON_Parse(json);
-    if (!root) return NULL;
+static const char *get_attr_from_cjson(cJSON *root, const char *attr_name, char *buffer, size_t buf_size) {
+    if (!root || !attr_name) return NULL;
     cJSON *item = cJSON_GetObjectItem(root, attr_name);
-    if (!item) {
-        cJSON_Delete(root);
-        return NULL;
-    }
+    if (!item) return NULL;
     
-    /* We return a static buffer for simplicity in this demo evaluate call,
-     * though in a real engine we might return a heap string or use a better cache. */
-    static char buffer[512];
     if (cJSON_IsString(item)) {
-        strncpy(buffer, item->valuestring, 511);
+        strncpy(buffer, item->valuestring, buf_size - 1);
     } else if (cJSON_IsNumber(item)) {
-        snprintf(buffer, 511, "%g", item->valuedouble);
+        snprintf(buffer, buf_size, "%g", item->valuedouble);
     } else {
-        cJSON_Delete(root);
         return NULL;
     }
-    buffer[511] = '\0';
-    cJSON_Delete(root);
+    buffer[buf_size - 1] = '\0';
     return buffer;
 }
 
@@ -219,17 +209,26 @@ static sso_error_t abac_evaluate(permission_strategy_t *self,
     bool any_matched = false;
     bool all_matched = true;
 
+    cJSON *subject_root = NULL;
+    cJSON *resource_root = NULL;
+    cJSON *env_root = NULL;
+
+    if (ctx->params.abac.subject_attrs[0] != '\0') subject_root = cJSON_Parse(ctx->params.abac.subject_attrs);
+    if (ctx->params.abac.resource_attrs[0] != '\0') resource_root = cJSON_Parse(ctx->params.abac.resource_attrs);
+    if (ctx->environment[0] != '\0') env_root = cJSON_Parse(ctx->environment);
+
     for (size_t i = 0; i < compiled->count; i++) {
         abac_condition_t *cond = &compiled->conditions[i];
-        const char *source_json = NULL;
+        cJSON *source_root = NULL;
 
         switch (cond->source) {
-            case ABAC_SRC_RESOURCE: source_json = ctx->params.abac.resource_attrs; break;
-            case ABAC_SRC_ENVIRONMENT: source_json = ctx->environment; break;
-            default: source_json = ctx->params.abac.subject_attrs; break;
+            case ABAC_SRC_RESOURCE: source_root = resource_root; break;
+            case ABAC_SRC_ENVIRONMENT: source_root = env_root; break;
+            default: source_root = subject_root; break;
         }
 
-        const char *actual = get_attr_from_json(source_json, cond->attr_name);
+        char actual_buf[512];
+        const char *actual = get_attr_from_cjson(source_root, cond->attr_name, actual_buf, sizeof(actual_buf));
         bool matched = actual ? apply_operator(cond->op, actual, cond->expected_value) : false;
 
         if (compiled->is_or_logic) {
@@ -238,6 +237,10 @@ static sso_error_t abac_evaluate(permission_strategy_t *self,
             if (!matched) { all_matched = false; break; }
         }
     }
+
+    if (subject_root) cJSON_Delete(subject_root);
+    if (resource_root) cJSON_Delete(resource_root);
+    if (env_root) cJSON_Delete(env_root);
 
     bool conditions_met = compiled->is_or_logic ? any_matched : all_matched;
     if (conditions_met) {
