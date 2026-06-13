@@ -2118,7 +2118,7 @@ static sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *r
 
     size_t total = 2;
     for (size_t i = 0; i < count; i++) {
-        total += 512;
+        total += 2048;
     }
 
     char *json = (char *)calloc(1, total + 1);
@@ -2194,7 +2194,7 @@ static sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *r
     }
 
     size_t total = 2;
-    for (size_t i = 0; i < count; i++) total += 512;
+    for (size_t i = 0; i < count; i++) total += 2048;
 
     char *json = (char *)calloc(1, total + 1);
     if (!json) {
@@ -2317,7 +2317,7 @@ static sso_error_t handle_list_groups(sso_context_t *ctx, const http_request_t *
     }
 
     size_t total = 2;
-    for (size_t i = 0; i < count; i++) total += 512;
+    for (size_t i = 0; i < count; i++) total += 2048;
 
     char *json = (char *)calloc(1, total + 1);
     if (!json) {

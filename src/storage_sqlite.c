@@ -464,7 +464,7 @@ static sso_error_t sqlite_##table##_list(storage_backend_t *self, sso_id_t *ids,
     } \
     *count = n; \
     sqlite3_finalize(stmt); \
-    return n > 0 ? SSO_OK : SSO_ERR_NOT_FOUND; \
+    return SSO_OK; \
 }
 
 MAKE_LIST(users, read_user)
