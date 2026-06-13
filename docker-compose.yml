@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  sso_system:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sso-system:latest
+    container_name: sso_system
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Generate a strong, secure token secret for production
+      - SSO_TOKEN_SECRET=your_super_secret_key_change_me_in_production
+    volumes:
+      - sso_data:/app
+      # Optional: Mount audit log to host
+      - ./audit.log:/app/audit.log
+
+volumes:
+  sso_data:
