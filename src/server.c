@@ -104,8 +104,8 @@ static void pool_submit(int client_fd, const char *client_ip) {
     pthread_mutex_lock(&g_pool.lock);
     if (g_pool.count < QUEUE_SIZE) {
         g_pool.queue[g_pool.tail].client_fd = client_fd;
-        strncpy(g_pool.queue[g_pool.tail].client_ip, client_ip, 63);
-        g_pool.queue[g_pool.tail].client_ip[63] = '\0';
+        snprintf(g_pool.queue[g_pool.tail].client_ip, 
+                 sizeof(g_pool.queue[g_pool.tail].client_ip), "%s", client_ip);
         g_pool.tail = (g_pool.tail + 1) % QUEUE_SIZE;
         g_pool.count++;
         pthread_cond_signal(&g_pool.notify);
