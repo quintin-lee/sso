@@ -127,10 +127,18 @@ static const char *SCHEMA_SQL =
  * Generic binding helpers
  * ======================================================================== */
 
-/* Bind a user_t to a prepared INSERT statement (indices 1-10). */
+/* Bind a user_t to a prepared INSERT statement (indices 1-9). */
 static void bind_user(sqlite3_stmt *stmt, const user_t *u) {
-    sqlite3_bind_text(stmt, 1, u->username, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 2, u->phone, -1, SQLITE_STATIC);
+    if (u->username[0] != '\0')
+        sqlite3_bind_text(stmt, 1, u->username, -1, SQLITE_STATIC);
+    else
+        sqlite3_bind_null(stmt, 1);
+
+    if (u->phone[0] != '\0')
+        sqlite3_bind_text(stmt, 2, u->phone, -1, SQLITE_STATIC);
+    else
+        sqlite3_bind_null(stmt, 2);
+
     sqlite3_bind_text(stmt, 3, u->password_hash, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 4, u->email, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 5, u->display_name, -1, SQLITE_STATIC);

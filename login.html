@@ -216,9 +216,28 @@ input::placeholder{color:var(--text-muted)}
   </div>
 </div>
 
+<div id="toastContainer" style="position:fixed;top:20px;right:20px;z-index:2000"></div>
+
 <script>
 let mode = 'pass';
 const errorBar = document.getElementById('errorBar');
+
+function toast(msg, type='success') {
+  const container = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.style.padding = '12px 24px';
+  t.style.borderRadius = '8px';
+  t.style.background = 'var(--bg-card)';
+  t.style.color = '#fff';
+  t.style.border = '1px solid var(--border)';
+  t.style.boxShadow = '0 10px 30px rgba(0,0,0,0.5)';
+  t.style.marginBottom = '10px';
+  t.style.borderLeft = `4px solid var(--${type === 'success' ? 'success' : 'error'})`;
+  t.textContent = msg;
+  t.style.transition = 'opacity 0.3s';
+  container.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+}
 
 function switchTab(t) {
   mode = t;
@@ -279,11 +298,15 @@ document.getElementById('smsForm').onsubmit = async (e) => {
 
 async function doRegister() {
   try {
-    await post('/api/v1/auth/register', {username:document.getElementById('r_user').value, password:document.getElementById('r_pass').value, display_name:document.getElementById('r_name').value});
+    const res = await post('/api/v1/auth/register', {
+      username: document.getElementById('r_user').value, 
+      password: document.getElementById('r_pass').value, 
+      display_name: document.getElementById('r_name').value
+    });
+    toast('注册成功，请登录');
     toggleMode('login');
-    showError('注册成功，请登录');
-    errorBar.style.color = '#9ece6a';
-    errorBar.style.borderColor = '#9ece6a';
+    document.getElementById('username').value = res.username;
+    document.getElementById('password').focus();
   } catch(e) { showError(e.message); }
 }
 
