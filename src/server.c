@@ -37,6 +37,97 @@
 static sso_server_t *g_server = NULL;
 
 /* ========================================================================
+ * Thread Pool for HTTP Server
+ * ======================================================================== */
+#define THREAD_POOL_SIZE 8
+#define QUEUE_SIZE 1024
+
+typedef struct {
+    int client_fd;
+} task_t;
+
+typedef struct {
+    pthread_t threads[THREAD_POOL_SIZE];
+    task_t queue[QUEUE_SIZE];
+    int head;
+    int tail;
+    int count;
+    pthread_mutex_t lock;
+    pthread_cond_t notify;
+    bool stop;
+    sso_server_t *server;
+} thread_pool_t;
+
+static thread_pool_t g_pool;
+
+static void handle_client(sso_server_t *server, int client_fd);
+
+static void *worker_thread(void *arg) {
+    (void)arg;
+    while (1) {
+        pthread_mutex_lock(&g_pool.lock);
+        while (g_pool.count == 0 && !g_pool.stop) {
+            pthread_cond_wait(&g_pool.notify, &g_pool.lock);
+        }
+        if (g_pool.stop && g_pool.count == 0) {
+            pthread_mutex_unlock(&g_pool.lock);
+            break;
+        }
+
+        task_t task = g_pool.queue[g_pool.head];
+        g_pool.head = (g_pool.head + 1) % QUEUE_SIZE;
+        g_pool.count--;
+        pthread_mutex_unlock(&g_pool.lock);
+
+        /* Handle connection */
+        handle_client(g_pool.server, task.client_fd);
+    }
+    return NULL;
+}
+
+static void pool_init(sso_server_t *server) {
+    g_pool.head = 0;
+    g_pool.tail = 0;
+    g_pool.count = 0;
+    g_pool.stop = false;
+    g_pool.server = server;
+    pthread_mutex_init(&g_pool.lock, NULL);
+    pthread_cond_init(&g_pool.notify, NULL);
+
+    for (int i = 0; i < THREAD_POOL_SIZE; i++) {
+        pthread_create(&g_pool.threads[i], NULL, worker_thread, NULL);
+    }
+}
+
+static void pool_submit(int client_fd) {
+    pthread_mutex_lock(&g_pool.lock);
+    if (g_pool.count < QUEUE_SIZE) {
+        g_pool.queue[g_pool.tail].client_fd = client_fd;
+        g_pool.tail = (g_pool.tail + 1) % QUEUE_SIZE;
+        g_pool.count++;
+        pthread_cond_signal(&g_pool.notify);
+    } else {
+        /* Queue full, drop connection */
+        close(client_fd);
+    }
+    pthread_mutex_unlock(&g_pool.lock);
+}
+
+static void pool_shutdown() {
+    pthread_mutex_lock(&g_pool.lock);
+    g_pool.stop = true;
+    pthread_cond_broadcast(&g_pool.notify);
+    pthread_mutex_unlock(&g_pool.lock);
+
+    for (int i = 0; i < THREAD_POOL_SIZE; i++) {
+        pthread_join(g_pool.threads[i], NULL);
+    }
+
+    pthread_mutex_destroy(&g_pool.lock);
+    pthread_cond_destroy(&g_pool.notify);
+}
+
+/* ========================================================================
  * Internal: HTTP request parser (minimal)
  * ======================================================================== */
 
@@ -370,6 +461,8 @@ sso_error_t sso_server_start(sso_server_t *server) {
     server->server_data = (void *)(intptr_t)server_fd;
     printf("SSO management API listening on http://%s:%d\n",
            server->host, server->port);
+           
+    pool_init(server);
 
     /* Main accept loop */
     while (1) {
@@ -379,8 +472,8 @@ sso_error_t sso_server_start(sso_server_t *server) {
         int client_fd = accept(server_fd,
                                (struct sockaddr *)&client_addr, &client_len);
         if (client_fd < 0) {
-            if (errno == EINTR) {
-                /* Signal caught — check if we should stop */
+            if (errno == EINTR || errno == EBADF || errno == EINVAL) {
+                /* Signal caught or socket closed — check if we should stop */
                 int *sock = (int *)&server->server_data;
                 if (*sock == 0) break;
                 continue;
@@ -388,10 +481,11 @@ sso_error_t sso_server_start(sso_server_t *server) {
             break;
         }
 
-        /* Handle connection (simple sequential — use thread pool in production) */
-        handle_client(server, client_fd);
+        /* Submit connection to thread pool */
+        pool_submit(client_fd);
     }
 
+    pool_shutdown();
     close(server_fd);
     server->server_data = NULL;
     printf("SSO management API stopped.\n");
