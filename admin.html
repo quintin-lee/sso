@@ -492,7 +492,11 @@ function loadData() {
       let html = '<table><thead><tr><th>ID</th><th>用户名</th><th>显示名称</th><th>状态</th><th>角色/分组</th><th>操作</th></tr></thead><tbody>';
       data.forEach(u => {
         const roles = (u.roles || []).map(r => `<span class="tag">${r.name}</span>`).join('');
-        html += `<tr><td>#${u.id}</td><td style="color:var(--text-bright);font-weight:600">${u.username}</td><td>${u.display_name||'-'}</td><td><span class="status-pill ${u.status === 1 ? 'status-active' : 'status-inactive'}">${u.status === 1 ? '● 正常' : '● 禁用'}</span></td><td>${roles||'-'}</td><td><button class="btn btn-outline btn-sm" onclick="showEditUser(${u.id})">管理</button> <button class="btn btn-danger btn-sm" onclick="deleteItem('users', ${u.id})">删除</button></td></tr>`;
+        html += `<tr><td>#${u.id}</td><td style="color:var(--text-bright);font-weight:600">${u.username}</td><td>${u.display_name||'-'}</td><td><span class="status-pill ${u.status === 1 ? 'status-active' : 'status-inactive'}">${u.status === 1 ? '● 正常' : '● 禁用'}</span></td><td>${roles||'-'}</td><td>
+          <button class="btn btn-outline btn-sm" onclick="showEditUser(${u.id})">编辑</button>
+          <button class="btn btn-outline btn-sm" onclick="showAssignments(${u.id})">角色/群组</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteItem('users', ${u.id})">删除</button>
+        </td></tr>`;
       });
       container.innerHTML = html + '</tbody></table>';
     });
@@ -558,6 +562,71 @@ function handleAdd() {
       toast('创建成功'); closeModal(); loadData();
     };
   }
+}
+
+async function showAssignments(userId) {
+  const u = allData.users.find(x => x.id === userId);
+  showModal(`管理 [${u.username}] 的角色与群组`, '设置该用户的权限边界与组织归属');
+  
+  const [roles, groups] = await Promise.all([api('/api/v1/roles'), api('/api/v1/groups')]);
+  
+  const userRoles = u.roles || [];
+  // For groups, we might need a separate API if not in user object. Assume u.groups exists for now or fetch.
+  // Assuming the backend returns groups in the user object like roles.
+  const userGroups = u.groups || [];
+
+  document.getElementById('modalContent').innerHTML = `
+    <div class="form-group">
+      <label>分配角色</label>
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <select id="assignRoleSelect" style="flex:1">
+          ${roles.filter(r => !userRoles.some(ur => ur.id === r.id)).map(r => `<option value="${r.id}">${r.name}</option>`).join('')}
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="doAssign(${userId}, 'role')">增加</button>
+      </div>
+      <div id="userRolesList" style="display:flex;flex-wrap:wrap;gap:8px">
+        ${userRoles.map(r => `<span class="tag">${r.name} <span style="cursor:pointer;margin-left:4px" onclick="doUnassign(${userId}, 'role', ${r.id})">×</span></span>`).join('')}
+      </div>
+    </div>
+    <div class="form-group">
+      <label>所属群组</label>
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <select id="assignGroupSelect" style="flex:1">
+          ${groups.filter(g => !userGroups.some(ug => ug.id === g.id)).map(g => `<option value="${g.id}">${g.name}</option>`).join('')}
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="doAssign(${userId}, 'group')">加入</button>
+      </div>
+      <div id="userGroupsList" style="display:flex;flex-wrap:wrap;gap:8px">
+        ${userGroups.map(g => `<span class="tag" style="background:rgba(187,154,247,0.1);color:var(--accent-light)">${g.name} <span style="cursor:pointer;margin-left:4px" onclick="doUnassign(${userId}, 'group', ${g.id})">×</span></span>`).join('')}
+      </div>
+    </div>
+  `;
+  document.getElementById('confirmBtn').textContent = '完成并关闭';
+  document.getElementById('confirmBtn').onclick = closeModal;
+}
+
+async function doAssign(userId, type) {
+  const selectId = type === 'role' ? 'assignRoleSelect' : 'assignGroupSelect';
+  const id = document.getElementById(selectId).value;
+  if(!id) return;
+  
+  const path = type === 'role' ? `/api/v1/roles/${id}/assign` : `/api/v1/groups/${id}/members`;
+  const body = type === 'role' ? {user_id: userId} : {user_id: userId};
+  
+  await api(path, 'POST', body);
+  toast('分配成功');
+  // Refresh users to get latest assignments in allData.users
+  await api('/api/v1/users').then(data => { allData.users = data; });
+  showAssignments(userId);
+}
+
+async function doUnassign(userId, type, id) {
+  if(!confirm('确定移除吗？')) return;
+  const path = type === 'role' ? `/api/v1/roles/${id}/unassign` : `/api/v1/groups/${id}/members/${userId}`;
+  await api(path, type === 'role' ? 'POST' : 'DELETE', type === 'role' ? {user_id: userId} : null);
+  toast('已移除');
+  await api('/api/v1/users').then(data => { allData.users = data; });
+  showAssignments(userId);
 }
 
 function showEditUser(id) {

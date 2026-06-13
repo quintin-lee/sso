@@ -47,6 +47,14 @@ static uint64_t get_time_ms() {
     return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
 }
 
+/* Helper: extract numeric ID from a path like /api/v1/xxx/NNN */
+static sso_id_t extract_path_id(const char *path, const char *prefix) {
+    const char *p = strstr(path, prefix);
+    if (!p) return 0;
+    p += strlen(prefix);
+    return (sso_id_t)atoll(p);
+}
+
 /* -----------------------------------------------------------------------
  * Real SMS sending via libcurl (Generic JSON API)
  * ----------------------------------------------------------------------- */
@@ -1976,6 +1984,55 @@ static sso_error_t handle_check_abac(sso_context_t *ctx, const http_request_t *r
 }
 
 /* POST /api/v1/users — create user (admin endpoint) */
+static sso_error_t handle_add_group_member(sso_context_t *ctx, const http_request_t *req,
+                                           http_response_t *resp) {
+    sso_id_t group_id = extract_path_id(req->path, "/groups/");
+    if (!group_id || !req->body) {
+        sso_response_error(resp, 400, "group_id and body required");
+        return SSO_OK;
+    }
+
+    sso_id_t user_id = (sso_id_t)json_int_value(req->body, "user_id", 0);
+    if (user_id == 0) {
+        sso_response_error(resp, 400, "user_id required");
+        return SSO_OK;
+    }
+
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+    sso_error_t err = group_add_user(gmgr, group_id, user_id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"added\":true}");
+    return SSO_OK;
+}
+
+static sso_error_t handle_remove_group_member(sso_context_t *ctx, const http_request_t *req,
+                                              http_response_t *resp) {
+    /* Path: /api/v1/groups/:id/members/:user_id */
+    sso_id_t group_id = extract_path_id(req->path, "/groups/");
+    
+    /* Extract user_id from end of path */
+    const char *last_slash = strrchr(req->path, '/');
+    if (!last_slash || !group_id) {
+        sso_response_error(resp, 400, "invalid path");
+        return SSO_OK;
+    }
+    sso_id_t user_id = (sso_id_t)atoll(last_slash + 1);
+
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+    sso_error_t err = group_remove_user(gmgr, group_id, user_id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"removed\":true}");
+    return SSO_OK;
+}
+
 static sso_error_t handle_create_user(sso_context_t *ctx, const http_request_t *req,
                                        http_response_t *resp) {
     if (!req->body) {
@@ -2152,15 +2209,37 @@ static sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *r
         }
         strcat(roles_json, "]");
 
-        char buf[1024];
+        /* Get groups for this user */
+        sso_id_t group_ids[16];
+        size_t gc = 0;
+        user_get_groups(umgr, u.id, group_ids, &gc, 16);
+        group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+
+        char groups_json[512] = "";
+        strcat(groups_json, "[");
+        for (size_t j = 0; j < gc; j++) {
+            group_t g;
+            char buf[128];
+            if (group_get_by_id(gmgr, group_ids[j], &g) == SSO_OK) {
+                snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
+                         j > 0 ? "," : "",
+                         (unsigned long long)g.id, g.name);
+                strcat(groups_json, buf);
+            }
+        }
+        strcat(groups_json, "]");
+
+        char buf[2048];
         snprintf(buf, sizeof(buf),
             "%s{"
             "\"id\":%llu,"
             "\"username\":\"%s\","
             "\"email\":\"%s\","
             "\"display_name\":\"%s\","
+            "\"phone\":\"%s\","
             "\"status\":%d,"
             "\"roles\":%s,"
+            "\"groups\":%s,"
             "\"created_at\":%lld"
             "}",
             i > 0 ? "," : "",
@@ -2168,8 +2247,10 @@ static sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *r
             u.username,
             u.email,
             u.display_name,
+            u.phone,
             (int)u.status,
             roles_json,
+            groups_json,
             (long long)u.created_at);
         strcat(json, buf);
     }
@@ -2489,14 +2570,6 @@ static sso_error_t handle_create_group(sso_context_t *ctx, const http_request_t 
 /* ========================================================================
  * CRUD: Update / Delete handlers
  * ======================================================================== */
-
-/* Helper: extract numeric ID from a path like /api/v1/xxx/NNN */
-static sso_id_t extract_path_id(const char *path, const char *prefix) {
-    const char *p = strstr(path, prefix);
-    if (!p) return 0;
-    p += strlen(prefix);
-    return (sso_id_t)atoll(p);
-}
 
 /* PUT /api/v1/users/:id */
 static sso_error_t handle_update_user(sso_context_t *ctx, const http_request_t *req,
@@ -2997,6 +3070,8 @@ static int run_server(void) {
         {"/api/v1/groups",          HTTP_POST, handle_create_group,      true},
         {"/api/v1/groups/:id",      HTTP_PUT,  handle_update_group,      true},
         {"/api/v1/groups/:id",      HTTP_DELETE, handle_delete_group,    true},
+        {"/api/v1/groups/*/members", HTTP_POST, handle_add_group_member,  true},
+        {"/api/v1/groups/*/members/*", HTTP_DELETE, handle_remove_group_member, true},
     };
 
     size_t route_count = sizeof(routes) / sizeof(routes[0]);
