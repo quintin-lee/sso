@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <pthread.h>
 
 /* ========================================================================
  * Built-in strategy declarations (defined in strategies/ dir)
@@ -37,11 +38,25 @@ extern permission_strategy_t lbac_perm_strategy;
  * Engine structure (private)
  * ======================================================================== */
 #define MAX_STRATEGIES 16
+#define MAX_POLICY_CACHE 256
+
+typedef struct {
+    sso_id_t policy_id;
+    void    *compiled;
+    perm_strategy_type_t strategy_type;
+} policy_cache_entry_t;
 
 struct permission_engine {
     sso_context_t          *ctx;
     permission_strategy_t  *strategies[MAX_STRATEGIES];
     size_t                  strategy_count;
+
+    /* Concurrency control */
+    pthread_rwlock_t        lock;
+
+    /* Policy compilation cache */
+    policy_cache_entry_t    cache[MAX_POLICY_CACHE];
+    size_t                  cache_count;
 };
 
 /* ========================================================================
@@ -56,6 +71,12 @@ sso_error_t perm_engine_create(permission_engine_t **engine, sso_context_t *ctx)
 
     (*engine)->ctx = ctx;
     (*engine)->strategy_count = 0;
+    (*engine)->cache_count = 0;
+
+    if (pthread_rwlock_init(&(*engine)->lock, NULL) != 0) {
+        free(*engine);
+        return SSO_ERR_GENERAL;
+    }
 
     sso_error_t err;
 
@@ -76,12 +97,48 @@ sso_error_t perm_engine_create(permission_engine_t **engine, sso_context_t *ctx)
 
 void perm_engine_destroy(permission_engine_t *engine) {
     if (!engine) return;
+
+    pthread_rwlock_wrlock(&engine->lock);
+
+    /* Free cached compiled rules */
+    for (size_t i = 0; i < engine->cache_count; i++) {
+        permission_strategy_t *strat = perm_engine_get_strategy(engine, engine->cache[i].strategy_type);
+        if (strat && strat->free_compiled_rules) {
+            strat->free_compiled_rules(strat, engine->cache[i].compiled);
+        }
+    }
+
     for (size_t i = 0; i < engine->strategy_count; i++) {
         if (engine->strategies[i] && engine->strategies[i]->destroy) {
             engine->strategies[i]->destroy(engine->strategies[i]);
         }
     }
+
+    pthread_rwlock_unlock(&engine->lock);
+    pthread_rwlock_destroy(&engine->lock);
     free(engine);
+}
+
+/* ========================================================================
+ * Cache management
+ * ======================================================================== */
+
+static void *perm_engine_get_cached_rule(permission_engine_t *engine, sso_id_t policy_id) {
+    for (size_t i = 0; i < engine->cache_count; i++) {
+        if (engine->cache[i].policy_id == policy_id) {
+            return engine->cache[i].compiled;
+        }
+    }
+    return NULL;
+}
+
+static void perm_engine_cache_rule(permission_engine_t *engine, sso_id_t policy_id, 
+                                    perm_strategy_type_t type, void *compiled) {
+    if (engine->cache_count >= MAX_POLICY_CACHE) return;
+    engine->cache[engine->cache_count].policy_id = policy_id;
+    engine->cache[engine->cache_count].strategy_type = type;
+    engine->cache[engine->cache_count].compiled = compiled;
+    engine->cache_count++;
 }
 
 /* ========================================================================
@@ -92,30 +149,38 @@ sso_error_t perm_engine_register_strategy(permission_engine_t *engine,
                                           permission_strategy_t *strategy) {
     if (!engine || !strategy) return SSO_ERR_INVALID_PARAM;
 
+    pthread_rwlock_wrlock(&engine->lock);
+
     /* Check for duplicates */
     for (size_t i = 0; i < engine->strategy_count; i++) {
         if (engine->strategies[i]->type == strategy->type) {
+            pthread_rwlock_unlock(&engine->lock);
             return SSO_ERR_STRATEGY_CONFLICT;
         }
     }
 
     if (engine->strategy_count >= MAX_STRATEGIES) {
+        pthread_rwlock_unlock(&engine->lock);
         return SSO_ERR_OUT_OF_MEMORY;
     }
 
     engine->strategies[engine->strategy_count++] = strategy;
 
+    sso_error_t err = SSO_OK;
     /* Call init if provided */
     if (strategy->init) {
-        return strategy->init(strategy, engine->ctx);
+        err = strategy->init(strategy, engine->ctx);
     }
 
-    return SSO_OK;
+    pthread_rwlock_unlock(&engine->lock);
+    return err;
 }
 
 sso_error_t perm_engine_unregister_strategy(permission_engine_t *engine,
                                             perm_strategy_type_t type) {
     if (!engine) return SSO_ERR_INVALID_PARAM;
+
+    pthread_rwlock_wrlock(&engine->lock);
 
     for (size_t i = 0; i < engine->strategy_count; i++) {
         if (engine->strategies[i]->type == type) {
@@ -127,10 +192,12 @@ sso_error_t perm_engine_unregister_strategy(permission_engine_t *engine,
                 engine->strategies[j] = engine->strategies[j + 1];
             }
             engine->strategy_count--;
+            pthread_rwlock_unlock(&engine->lock);
             return SSO_OK;
         }
     }
 
+    pthread_rwlock_unlock(&engine->lock);
     return SSO_ERR_STRATEGY_NOT_FOUND;
 }
 
@@ -152,12 +219,14 @@ permission_strategy_t *perm_engine_get_strategy(permission_engine_t *engine,
 sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
                                         const policy_t *policy,
                                         eval_context_t *ctx,
-                                        bool *result) {
+                                        bool *result,
+                                        char **decision_trace) {
     if (!engine || !policy || !ctx || !result) return SSO_ERR_INVALID_PARAM;
 
     /* Skip disabled policies */
     if (policy->status == POLICY_STATUS_DISABLED) {
-        *result = true; /* neutral — skip this policy */
+        if (decision_trace) *decision_trace = strdup("Policy disabled");
+        *result = true; 
         return SSO_OK;
     }
 
@@ -165,6 +234,7 @@ sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
     permission_strategy_t *strategy =
         perm_engine_get_strategy(engine, policy->strategy_type);
     if (!strategy) {
+        if (decision_trace) *decision_trace = strdup("Strategy not found");
         return SSO_ERR_STRATEGY_NOT_FOUND;
     }
 
@@ -172,45 +242,74 @@ sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
         return SSO_ERR_NOT_IMPLEMENTED;
     }
 
-    /* Strategy evaluate sets *result = true for ALLOW, false for DENY.
-     * Returns SSO_OK if the policy's rules apply to this request.
-     * Returns SSO_ERR_NOT_FOUND if no rule matches (policy is neutral). */
+    /* Handle pre-compilation */
+    void *compiled = NULL;
+    if (strategy->compile_rules) {
+        compiled = perm_engine_get_cached_rule(engine, policy->id);
+        if (!compiled) {
+            sso_error_t cerr = strategy->compile_rules(strategy, policy->rules, &compiled);
+            if (cerr == SSO_OK) {
+                perm_engine_cache_rule(engine, policy->id, strategy->type, compiled);
+            }
+        }
+    }
+
     bool strategy_result = false;
-    sso_error_t err = strategy->evaluate(strategy, ctx, policy, &strategy_result);
+    sso_error_t err = strategy->evaluate(strategy, ctx, policy, compiled, &strategy_result);
+    
+    if (decision_trace) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Strategy %s: %s (matched: %s)", 
+                 strategy->name, strategy_result ? "ALLOW" : "DENY", 
+                 err == SSO_OK ? "YES" : "NO");
+        *decision_trace = strdup(buf);
+    }
+
     if (err == SSO_ERR_NOT_FOUND) {
-        return SSO_ERR_NOT_FOUND; /* policy didn't match — neutral, propagate to caller */
+        return SSO_ERR_NOT_FOUND; 
     }
     if (err != SSO_OK) return err;
 
-    /* Strategy matched a rule — use its result directly:
-     *   true  → ALLOW (access is granted by this policy)
-     *   false → DENY (this policy explicitly denies) */
     *result = strategy_result;
     return SSO_OK;
 }
 
 sso_error_t perm_engine_evaluate(permission_engine_t *engine,
                                  eval_context_t *ctx,
-                                 bool *result) {
+                                 bool *result,
+                                 char **decision_trace) {
     if (!engine || !ctx || !result) return SSO_ERR_INVALID_PARAM;
     if (!ctx->user && ctx->user_id == 0) return SSO_ERR_INVALID_PARAM;
+
+    pthread_rwlock_rdlock(&engine->lock);
 
     *result = false; /* default: deny */
     sso_error_t err;
 
+    /* Trace buffer */
+    char full_trace[4096] = "";
+    if (decision_trace) *decision_trace = NULL;
+
     /* 1. Resolve all policies applicable to this user */
     policy_manager_t *pmgr = (policy_manager_t *)engine->ctx->policy_mgr;
-    if (!pmgr) return SSO_ERR_GENERAL;
+    if (!pmgr) {
+        pthread_rwlock_unlock(&engine->lock);
+        return SSO_ERR_GENERAL;
+    }
 
     policy_t policies[64];
     size_t policy_count = 0;
     size_t max_policies = 64;
 
     err = policy_resolve_for_user(pmgr, ctx->user_id, policies, &policy_count, max_policies);
-    if (err != SSO_OK && err != SSO_ERR_NOT_FOUND) return err;
+    if (err != SSO_OK && err != SSO_ERR_NOT_FOUND) {
+        pthread_rwlock_unlock(&engine->lock);
+        return err;
+    }
 
     if (policy_count == 0) {
-        /* No policies apply → default-deny */
+        if (decision_trace) *decision_trace = strdup("Default DENY: No policies found");
+        pthread_rwlock_unlock(&engine->lock);
         return SSO_OK;
     }
 
@@ -219,23 +318,42 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
 
     for (size_t i = 0; i < policy_count; i++) {
         bool policy_result = false;
-        err = perm_engine_evaluate_policy(engine, &policies[i], ctx, &policy_result);
-        if (err == SSO_ERR_NOT_FOUND) {
-            continue; /* neutral — policy didn't match this request, skip */
+        char *policy_trace = NULL;
+        err = perm_engine_evaluate_policy(engine, &policies[i], ctx, &policy_result, &policy_trace);
+        
+        if (decision_trace && policy_trace) {
+            strncat(full_trace, "[Policy ", sizeof(full_trace) - strlen(full_trace) - 1);
+            strncat(full_trace, policies[i].name, sizeof(full_trace) - strlen(full_trace) - 1);
+            strncat(full_trace, "] ", sizeof(full_trace) - strlen(full_trace) - 1);
+            strncat(full_trace, policy_trace, sizeof(full_trace) - strlen(full_trace) - 1);
+            strncat(full_trace, "\n", sizeof(full_trace) - strlen(full_trace) - 1);
+            free(policy_trace);
         }
-        if (err != SSO_OK) continue; /* skip broken policies */
+
+        if (err == SSO_ERR_NOT_FOUND) {
+            continue; 
+        }
+        if (err != SSO_OK) continue; 
 
         if (!policy_result) {
-            /* This policy explicitly denies — DENY overrides */
             *result = false;
+            if (decision_trace) {
+                strncat(full_trace, "Result: DENIED (Override by policy)\n", sizeof(full_trace) - strlen(full_trace) - 1);
+                *decision_trace = strdup(full_trace);
+            }
+            pthread_rwlock_unlock(&engine->lock);
             return SSO_OK;
         }
 
-        /* Policy matched and allowed */
         any_allowed = true;
     }
 
     *result = any_allowed;
+    if (decision_trace) {
+        strncat(full_trace, any_allowed ? "Result: ALLOWED\n" : "Result: DENIED (No matching allow rule)\n", sizeof(full_trace) - strlen(full_trace) - 1);
+        *decision_trace = strdup(full_trace);
+    }
+    pthread_rwlock_unlock(&engine->lock);
     return SSO_OK;
 }
 
@@ -259,7 +377,7 @@ sso_error_t perm_check_function(sso_context_t *ctx, sso_id_t user_id,
             sizeof(ectx.params.functional.function_code) - 1);
 
     /* Evaluate */
-    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed);
+    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);
     eval_context_destroy(&ectx);
     return err;
 }
@@ -277,7 +395,7 @@ sso_error_t perm_check_api(sso_context_t *ctx, sso_id_t user_id,
     strncpy(ectx.params.api.http_method, method, sizeof(ectx.params.api.http_method) - 1);
     strncpy(ectx.params.api.request_path, path, sizeof(ectx.params.api.request_path) - 1);
 
-    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed);
+    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);
     eval_context_destroy(&ectx);
     return err;
 }
@@ -302,7 +420,7 @@ sso_error_t perm_check_data(sso_context_t *ctx, sso_id_t user_id,
     ectx.params.data.field_filter = NULL;
     ectx.params.data.field_filter_count = 0;
 
-    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed);
+    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);
 
     /* Pass back field filter if the data strategy populated it */
     if (err == SSO_OK && field_filter && field_count) {
@@ -332,7 +450,7 @@ sso_error_t perm_check_rbac(sso_context_t *ctx, sso_id_t user_id,
     strncpy(ectx.params.rbac.role_name, role_name,
             sizeof(ectx.params.rbac.role_name) - 1);
 
-    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed);
+    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);
     eval_context_destroy(&ectx);
     return err;
 }
@@ -355,7 +473,7 @@ sso_error_t perm_check_location(sso_context_t *ctx, sso_id_t user_id,
                 sizeof(ectx.params.location.geo_country) - 1);
     }
 
-    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed);
+    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);
     eval_context_destroy(&ectx);
     return err;
 }
@@ -376,7 +494,7 @@ sso_error_t perm_check_lbac(sso_context_t *ctx, sso_id_t user_id,
     strncpy(ectx.params.lbac.resource_label, resource_label,
             sizeof(ectx.params.lbac.resource_label) - 1);
 
-    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed);
+    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);
     eval_context_destroy(&ectx);
     return err;
 }
@@ -407,7 +525,7 @@ sso_error_t perm_check_abac(sso_context_t *ctx, sso_id_t user_id,
                 sizeof(ectx.params.abac.action) - 1);
     }
 
-    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed);
+    err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);
     eval_context_destroy(&ectx);
     return err;
 }

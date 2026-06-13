@@ -1,114 +1,49 @@
 /*
  * abac_perm.c — ABAC (Attribute-Based Access Control) permission strategy.
  *
- * Evaluates access based on user attributes (subject), resource attributes,
- * and environment context.  Conditions are boolean expressions evaluated
- * against attribute values from the eval_context.
- *
- * Rule format (JSON):
- *   {
- *     "conditions": [
- *       {"source": "subject",   "attr": "department", "op": "eq", "value": "engineering"},
- *       {"source": "subject",   "attr": "clearance",  "op": "gte","value": "3"},
- *       {"source": "resource",  "attr": "owner",      "op": "eq", "value": "alice"},
- *       {"source": "environment","attr": "access_hour","op": "gte","value": "9"}
- *     ],
- *     "logic": "and",
- *     "effect": "allow"
- *   }
- *
- * Evaluation:
- *   1. For each condition, extract the attribute from the matching source.
- *   2. Compare with the condition value using the specified operator.
- *   3. With "and" logic: ALL conditions must match for the policy to apply.
- *   4. With "or" logic: ANY condition matching triggers the policy.
- *   5. If conditions match → return the rule's effect.
- *   6. No match → SSO_ERR_NOT_FOUND.
- * Operators: eq, neq, gt, gte, lt, lte, contains, in (comma-separated)
- *
- * Note: Uses basic strstr-based JSON parsing — sufficient for this rule
- * format.  In production, consider a proper JSON library.
+ * This version uses cJSON for proper parsing and pre-compilation for performance.
  */
 
 #include "sso.h"
 #include "policy.h"
+#include "cJSON.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
 
 /* -----------------------------------------------------------------------
- * Simple JSON value extraction — get the value string for a given key.
- * Returns a heap-allocated string (caller must free) or NULL if not found.
+ * Pre-compiled ABAC rule structures
  * ----------------------------------------------------------------------- */
-static char *json_extract_value(const char *json, const char *key) {
-    if (!json || !key) return NULL;
 
-    char search[128];
-    snprintf(search, sizeof(search), "\"%s\"", key);
+typedef enum {
+    ABAC_SRC_SUBJECT,
+    ABAC_SRC_RESOURCE,
+    ABAC_SRC_ENVIRONMENT
+} abac_source_t;
 
-    const char *pos = json;
-    const char *found;
+typedef struct {
+    char            attr_name[64];
+    abac_source_t   source;
+    char            op[16];
+    char            expected_value[256];
+} abac_condition_t;
 
-    while ((found = strstr(pos, search)) != NULL) {
-        const char *val = found + strlen(search);
-        /* Skip colon */
-        while (*val && *val != ':') val++;
-        if (*val == ':') val++;
-        /* Skip whitespace */
-        while (*val && (*val == ' ' || *val == '\t' || *val == '\n')) val++;
-
-        if (*val == '"') {
-            /* String value */
-            val++;
-            const char *vend = val;
-            while (*vend && *vend != '"') vend++;
-            size_t len = (size_t)(vend - val);
-            char *result = (char *)malloc(len + 1);
-            if (!result) return NULL;
-            strncpy(result, val, len);
-            result[len] = '\0';
-            return result;
-        } else if (*val == '-' || (*val >= '0' && *val <= '9')) {
-            /* Number value */
-            const char *vend = val;
-            while (*vend && *vend != ',' && *vend != '}' && *vend != ']' && !isspace((unsigned char)*vend)) vend++;
-            size_t len = (size_t)(vend - val);
-            char *result = (char *)malloc(len + 1);
-            if (!result) return NULL;
-            strncpy(result, val, len);
-            result[len] = '\0';
-            return result;
-        } else if (*val == '{' || *val == '[') {
-            /* Skip nested objects/arrays — not supported for direct comparison */
-            return NULL;
-        }
-
-        pos = found + 1; /* try next occurrence */
-    }
-
-    return NULL;
-}
+typedef struct {
+    abac_condition_t *conditions;
+    size_t            count;
+    bool              is_or_logic;
+    bool              is_allow_effect;
+} abac_compiled_rule_t;
 
 /* -----------------------------------------------------------------------
- * Attribute lookup: get attribute value from a JSON attributes string.
- * The attributes JSON is like {"department":"engineering","clearance":"5"}
- * ----------------------------------------------------------------------- */
-static char *get_attribute(const char *attrs_json, const char *attr_name) {
-    return json_extract_value(attrs_json, attr_name);
-}
-
-/* -----------------------------------------------------------------------
- * Numeric comparison helpers
+ * Operator application (Numeric + String)
  * ----------------------------------------------------------------------- */
 static double parse_number(const char *s) {
     if (!s || !*s) return 0.0;
     return strtod(s, NULL);
 }
 
-/* -----------------------------------------------------------------------
- * Operator application
- * ----------------------------------------------------------------------- */
 static bool apply_operator(const char *op, const char *actual, const char *expected) {
     if (!op || !actual || !expected) return false;
 
@@ -122,13 +57,11 @@ static bool apply_operator(const char *op, const char *actual, const char *expec
         return strstr(actual, expected) != NULL;
     }
     if (strcmp(op, "in") == 0) {
-        /* expected is comma-separated list: "a,b,c" */
         char list[1024];
         strncpy(list, expected, sizeof(list) - 1);
         list[sizeof(list) - 1] = '\0';
         char *item = strtok(list, ",");
         while (item) {
-            /* Trim whitespace */
             while (*item == ' ') item++;
             char *end = item + strlen(item) - 1;
             while (end > item && *end == ' ') end--;
@@ -139,12 +72,8 @@ static bool apply_operator(const char *op, const char *actual, const char *expec
         return false;
     }
 
-    /* Numeric operators — try to parse both as numbers */
     double av = parse_number(actual);
     double ev = parse_number(expected);
-
-    /* If either is NaN, fall back to string comparison */
-    if (strcmp(actual, "NaN") == 0 || strcmp(expected, "NaN") == 0) return false;
 
     if (strcmp(op, "gt") == 0)  return av > ev;
     if (strcmp(op, "gte") == 0) return av >= ev;
@@ -159,8 +88,7 @@ static bool apply_operator(const char *op, const char *actual, const char *expec
  * ----------------------------------------------------------------------- */
 
 static sso_error_t abac_init(permission_strategy_t *self, sso_context_t *ctx) {
-    (void)self;
-    (void)ctx;
+    (void)self; (void)ctx;
     return SSO_OK;
 }
 
@@ -168,202 +96,165 @@ static void abac_destroy(permission_strategy_t *self) {
     (void)self;
 }
 
+static sso_error_t abac_compile(permission_strategy_t *self,
+                                 const char *rules_json,
+                                 void **compiled_rule) {
+    (void)self;
+    if (!rules_json || !compiled_rule) return SSO_ERR_INVALID_PARAM;
+
+    cJSON *root = cJSON_Parse(rules_json);
+    if (!root) return SSO_ERR_RULE_INVALID;
+
+    cJSON *conditions = cJSON_GetObjectItem(root, "conditions");
+    if (!cJSON_IsArray(conditions)) {
+        cJSON_Delete(root);
+        return SSO_ERR_RULE_INVALID;
+    }
+
+    abac_compiled_rule_t *compiled = (abac_compiled_rule_t *)calloc(1, sizeof(abac_compiled_rule_t));
+    if (!compiled) {
+        cJSON_Delete(root);
+        return SSO_ERR_OUT_OF_MEMORY;
+    }
+
+    compiled->count = (size_t)cJSON_GetArraySize(conditions);
+    compiled->conditions = (abac_condition_t *)calloc(compiled->count, sizeof(abac_condition_t));
+    if (!compiled->conditions) {
+        free(compiled);
+        cJSON_Delete(root);
+        return SSO_ERR_OUT_OF_MEMORY;
+    }
+
+    /* Parse logic and effect */
+    cJSON *logic = cJSON_GetObjectItem(root, "logic");
+    compiled->is_or_logic = (logic && cJSON_IsString(logic) && strcmp(logic->valuestring, "or") == 0);
+
+    cJSON *effect = cJSON_GetObjectItem(root, "effect");
+    compiled->is_allow_effect = !(effect && cJSON_IsString(effect) && strcmp(effect->valuestring, "deny") == 0);
+
+    /* Parse conditions */
+    for (size_t i = 0; i < compiled->count; i++) {
+        cJSON *item = cJSON_GetArrayItem(conditions, (int)i);
+        cJSON *src = cJSON_GetObjectItem(item, "source");
+        cJSON *attr = cJSON_GetObjectItem(item, "attr");
+        cJSON *op = cJSON_GetObjectItem(item, "op");
+        cJSON *val = cJSON_GetObjectItem(item, "value");
+
+        if (attr && cJSON_IsString(attr)) {
+            strncpy(compiled->conditions[i].attr_name, attr->valuestring, 63);
+        }
+
+        if (src && cJSON_IsString(src)) {
+            if (strcmp(src->valuestring, "resource") == 0) compiled->conditions[i].source = ABAC_SRC_RESOURCE;
+            else if (strcmp(src->valuestring, "environment") == 0) compiled->conditions[i].source = ABAC_SRC_ENVIRONMENT;
+            else compiled->conditions[i].source = ABAC_SRC_SUBJECT;
+        } else {
+            compiled->conditions[i].source = ABAC_SRC_SUBJECT;
+        }
+
+        if (op && cJSON_IsString(op)) {
+            strncpy(compiled->conditions[i].op, op->valuestring, 15);
+        } else {
+            strcpy(compiled->conditions[i].op, "eq");
+        }
+
+        if (val) {
+            if (cJSON_IsString(val)) {
+                strncpy(compiled->conditions[i].expected_value, val->valuestring, 255);
+            } else if (cJSON_IsNumber(val)) {
+                snprintf(compiled->conditions[i].expected_value, 255, "%g", val->valuedouble);
+            }
+        }
+    }
+
+    cJSON_Delete(root);
+    *compiled_rule = compiled;
+    return SSO_OK;
+}
+
+static void abac_free_compiled(permission_strategy_t *self,
+                               void *compiled_rule) {
+    (void)self;
+    if (!compiled_rule) return;
+    abac_compiled_rule_t *compiled = (abac_compiled_rule_t *)compiled_rule;
+    free(compiled->conditions);
+    free(compiled);
+}
+
+static const char *get_attr_from_json(const char *json, const char *attr_name) {
+    if (!json || !attr_name) return NULL;
+    cJSON *root = cJSON_Parse(json);
+    if (!root) return NULL;
+    cJSON *item = cJSON_GetObjectItem(root, attr_name);
+    if (!item) {
+        cJSON_Delete(root);
+        return NULL;
+    }
+    
+    /* We return a static buffer for simplicity in this demo evaluate call,
+     * though in a real engine we might return a heap string or use a better cache. */
+    static char buffer[512];
+    if (cJSON_IsString(item)) {
+        strncpy(buffer, item->valuestring, 511);
+    } else if (cJSON_IsNumber(item)) {
+        snprintf(buffer, 511, "%g", item->valuedouble);
+    } else {
+        cJSON_Delete(root);
+        return NULL;
+    }
+    buffer[511] = '\0';
+    cJSON_Delete(root);
+    return buffer;
+}
+
 static sso_error_t abac_evaluate(permission_strategy_t *self,
                                  eval_context_t *ctx,
                                  const policy_t *policy,
+                                 void *compiled_rule,
                                  bool *result) {
     (void)self;
-    if (!ctx || !policy || !result) return SSO_ERR_INVALID_PARAM;
+    if (!ctx || !policy || !result || !compiled_rule) return SSO_ERR_INVALID_PARAM;
 
-    /* Determine logic: "and" (default) or "or" */
-    const char *logic_val = strstr(policy->rules, "\"logic\"");
-    bool is_or = false;
-    if (logic_val) {
-        const char *lv = logic_val + strlen("\"logic\"");
-        while (*lv && *lv != ':') lv++;
-        if (*lv == ':') lv++;
-        while (*lv && (*lv == ' ' || *lv == '\t' || *lv == '\n' || *lv == '"')) lv++;
-        is_or = (strncmp(lv, "or", 2) == 0);
-    }
-
-    /* Extract effect: "allow" (default) or "deny" */
-    const char *eff = strstr(policy->rules, "\"effect\"");
-    bool is_allow = true; /* default effect is allow if conditions match */
-    if (eff) {
-        const char *ev = eff + strlen("\"effect\"");
-        while (*ev && (*ev == ' ' || *ev == '\t' || *ev == '\n' || *ev == ':')) ev++;
-        if (*ev == '"') ev++;
-        is_allow = (strncmp(ev, "allow", 5) == 0);
-    }
-
-    /* Parse conditions array */
-    const char *cond_start = strstr(policy->rules, "\"conditions\"");
-    if (!cond_start) return SSO_ERR_NOT_FOUND;
-
-    const char *arr_start = strchr(cond_start, '[');
-    if (!arr_start) return SSO_ERR_NOT_FOUND;
-
-    const char *arr_end = strchr(arr_start, ']');
-    if (!arr_end) return SSO_ERR_NOT_FOUND;
-
-    /* Iterate conditions — find "attr" keys */
-    const char *p = arr_start + 1;
+    abac_compiled_rule_t *compiled = (abac_compiled_rule_t *)compiled_rule;
     bool any_matched = false;
     bool all_matched = true;
-    int condition_count = 0;
 
-    while (p < arr_end) {
-        /* Find the next attribute key */
-        const char *attr_key = strstr(p, "\"attr\"");
-        if (!attr_key || attr_key > arr_end) break;
-
-        condition_count++;
-
-        /* Extract attribute name */
-        const char *av = attr_key + strlen("\"attr\"");
-        while (*av && *av != ':') av++;
-        if (*av == ':') av++;
-        while (*av && (*av == ' ' || *av == '\t' || *av == '\n')) av++;
-        if (*av == '"') av++;
-
-        const char *av_end = av;
-        while (*av_end && *av_end != '"') av_end++;
-
-        size_t attr_name_len = (size_t)(av_end - av);
-        char attr_name[128];
-        size_t copy_n = attr_name_len < sizeof(attr_name) - 1 ? attr_name_len : sizeof(attr_name) - 1;
-        strncpy(attr_name, av, copy_n);
-        attr_name[copy_n] = '\0';
-
-        /* Extract source (default: "subject") */
-        char source[32] = "subject";
-        const char *src_key = strstr(attr_key, "\"source\"");
-        if (src_key && src_key < arr_end) {
-            const char *sv = src_key + strlen("\"source\"");
-            while (*sv && *sv != ':') sv++;
-            if (*sv == ':') sv++;
-            while (*sv && (*sv == ' ' || *sv == '\t' || *sv == '\n')) sv++;
-            if (*sv == '"') sv++;
-            const char *sv_end = sv;
-            while (*sv_end && *sv_end != '"') sv_end++;
-            size_t slen = (size_t)(sv_end - sv);
-            if (slen > 0 && slen < sizeof(source)) {
-                strncpy(source, sv, slen);
-                source[slen] = '\0';
-            }
-        }
-
-        /* Extract operator (default: "eq") */
-        char op[16] = "eq";
-        const char *op_key = strstr(attr_key, "\"op\"");
-        if (op_key && op_key < arr_end) {
-            const char *ov = op_key + strlen("\"op\"");
-            while (*ov && *ov != ':') ov++;
-            if (*ov == ':') ov++;
-            while (*ov && (*ov == ' ' || *ov == '\t' || *ov == '\n')) ov++;
-            if (*ov == '"') ov++;
-            const char *ov_end = ov;
-            while (*ov_end && *ov_end != '"') ov_end++;
-            size_t olen = (size_t)(ov_end - ov);
-            if (olen > 0 && olen < sizeof(op)) {
-                strncpy(op, ov, olen);
-                op[olen] = '\0';
-            }
-        }
-
-        /* Extract value to compare against */
-        char expected[512] = "";
-        const char *val_key = strstr(attr_key, "\"value\"");
-        if (val_key && val_key < arr_end) {
-            const char *vv = val_key + strlen("\"value\"");
-            while (*vv && *vv != ':') vv++;
-            if (*vv == ':') vv++;
-            while (*vv && (*vv == ' ' || *vv == '\t' || *vv == '\n')) vv++;
-            if (*vv == '"') {
-                vv++;
-                const char *vv_end = vv;
-                while (*vv_end && *vv_end != '"') vv_end++;
-                size_t vlen = (size_t)(vv_end - vv);
-                if (vlen < sizeof(expected)) {
-                    strncpy(expected, vv, vlen);
-                    expected[vlen] = '\0';
-                }
-            } else {
-                /* Number or other value */
-                const char *vv_end = vv;
-                while (*vv_end && *vv_end != ',' && *vv_end != '}' && *vv_end != ']' && !isspace((unsigned char)*vv_end)) vv_end++;
-                size_t vlen = (size_t)(vv_end - vv);
-                if (vlen < sizeof(expected)) {
-                    strncpy(expected, vv, vlen);
-                    expected[vlen] = '\0';
-                }
-            }
-        }
-
-        /* Get actual attribute value from the right source */
-        char actual[512] = "";
+    for (size_t i = 0; i < compiled->count; i++) {
+        abac_condition_t *cond = &compiled->conditions[i];
         const char *source_json = NULL;
 
-        if (strcmp(source, "resource") == 0) {
-            source_json = ctx->params.abac.resource_attrs;
-        } else if (strcmp(source, "environment") == 0) {
-            source_json = ctx->environment;
+        switch (cond->source) {
+            case ABAC_SRC_RESOURCE: source_json = ctx->params.abac.resource_attrs; break;
+            case ABAC_SRC_ENVIRONMENT: source_json = ctx->environment; break;
+            default: source_json = ctx->params.abac.subject_attrs; break;
+        }
+
+        const char *actual = get_attr_from_json(source_json, cond->attr_name);
+        bool matched = actual ? apply_operator(cond->op, actual, cond->expected_value) : false;
+
+        if (compiled->is_or_logic) {
+            if (matched) { any_matched = true; break; }
         } else {
-            source_json = ctx->params.abac.subject_attrs;
+            if (!matched) { all_matched = false; break; }
         }
-
-        if (source_json && source_json[0]) {
-            char *val = get_attribute(source_json, attr_name);
-            if (val) {
-                strncpy(actual, val, sizeof(actual) - 1);
-                actual[sizeof(actual) - 1] = '\0';
-                free(val);
-            }
-        }
-
-        /* Evaluate this condition */
-        bool matched = (actual[0] != '\0') ? apply_operator(op, actual, expected) : false;
-
-        if (is_or) {
-            if (matched) {
-                any_matched = true;
-                break;
-            }
-        } else {
-            if (!matched) {
-                all_matched = false;
-                /* For "and", one failure means the policy doesn't apply */
-                break;
-            }
-        }
-
-        /* Move past this condition */
-        p = strchr(attr_key, '}');
-        if (p) p++; else break;
     }
 
-    if (condition_count == 0) return SSO_ERR_NOT_FOUND;
-
-    bool conditions_met = is_or ? any_matched : all_matched;
+    bool conditions_met = compiled->is_or_logic ? any_matched : all_matched;
     if (conditions_met) {
-        *result = is_allow;
+        *result = compiled->is_allow_effect;
         return SSO_OK;
     }
 
-    return SSO_ERR_NOT_FOUND; /* conditions not satisfied */
+    return SSO_ERR_NOT_FOUND;
 }
 
 static sso_error_t abac_validate(permission_strategy_t *self,
                                  const char *rules_json) {
     (void)self;
     if (!rules_json) return SSO_ERR_INVALID_PARAM;
-
-    if (strstr(rules_json, "\"conditions\"") == NULL) {
-        return SSO_ERR_RULE_INVALID;
-    }
-
-    if (rules_json[0] != '{') return SSO_ERR_RULE_INVALID;
-
+    cJSON *root = cJSON_Parse(rules_json);
+    if (!root) return SSO_ERR_RULE_INVALID;
+    cJSON_Delete(root);
     return SSO_OK;
 }
 
@@ -375,6 +266,8 @@ permission_strategy_t abac_perm_strategy = {
     .name          = "abac",
     .init          = abac_init,
     .destroy       = abac_destroy,
+    .compile_rules = abac_compile,
+    .free_compiled_rules = abac_free_compiled,
     .evaluate      = abac_evaluate,
     .validate_rules = abac_validate,
     .userdata      = NULL,

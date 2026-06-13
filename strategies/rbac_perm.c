@@ -13,13 +13,7 @@
  *     ]
  *   }
  *
- * Evaluation:
- *   Look up role_name from eval_context in the policy's role list.
- *   - If user holds the role → return the rule's effect (allow/deny)
- *   - If user does not hold the role → skip this rule
- *   - If no rule matches the checked role → SSO_ERR_NOT_FOUND
- *
- * The engine handles DENY-overrides at a higher level.
+ * This version uses pre-compilation for production performance.
  */
 
 #include "sso.h"
@@ -27,14 +21,26 @@
 #include "role.h"
 #include "user.h"
 #include "storage.h"
+#include "cJSON.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
 /* -----------------------------------------------------------------------
+ * Pre-compiled RBAC rule structure
+ * ----------------------------------------------------------------------- */
+typedef struct {
+    char    role_name[64];
+    bool    is_allow;
+} rbac_rule_item_t;
+
+typedef struct {
+    rbac_rule_item_t *items;
+    size_t            count;
+} rbac_compiled_rule_t;
+
+/* -----------------------------------------------------------------------
  * Helper: check if a user ID holds a named role.
- * Uses the storage backend's get_user_roles_with_ancestors for an
- * efficient single-query lookup that avoids N+1 hierarchy walks.
  * ----------------------------------------------------------------------- */
 static bool user_has_role(sso_context_t *sso_ctx, sso_id_t user_id,
                           const char *role_name) {
@@ -50,10 +56,7 @@ static bool user_has_role(sso_context_t *sso_ctx, sso_id_t user_id,
         return false;
     }
 
-    /* Use the bulk query to get all role IDs (direct + inherited)
-     * for this user in a single operation. */
     if (!sb->get_user_roles_with_ancestors) {
-        /* Fallback if the backend doesn't support this interface. */
         return false;
     }
 
@@ -64,7 +67,6 @@ static bool user_has_role(sso_context_t *sso_ctx, sso_id_t user_id,
                                                          &count, 128);
     if (err != SSO_OK) return false;
 
-    /* Check if the target role ID appears in the result set. */
     for (size_t i = 0; i < count; i++) {
         if (user_role_ids[i] == target_role.id) {
             return true;
@@ -79,7 +81,7 @@ static bool user_has_role(sso_context_t *sso_ctx, sso_id_t user_id,
  * ----------------------------------------------------------------------- */
 
 static sso_error_t rbac_init(permission_strategy_t *self, sso_context_t *ctx) {
-    self->userdata = ctx; /* store sso_context for role/user lookups */
+    self->userdata = ctx; 
     return SSO_OK;
 }
 
@@ -87,12 +89,71 @@ static void rbac_destroy(permission_strategy_t *self) {
     (void)self;
 }
 
+static sso_error_t rbac_compile(permission_strategy_t *self,
+                                const char *rules_json,
+                                void **compiled_rule) {
+    (void)self;
+    if (!rules_json || !compiled_rule) return SSO_ERR_INVALID_PARAM;
+
+    cJSON *root = cJSON_Parse(rules_json);
+    if (!root) return SSO_ERR_RULE_INVALID;
+
+    cJSON *roles_arr = cJSON_GetObjectItem(root, "roles");
+    if (!cJSON_IsArray(roles_arr)) {
+        cJSON_Delete(root);
+        return SSO_ERR_RULE_INVALID;
+    }
+
+    size_t count = (size_t)cJSON_GetArraySize(roles_arr);
+    rbac_compiled_rule_t *compiled = (rbac_compiled_rule_t *)malloc(sizeof(rbac_compiled_rule_t));
+    if (!compiled) {
+        cJSON_Delete(root);
+        return SSO_ERR_OUT_OF_MEMORY;
+    }
+
+    compiled->count = count;
+    compiled->items = (rbac_rule_item_t *)calloc(count, sizeof(rbac_rule_item_t));
+    if (!compiled->items) {
+        free(compiled);
+        cJSON_Delete(root);
+        return SSO_ERR_OUT_OF_MEMORY;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+        cJSON *item = cJSON_GetArrayItem(roles_arr, (int)i);
+        cJSON *name = cJSON_GetObjectItem(item, "name");
+        cJSON *effect = cJSON_GetObjectItem(item, "effect");
+
+        if (cJSON_IsString(name)) {
+            strncpy(compiled->items[i].role_name, name->valuestring, 63);
+        }
+        if (cJSON_IsString(effect)) {
+            compiled->items[i].is_allow = (strcmp(effect->valuestring, "allow") == 0);
+        } else {
+            compiled->items[i].is_allow = true; 
+        }
+    }
+
+    cJSON_Delete(root);
+    *compiled_rule = compiled;
+    return SSO_OK;
+}
+
+static void rbac_free_compiled(permission_strategy_t *self,
+                               void *compiled_rule) {
+    (void)self;
+    if (!compiled_rule) return;
+    rbac_compiled_rule_t *compiled = (rbac_compiled_rule_t *)compiled_rule;
+    free(compiled->items);
+    free(compiled);
+}
+
 static sso_error_t rbac_evaluate(permission_strategy_t *self,
                                  eval_context_t *ctx,
                                  const policy_t *policy,
+                                 void *compiled_rule,
                                  bool *result) {
-    (void)self;
-    if (!ctx || !policy || !result) return SSO_ERR_INVALID_PARAM;
+    if (!ctx || !policy || !result || !compiled_rule) return SSO_ERR_INVALID_PARAM;
 
     const char *role_name = ctx->params.rbac.role_name;
     if (!role_name || role_name[0] == '\0') {
@@ -102,55 +163,19 @@ static sso_error_t rbac_evaluate(permission_strategy_t *self,
     sso_context_t *sso_ctx = (sso_context_t *)self->userdata;
     if (!sso_ctx) return SSO_ERR_NOT_FOUND;
 
-    /* Parse rules JSON — find matching role name and return its effect */
-    const char *p = policy->rules;
-    const char *search_key = "\"name\"";
-    const char *name_pos;
+    rbac_compiled_rule_t *compiled = (rbac_compiled_rule_t *)compiled_rule;
 
-    while ((name_pos = strstr(p, search_key)) != NULL) {
-        /* Move past "name": to the value */
-        const char *val = name_pos + strlen(search_key);
-        while (*val && *val != ':') val++;
-        if (*val == ':') val++;
-        while (*val && (*val == ' ' || *val == '\t' || *val == '\n')) val++;
-        if (*val == '"') val++;
-
-        /* Find end of name value */
-        const char *val_end = val;
-        while (*val_end && *val_end != '"') val_end++;
-
-        /* Extract and compare role name */
-        size_t name_len = (size_t)(val_end - val);
-        char extracted[64];
-        size_t copy_len = name_len < sizeof(extracted) - 1 ? name_len : sizeof(extracted) - 1;
-        strncpy(extracted, val, copy_len);
-        extracted[copy_len] = '\0';
-
-        if (strcmp(extracted, role_name) == 0) {
-            /* Found matching role — find its effect */
-            const char *eff = strstr(name_pos, "\"effect\"");
-            if (!eff) { p = val_end + 1; continue; }
-
-            const char *eff_val = eff + strlen("\"effect\"");
-            while (*eff_val && (*eff_val == ' ' || *eff_val == '\t' || *eff_val == '\n'
-                   || *eff_val == ':')) eff_val++;
-            if (*eff_val == '"') eff_val++;
-
-            bool is_allow = (strncmp(eff_val, "allow", 5) == 0);
-
-            /* Now check if the user actually holds this role */
+    for (size_t i = 0; i < compiled->count; i++) {
+        if (strcmp(compiled->items[i].role_name, role_name) == 0) {
             if (user_has_role(sso_ctx, ctx->user_id, role_name)) {
-                *result = is_allow;
+                *result = compiled->items[i].is_allow;
                 return SSO_OK;
             }
-            /* User doesn't have the role — this rule doesn't apply */
             return SSO_ERR_NOT_FOUND;
         }
-
-        p = val_end + 1;
     }
 
-    return SSO_ERR_NOT_FOUND; /* no matching role rule found */
+    return SSO_ERR_NOT_FOUND;
 }
 
 static sso_error_t rbac_validate(permission_strategy_t *self,
@@ -158,12 +183,16 @@ static sso_error_t rbac_validate(permission_strategy_t *self,
     (void)self;
     if (!rules_json) return SSO_ERR_INVALID_PARAM;
 
-    if (strstr(rules_json, "\"roles\"") == NULL) {
+    cJSON *root = cJSON_Parse(rules_json);
+    if (!root) return SSO_ERR_RULE_INVALID;
+
+    cJSON *roles = cJSON_GetObjectItem(root, "roles");
+    if (!cJSON_IsArray(roles)) {
+        cJSON_Delete(root);
         return SSO_ERR_RULE_INVALID;
     }
 
-    if (rules_json[0] != '{') return SSO_ERR_RULE_INVALID;
-
+    cJSON_Delete(root);
     return SSO_OK;
 }
 
@@ -175,6 +204,8 @@ permission_strategy_t rbac_perm_strategy = {
     .name          = "rbac",
     .init          = rbac_init,
     .destroy       = rbac_destroy,
+    .compile_rules = rbac_compile,
+    .free_compiled_rules = rbac_free_compiled,
     .evaluate      = rbac_evaluate,
     .validate_rules = rbac_validate,
     .userdata      = NULL,

@@ -34,6 +34,7 @@ SRCS = $(SRCDIR)/sso.c           \
        $(SRCDIR)/token.c         \
        $(SRCDIR)/storage_sqlite.c \
        $(SRCDIR)/server.c        \
+       $(SRCDIR)/cJSON.c         \
        $(SRCDIR)/main.c
 
 STRAT_SRCS = $(STRATEGIES)/func_perm.c \

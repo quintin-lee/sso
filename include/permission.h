@@ -78,14 +78,16 @@ permission_strategy_t *perm_engine_get_strategy(permission_engine_t *engine,
  */
 sso_error_t perm_engine_evaluate(permission_engine_t *engine,
                                  eval_context_t *ctx,
-                                 bool *result);
+                                 bool *result,
+                                 char **decision_trace);
 
 /* Fine-grained: evaluate only a single policy through its strategy.
  * Useful for policy-testing UIs and dry-run scenarios. */
 sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
                                         const policy_t *policy,
                                         eval_context_t *ctx,
-                                        bool *result);
+                                        bool *result,
+                                        char **decision_trace);
 
 /* -----------------------------------------------------------------------
  * Convenience: one-shot check for common cases

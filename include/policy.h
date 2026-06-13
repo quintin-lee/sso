@@ -31,6 +31,7 @@ struct policy {
     policy_effect_t       effect;           /* allow or deny               */
     int                   priority;         /* higher = evaluated first     */
     char                  rules[SSO_MAX_RULES_JSON]; /* strategy-specific  */
+    void                 *compiled_rules;   /* pre-compiled AST or object   */
     policy_status_t       status;           /* enabled / disabled           */
     sso_timestamp_t       created_at;
     sso_timestamp_t       updated_at;

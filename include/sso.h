@@ -197,9 +197,18 @@ void sso_destroy(sso_context_t *ctx);
  * ======================================================================== */
 typedef sso_error_t (*strategy_init_fn)(permission_strategy_t *self, sso_context_t *ctx);
 typedef void        (*strategy_destroy_fn)(permission_strategy_t *self);
+
+/* Compiled rule handling */
+typedef sso_error_t (*strategy_compile_fn)(permission_strategy_t *self,
+                                           const char *rules_json,
+                                           void **compiled_rule);
+typedef void        (*strategy_free_compiled_fn)(permission_strategy_t *self,
+                                                 void *compiled_rule);
+
 typedef sso_error_t (*strategy_evaluate_fn)(permission_strategy_t *self,
                                             eval_context_t *ctx,
                                             const policy_t *policy,
+                                            void *compiled_rule,
                                             bool *result);
 typedef sso_error_t (*strategy_validate_fn)(permission_strategy_t *self,
                                             const char *rules_json);
@@ -212,6 +221,10 @@ struct permission_strategy {
     strategy_init_fn     init;
     strategy_destroy_fn  destroy;
 
+    /* Compilation */
+    strategy_compile_fn       compile_rules;
+    strategy_free_compiled_fn free_compiled_rules;
+
     /* Core: evaluate one policy against the provided context.
      * Sets *result = true if the policy ALLOWS, false if DENIES. */
     strategy_evaluate_fn evaluate;
@@ -219,7 +232,7 @@ struct permission_strategy {
     /* Validate that rules_json is well-formed for this strategy. */
     strategy_validate_fn validate_rules;
 
-    /* Strategy-private data (e.g. compiled rule trie, precomputed maps). */
+    /* Strategy-private data (e.g. global state for the strategy). */
     void                *userdata;
 };
 
