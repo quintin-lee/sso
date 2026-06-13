@@ -2,8 +2,13 @@
 
 A lightweight, enterprise-ready Single Sign-On (SSO) service written in C11, providing unified authentication and fine-grained authorization with sub-millisecond latency. Designed for high-concurrency microservice architectures.
 
+[![C11](https://img.shields.io/badge/C-11-blue.svg)](https://en.wikipedia.org/wiki/C11_(C_standard_revision))
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![CI](https://github.com/anomalyco/sso/actions/workflows/ci.yml/badge.svg)](https://github.com/anomalyco/sso/actions/workflows/ci.yml)
+
 ## Table of Contents
 
+- [Project Status](#project-status)
 - [Key Features](#key-features)
 - [Project Structure](#project-structure)
 - [Quick Start](#quick-start)
@@ -13,7 +18,17 @@ A lightweight, enterprise-ready Single Sign-On (SSO) service written in C11, pro
 - [Architecture](#architecture)
 - [Environment Variables](#environment-variables)
 - [Docker Deployment](#docker-deployment)
+- [CI/CD](#cicd)
+- [Commit Convention](#commit-convention)
 - [Developer Notes](#developer-notes)
+
+---
+
+## Project Status
+
+This project is in active development. The core authentication and authorization engine is stable and feature-complete with all 7 permission strategies implemented. The HTTP API server, Docker deployment, and CI pipeline are operational.
+
+**Current**: `v1.0.0` — core SSO engine, all 7 strategies, embedded HTTP server, Docker support.
 
 ---
 
@@ -333,6 +348,62 @@ docker run -d \
 ```
 
 The Docker image runs as the `nobody` user and exposes port 8080.
+
+---
+
+## CI/CD
+
+This project uses **GitHub Actions** for continuous integration.
+
+### Workflow: `build-and-test` (push/PR on master/main)
+
+| Step | Description |
+|------|-------------|
+| **Install dependencies** | `build-essential`, `libsqlite3-dev`, `libsodium-dev`, `libssl-dev`, `libcurl4-openssl-dev` |
+| **Build** | `make` (release build with `-Wall -Wextra -Wpedantic`) |
+| **Run demo** | Executes `./sso_system` which runs comprehensive permission checks and cache stress tests |
+
+### Workflow: `docker-build` (on build-and-test success)
+
+| Step | Description |
+|------|-------------|
+| **Docker Buildx** | Sets up multi-stage Docker build |
+| **Build image** | Builds the production Docker image without pushing |
+
+The CI config lives at [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+---
+
+## Commit Convention
+
+This project follows a strict **Conventional Commits + Gitmoji** convention:
+
+```
+[type]([scope]): [emoji] [subject]
+```
+
+| Type | Emoji | Description |
+|------|-------|-------------|
+| `feat` | ✨ | New feature |
+| `fix` | 🐛 | Bug fix |
+| `docs` | 📝 | Documentation changes |
+| `style` | 🎨 | Formatting, missing semi-colons, etc. (no code changes) |
+| `refactor` | ♻️ | Code change that neither fixes a bug nor adds a feature |
+| `perf` | ⚡️ | Code change that improves performance |
+| `test` | ✅ | Adding missing tests or correcting existing tests |
+| `build` | 📦 | Changes that affect the build system or external dependencies |
+| `ci` | 👷 | Changes to CI configuration files and scripts |
+| `chore` | 🚀 | Other changes that don't modify src or test files |
+| `revert` | ⏪️ | Reverts a previous commit |
+
+### Examples
+
+```
+feat(auth): ✨ implement JWT-based login
+fix(ci): 📦 switch to Portable ZIP format to resolve link errors
+docs(readme): 📝 update installation instructions
+refactor(core): ♻️ extract validation logic to helper
+```
 
 ---
 
