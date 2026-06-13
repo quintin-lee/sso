@@ -34,6 +34,19 @@ static bool wildcard_match(const char *pattern, const char *str) {
 }
 
 /* -----------------------------------------------------------------------
+ * Pre-compiled Functional rule structure
+ * ----------------------------------------------------------------------- */
+typedef struct {
+    char    code[128];
+    bool    is_allow;
+} func_rule_item_t;
+
+typedef struct {
+    func_rule_item_t *items;
+    size_t            count;
+} func_compiled_rule_t;
+
+/* -----------------------------------------------------------------------
  * Strategy implementation
  * ----------------------------------------------------------------------- */
 
@@ -46,21 +59,13 @@ static void func_destroy(permission_strategy_t *self) {
     (void)self;
 }
 
-static sso_error_t func_evaluate(permission_strategy_t *self,
-                                 eval_context_t *ctx,
-                                 const policy_t *policy,
-                                 void *compiled_rule,
-                                 bool *result) {
-    (void)self; (void)compiled_rule;
-    if (!ctx || !policy || !result) return SSO_ERR_INVALID_PARAM;
+static sso_error_t func_compile(permission_strategy_t *self,
+                                const char *rules_json,
+                                void **compiled_rule) {
+    (void)self;
+    if (!rules_json || !compiled_rule) return SSO_ERR_INVALID_PARAM;
 
-    const char *function_code = ctx->params.functional.function_code;
-    if (!function_code || function_code[0] == '\0') {
-        return SSO_ERR_NOT_FOUND;
-    }
-
-    /* Fallback to JSON parsing if not compiled */
-    cJSON *root = cJSON_Parse(policy->rules);
+    cJSON *root = cJSON_Parse(rules_json);
     if (!root) return SSO_ERR_RULE_INVALID;
 
     cJSON *funcs = cJSON_GetObjectItem(root, "functions");
@@ -69,24 +74,70 @@ static sso_error_t func_evaluate(permission_strategy_t *self,
         return SSO_ERR_RULE_INVALID;
     }
 
-    bool matched = false;
-    bool allowed = false;
+    size_t count = (size_t)cJSON_GetArraySize(funcs);
+    func_compiled_rule_t *compiled = (func_compiled_rule_t *)malloc(sizeof(func_compiled_rule_t));
+    if (!compiled) {
+        cJSON_Delete(root);
+        return SSO_ERR_OUT_OF_MEMORY;
+    }
 
-    cJSON *item;
-    cJSON_ArrayForEach(item, funcs) {
+    compiled->count = count;
+    compiled->items = (func_rule_item_t *)calloc(count, sizeof(func_rule_item_t));
+    if (!compiled->items) {
+        free(compiled);
+        cJSON_Delete(root);
+        return SSO_ERR_OUT_OF_MEMORY;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+        cJSON *item = cJSON_GetArrayItem(funcs, (int)i);
         cJSON *code = cJSON_GetObjectItem(item, "code");
-        if (cJSON_IsString(code) && wildcard_match(code->valuestring, function_code)) {
-            cJSON *effect = cJSON_GetObjectItem(item, "effect");
-            allowed = !(effect && cJSON_IsString(effect) && strcmp(effect->valuestring, "deny") == 0);
-            matched = true;
-            break;
+        cJSON *effect = cJSON_GetObjectItem(item, "effect");
+
+        if (cJSON_IsString(code)) {
+            strncpy(compiled->items[i].code, code->valuestring, 127);
+        }
+        if (cJSON_IsString(effect)) {
+            compiled->items[i].is_allow = (strcmp(effect->valuestring, "allow") == 0);
+        } else {
+            compiled->items[i].is_allow = true; /* default to allow if not specified */
         }
     }
 
     cJSON_Delete(root);
-    if (matched) {
-        *result = allowed;
-        return SSO_OK;
+    *compiled_rule = compiled;
+    return SSO_OK;
+}
+
+static void func_free_compiled(permission_strategy_t *self,
+                               void *compiled_rule) {
+    (void)self;
+    if (!compiled_rule) return;
+    func_compiled_rule_t *compiled = (func_compiled_rule_t *)compiled_rule;
+    free(compiled->items);
+    free(compiled);
+}
+
+static sso_error_t func_evaluate(permission_strategy_t *self,
+                                 eval_context_t *ctx,
+                                 const policy_t *policy,
+                                 void *compiled_rule,
+                                 bool *result) {
+    (void)self; (void)policy;
+    if (!ctx || !result || !compiled_rule) return SSO_ERR_INVALID_PARAM;
+
+    const char *function_code = ctx->params.functional.function_code;
+    if (!function_code || function_code[0] == '\0') {
+        return SSO_ERR_NOT_FOUND;
+    }
+
+    func_compiled_rule_t *compiled = (func_compiled_rule_t *)compiled_rule;
+
+    for (size_t i = 0; i < compiled->count; i++) {
+        if (wildcard_match(compiled->items[i].code, function_code)) {
+            *result = compiled->items[i].is_allow;
+            return SSO_OK;
+        }
     }
 
     return SSO_ERR_NOT_FOUND;
@@ -107,8 +158,8 @@ permission_strategy_t func_perm_strategy = {
     .name          = "functional",
     .init          = func_init,
     .destroy       = func_destroy,
-    .compile_rules = NULL, /* TODO: Implement compilation for func */
-    .free_compiled_rules = NULL,
+    .compile_rules = func_compile,
+    .free_compiled_rules = func_free_compiled,
     .evaluate      = func_evaluate,
     .validate_rules = func_validate,
     .userdata      = NULL,
