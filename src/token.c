@@ -389,7 +389,12 @@ static struct {
     char (*jtis)[REVOCATION_STR_LEN];
     size_t count;
     size_t capacity;
-} revocations = {NULL, 0, 0};
+    bool   sorted;
+} revocations = {NULL, 0, 0, true};
+
+static int compare_jtis(const void *a, const void *b) {
+    return strcmp((const char *)a, (const char *)b);
+}
 
 sso_error_t token_revoke(token_manager_t *mgr, const char *jti) {
     (void)mgr;
@@ -416,14 +421,18 @@ sso_error_t token_revoke(token_manager_t *mgr, const char *jti) {
     strncpy(revocations.jtis[revocations.count], jti, REVOCATION_STR_LEN - 1);
     revocations.jtis[revocations.count][REVOCATION_STR_LEN - 1] = '\0';
     revocations.count++;
+    revocations.sorted = false;
     return SSO_OK;
 }
 
 bool token_is_revoked(token_manager_t *mgr, const char *jti) {
     (void)mgr;
-    if (!jti || !revocations.jtis) return false;
-    for (size_t i = 0; i < revocations.count; i++) {
-        if (strcmp(revocations.jtis[i], jti) == 0) return true;
+    if (!jti || !revocations.jtis || revocations.count == 0) return false;
+
+    if (!revocations.sorted) {
+        qsort(revocations.jtis, revocations.count, REVOCATION_STR_LEN, compare_jtis);
+        revocations.sorted = true;
     }
-    return false;
+
+    return bsearch(jti, revocations.jtis, revocations.count, REVOCATION_STR_LEN, compare_jtis) != NULL;
 }
