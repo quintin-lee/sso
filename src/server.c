@@ -274,7 +274,14 @@ static bool match_route(const char *pattern, const char *path, char **params) {
                 /* In production, store key=value */
             }
         } else if (*pattern == '*') {
-            return true; /* wildcard */
+            pattern++; /* consume '*' */
+            /* Skip path until end of current segment or next pattern char */
+            while (*path && *path != '/') path++;
+            /* If pattern continues, match the remainder */
+            if (*pattern) {
+                return match_route(pattern, path, params);
+            }
+            return true; /* '*' at end of pattern matches rest */
         } else {
             if (*pattern != *path) return false;
             pattern++;

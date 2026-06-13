@@ -2175,6 +2175,11 @@ static sso_error_t handle_assign_role(sso_context_t *ctx, const http_request_t *
         role_id = (sso_id_t)atoll(id_start);
     }
 
+    if (!role_id) {
+        sso_response_error(resp, 400, "Invalid role ID in path");
+        return SSO_OK;
+    }
+
     if (!req->body) {
         sso_response_error(resp, 400, "Request body required");
         return SSO_OK;
@@ -2309,6 +2314,91 @@ static sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *r
 
     sso_response_ok(resp, json);
     free(json);
+    return SSO_OK;
+}
+
+/* GET /api/v1/users/:id */
+static sso_error_t handle_get_user(sso_context_t *ctx, const http_request_t *req,
+                                    http_response_t *resp) {
+    sso_id_t user_id = extract_path_id(req->path, "/api/v1/users/");
+    if (user_id == 0) {
+        sso_response_error(resp, 400, "Invalid user ID");
+        return SSO_OK;
+    }
+
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+
+    user_t u;
+    sso_error_t err = user_get_by_id(umgr, user_id, &u);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 404, "User not found");
+        return SSO_OK;
+    }
+
+    sso_id_t role_ids[16];
+    size_t rc = 0;
+    user_get_roles(umgr, u.id, role_ids, &rc, 16);
+
+    char roles_json[1024];
+    roles_json[0] = '\0';
+    strcat(roles_json, "[");
+    for (size_t j = 0; j < rc; j++) {
+        role_t r;
+        char buf[128];
+        if (role_get_by_id(rmgr, role_ids[j], &r) == SSO_OK) {
+            snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
+                     j > 0 ? "," : "",
+                     (unsigned long long)r.id, r.name);
+            strcat(roles_json, buf);
+        }
+    }
+    strcat(roles_json, "]");
+
+    sso_id_t group_ids[16];
+    size_t gc = 0;
+    user_get_groups(umgr, u.id, group_ids, &gc, 16);
+
+    char groups_json[1024];
+    groups_json[0] = '\0';
+    strcat(groups_json, "[");
+    for (size_t j = 0; j < gc; j++) {
+        group_t g;
+        char buf[128];
+        if (group_get_by_id(gmgr, group_ids[j], &g) == SSO_OK) {
+            snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
+                     j > 0 ? "," : "",
+                     (unsigned long long)g.id, g.name);
+            strcat(groups_json, buf);
+        }
+    }
+    strcat(groups_json, "]");
+
+    char json[2048];
+    snprintf(json, sizeof(json),
+        "{"
+        "\"id\":%llu,"
+        "\"username\":\"%s\","
+        "\"email\":\"%s\","
+        "\"display_name\":\"%s\","
+        "\"phone\":\"%s\","
+        "\"status\":%d,"
+        "\"roles\":%s,"
+        "\"groups\":%s,"
+        "\"created_at\":%lld"
+        "}",
+        (unsigned long long)u.id,
+        u.username,
+        u.email,
+        u.display_name,
+        u.phone,
+        (int)u.status,
+        roles_json,
+        groups_json,
+        (long long)u.created_at);
+
+    sso_response_ok(resp, json);
     return SSO_OK;
 }
 
@@ -3131,6 +3221,7 @@ static int run_server(void) {
         /* Management — CRUD */
         {"/api/v1/users",           HTTP_GET,  handle_list_users,        true},
         {"/api/v1/users",           HTTP_POST, handle_create_user,       true},
+        {"/api/v1/users/:id",       HTTP_GET,  handle_get_user,          true},
         {"/api/v1/users/:id",       HTTP_PUT,  handle_update_user,     true},
         {"/api/v1/users/:id",       HTTP_DELETE, handle_delete_user,     true},
         {"/api/v1/roles",           HTTP_GET,  handle_list_roles,        true},

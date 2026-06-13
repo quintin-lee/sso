@@ -637,7 +637,7 @@ static sso_error_t sqlite_policy_create(storage_backend_t *self, policy_t *polic
     return (rc == SQLITE_DONE || rc == SQLITE_CONSTRAINT) ? SSO_OK : SSO_ERR_STORAGE;
 
 static sso_error_t sqlite_assign_role_to_user(storage_backend_t *self, sso_id_t role_id, sso_id_t user_id) {
-    ASSIGN_SIMPLE2("INSERT OR IGNORE INTO user_roles VALUES (?1,?2)", role_id, user_id);
+    ASSIGN_SIMPLE2("INSERT OR IGNORE INTO user_roles (user_id, role_id) VALUES (?1,?2)", user_id, role_id);
 }
 static sso_error_t sqlite_unassign_role_user(storage_backend_t *self, sso_id_t role_id, sso_id_t user_id) {
     ASSIGN_SIMPLE2("DELETE FROM user_roles WHERE user_id=?1 AND role_id=?2", user_id, role_id);
