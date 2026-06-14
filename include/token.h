@@ -22,6 +22,7 @@
 #define SSO_TOKEN_H
 
 #include "sso.h"
+#include <pthread.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,6 +41,7 @@ struct token {
     size_t            role_count;
     sso_id_t         *group_ids;                    /* cached on issue    */
     size_t            group_count;
+    uint64_t          nonce;                        /* user token version */
     char              claims[SSO_MAX_CLAIMS_JSON];  /* extra claims JSON  */
 };
 
@@ -51,16 +53,22 @@ typedef enum {
     SSO_TOKEN_MODE_RS256    /* Asymmetric (RSA private/public pair) */
 } sso_token_mode_t;
 
+typedef struct { sso_id_t uid; uint64_t nonce; } nonce_pair_t;
+
 struct token_manager {
     sso_token_mode_t  mode;
     union {
-        unsigned char secret[32];   /* HS256 key */
+        unsigned char secret[32];
         struct {
-            void *priv_key;         /* EVP_PKEY* (OpenSSL) */
-            void *pub_key;          /* EVP_PKEY* (OpenSSL) */
+            void *priv_key;
+            void *pub_key;
         } rsa;
     } keys;
-    sso_timestamp_t   default_ttl_ms;       /* default token lifetime (ms)*/
+    sso_timestamp_t   default_ttl_ms;
+    nonce_pair_t     *nonces;
+    size_t            nonce_count;
+    size_t            nonce_cap;
+    pthread_mutex_t   nonce_lock;
 };
 
 /* -----------------------------------------------------------------------
@@ -103,6 +111,17 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
  * SSO_ERR_TOKEN_INVALID for bad signature / malformed,
  * SSO_ERR_TOKEN_EXPIRED if expired. */
 sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *out);
+
+/* Set the token nonce for a user.  Tokens issued with an older nonce
+ * will fail the nonce check.  Used to implement "logout all sessions". */
+sso_error_t token_set_nonce(token_manager_t *mgr, sso_id_t user_id, uint64_t nonce);
+
+/* Get the current token nonce for a user (default 0). */
+uint64_t token_get_nonce(token_manager_t *mgr, sso_id_t user_id);
+
+/* Bump (increment) the token nonce for a user, invalidating all existing
+ * sessions. */
+sso_error_t token_bump_nonce(token_manager_t *mgr, sso_id_t user_id);
 
 /* Refresh a token (issue a new one with extended TTL). */
 sso_error_t token_refresh(token_manager_t *mgr, const token_t *old_token,

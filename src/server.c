@@ -394,7 +394,14 @@ static sso_error_t authenticate_request(sso_server_t *server, const http_request
     if (token_is_revoked(tmgr, tok->jti)) return SSO_ERR_TOKEN_INVALID;
 
     user_manager_t *umgr = (user_manager_t *)server->sso_ctx->user_mgr;
-    return user_get_by_id(umgr, tok->user_id, user);
+    sso_error_t uerr = user_get_by_id(umgr, tok->user_id, user);
+    if (uerr != SSO_OK) return uerr;
+
+    /* Check user token nonce (supports "logout all sessions") */
+    uint64_t expected_nonce = token_get_nonce(tmgr, user->id);
+    if (tok->nonce < expected_nonce) return SSO_ERR_TOKEN_INVALID;
+
+    return SSO_OK;
 }
 
 /* ========================================================================

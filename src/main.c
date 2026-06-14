@@ -1419,6 +1419,29 @@ static sso_error_t handle_metrics(sso_context_t *ctx, const http_request_t *req,
     return SSO_OK;
 }
 
+/* GET /api/v1/admin/status */
+static sso_error_t handle_admin_status(sso_context_t *ctx, const http_request_t *req,
+                                        http_response_t *resp) {
+    (void)req;
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    size_t user_count = 0;
+    sso_id_t ids[1];
+    user_list(umgr, NULL, -1, 0, 0, ids, &user_count, &user_count);
+
+    char buf[2048];
+    snprintf(buf, sizeof(buf),
+        "{"
+        "\"service\":\"sso\","
+        "\"version\":\"1.0.0\","
+        "\"users\":%zu,"
+        "\"uptime_ms\":%llu"
+        "}",
+        user_count,
+        (unsigned long long)get_time_ms());
+    sso_response_ok(resp, buf);
+    return SSO_OK;
+}
+
 /* POST /api/v1/auth/login */
 static sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
                                  http_response_t *resp) {
@@ -1882,6 +1905,26 @@ static sso_error_t handle_logout(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"logged_out\":true}");
+    return SSO_OK;
+}
+
+/* POST /api/v1/auth/logout_all */
+static sso_error_t handle_logout_all(sso_context_t *ctx, const http_request_t *req,
+                                      http_response_t *resp) {
+    auth_context_t *auth = (auth_context_t *)req->userdata;
+    if (!auth) {
+        sso_response_error(resp, 401, "Authentication required");
+        return SSO_OK;
+    }
+
+    token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
+    sso_error_t err = token_bump_nonce(tmgr, auth->user.id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to revoke all sessions");
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"logged_out_all\":true}");
     return SSO_OK;
 }
 
@@ -3741,8 +3784,9 @@ static int run_server(sso_config_t *cfg) {
         {"/admin",                  HTTP_GET,  handle_admin_page,       false},
 
         /* Public — API */
-        {"/metrics",                HTTP_GET,  handle_metrics,         false},
+        {"/metrics",                HTTP_GET,  handle_metrics,          true},
         {"/api/v1/health",          HTTP_GET,  handle_health,          false},
+        {"/api/v1/admin/status",    HTTP_GET,  handle_admin_status,     true},
         {"/api/v1/auth/login",      HTTP_POST, handle_login,           false},
         {"/api/v1/auth/send_sms",   HTTP_POST, handle_send_sms,        false},
         {"/api/v1/auth/login_by_sms",HTTP_POST, handle_login_by_sms,   false},
@@ -3753,6 +3797,7 @@ static int run_server(sso_config_t *cfg) {
         {"/api/v1/auth/verify",     HTTP_POST, handle_verify,           false},
         {"/api/v1/auth/refresh",    HTTP_POST, handle_refresh,          false},
         {"/api/v1/auth/logout",     HTTP_POST, handle_logout,           true},
+        {"/api/v1/auth/logout_all", HTTP_POST, handle_logout_all,       true},
         {"/api/v1/auth/password",   HTTP_POST, handle_change_password,  true},
         {"/api/v1/auth/me",         HTTP_GET,  handle_me,               true},
         {"/api/v1/auth/certs",      HTTP_GET,  handle_certs,            false},

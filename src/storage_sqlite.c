@@ -298,7 +298,13 @@ static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
     for (int v = current_version + 1; ; v++) {
         const char *migration = NULL;
         if (v == 1) {
-            migration = NULL; /* Placeholder for first migration */
+            migration = "CREATE INDEX IF NOT EXISTS idx_user_roles_user ON user_roles(user_id);"
+                        "CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role_id);"
+                        "CREATE INDEX IF NOT EXISTS idx_user_groups_user ON user_groups(user_id);"
+                        "CREATE INDEX IF NOT EXISTS idx_user_groups_group ON user_groups(group_id);"
+                        "CREATE INDEX IF NOT EXISTS idx_role_groups_role ON role_groups(role_id);"
+                        "CREATE INDEX IF NOT EXISTS idx_role_groups_group ON role_groups(group_id);"
+                        "CREATE INDEX IF NOT EXISTS idx_policy_assignments_target ON policy_assignments(target_type, target_id);";
         } else {
             break;
         }

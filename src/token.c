@@ -99,11 +99,10 @@ sso_error_t token_manager_init(token_manager_t *mgr, const unsigned char *secret
     
     size_t copy_len = secret_len < sizeof(mgr->keys.secret) ? secret_len : sizeof(mgr->keys.secret);
     memcpy(mgr->keys.secret, secret, copy_len);
-    /* Lock the secret in memory to prevent it from being swapped to disk. */
     if (sodium_mlock(mgr->keys.secret, sizeof(mgr->keys.secret)) != 0) {
-        /* Non-fatal: best-effort protection. */
     }
     mgr->default_ttl_ms = default_ttl_ms;
+    pthread_mutex_init(&mgr->nonce_lock, NULL);
     return SSO_OK;
 }
 
@@ -116,6 +115,7 @@ sso_error_t token_manager_init_rs256(token_manager_t *mgr,
     memset(mgr, 0, sizeof(*mgr));
     mgr->mode = SSO_TOKEN_MODE_RS256;
     mgr->default_ttl_ms = default_ttl_ms;
+    pthread_mutex_init(&mgr->nonce_lock, NULL);
 
     /* Load private key */
     BIO *priv_bio = BIO_new_mem_buf(priv_key_pem, -1);
@@ -182,7 +182,11 @@ void token_manager_destroy(token_manager_t *mgr) {
         if (mgr->keys.rsa.priv_key) EVP_PKEY_free((EVP_PKEY *)mgr->keys.rsa.priv_key);
         if (mgr->keys.rsa.pub_key) EVP_PKEY_free((EVP_PKEY *)mgr->keys.rsa.pub_key);
     }
-    
+
+    free(mgr->nonces);
+    mgr->nonces = NULL;
+    pthread_mutex_destroy(&mgr->nonce_lock);
+
     free(mgr);
 }
 
@@ -212,6 +216,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     out->expires_at = out->issued_at + actual_ttl;
     out->role_count = role_count;
     out->group_count = group_count;
+    out->nonce = token_get_nonce(mgr, user->id);
 
     unsigned char rand_bytes[8];
     randombytes_buf(rand_bytes, sizeof(rand_bytes));
@@ -251,6 +256,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     cJSON_AddNumberToObject(root, "sub", (double)out->user_id);
     cJSON_AddNumberToObject(root, "iat", (double)out->issued_at);
     cJSON_AddNumberToObject(root, "exp", (double)out->expires_at);
+    cJSON_AddNumberToObject(root, "tnc", (double)out->nonce);
     cJSON_AddStringToObject(root, "iss", "sso-server");
     cJSON_AddStringToObject(root, "aud", "sso-api");
 
@@ -416,6 +422,11 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         out->expires_at = (sso_timestamp_t)exp_item->valuedouble;
     }
 
+    cJSON *tnc_item = cJSON_GetObjectItem(root, "tnc");
+    if (cJSON_IsNumber(tnc_item)) {
+        out->nonce = (uint64_t)tnc_item->valuedouble;
+    }
+
     cJSON *roles_arr = cJSON_GetObjectItem(root, "roles");
     if (cJSON_IsArray(roles_arr)) {
         out->role_count = (size_t)cJSON_GetArraySize(roles_arr);
@@ -541,4 +552,49 @@ bool token_is_revoked(token_manager_t *mgr, const char *jti) {
     bool found = bsearch(jti, revocations.jtis, revocations.count, REVOCATION_STR_LEN, compare_jtis) != NULL;
     pthread_mutex_unlock(&revocations.lock);
     return found;
+}
+
+/* ========================================================================
+ * User token nonces (for "logout all sessions")
+ * ======================================================================== */
+sso_error_t token_set_nonce(token_manager_t *mgr, sso_id_t user_id, uint64_t nonce) {
+    if (!mgr) return SSO_ERR_INVALID_PARAM;
+    pthread_mutex_lock(&mgr->nonce_lock);
+    for (size_t i = 0; i < mgr->nonce_count; i++) {
+        if (mgr->nonces[i].uid == user_id) {
+            mgr->nonces[i].nonce = nonce;
+            pthread_mutex_unlock(&mgr->nonce_lock);
+            return SSO_OK;
+        }
+    }
+    size_t new_cap = mgr->nonce_cap ? mgr->nonce_cap * 2 : 16;
+    nonce_pair_t *new_nonces = (nonce_pair_t *)realloc(mgr->nonces, new_cap * sizeof(nonce_pair_t));
+    if (!new_nonces) { pthread_mutex_unlock(&mgr->nonce_lock); return SSO_ERR_OUT_OF_MEMORY; }
+    mgr->nonces = new_nonces;
+    mgr->nonce_cap = new_cap;
+    mgr->nonces[mgr->nonce_count].uid = user_id;
+    mgr->nonces[mgr->nonce_count].nonce = nonce;
+    mgr->nonce_count++;
+    pthread_mutex_unlock(&mgr->nonce_lock);
+    return SSO_OK;
+}
+
+uint64_t token_get_nonce(token_manager_t *mgr, sso_id_t user_id) {
+    if (!mgr) return 0;
+    pthread_mutex_lock(&mgr->nonce_lock);
+    for (size_t i = 0; i < mgr->nonce_count; i++) {
+        if (mgr->nonces[i].uid == user_id) {
+            uint64_t n = mgr->nonces[i].nonce;
+            pthread_mutex_unlock(&mgr->nonce_lock);
+            return n;
+        }
+    }
+    pthread_mutex_unlock(&mgr->nonce_lock);
+    return 0;
+}
+
+sso_error_t token_bump_nonce(token_manager_t *mgr, sso_id_t user_id) {
+    if (!mgr) return SSO_ERR_INVALID_PARAM;
+    uint64_t current = token_get_nonce(mgr, user_id);
+    return token_set_nonce(mgr, user_id, current + 1);
 }
