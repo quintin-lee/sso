@@ -282,7 +282,7 @@ static void send_response(int fd, const http_response_t *resp) {
 
 /* Match a path pattern against a request path.  Supports :param segments.
  * Returns true if matched.  Extracts path params into query_params. */
-static bool match_route(const char *pattern, const char *path, char **params) {
+bool match_route(const char *pattern, const char *path, char **params) {
     if (!pattern || !path) return false;
 
     while (*pattern && *path) {

@@ -207,7 +207,8 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     memset(out, 0, sizeof(*out));
     out->user_id = user->id;
     out->issued_at = sso_timestamp_now();
-    out->expires_at = out->issued_at + (ttl_ms > 0 ? ttl_ms : mgr->default_ttl_ms);
+    long long actual_ttl = (ttl_ms > 0) ? ttl_ms : (ttl_ms == 0 ? mgr->default_ttl_ms : ttl_ms);
+    out->expires_at = out->issued_at + actual_ttl;
     out->role_count = role_count;
     out->group_count = group_count;
 

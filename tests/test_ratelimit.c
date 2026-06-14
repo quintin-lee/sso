@@ -31,14 +31,48 @@ static const char *test_ratelimit_reset() {
     rate_limiter_t *rl;
     rate_limiter_create(&rl, 100);
 
-    /* Limit: 2 requests per 500ms */
     ASSERT_INT_EQUAL(rate_limiter_check(rl, "127.0.0.1", 500, 2), SSO_OK);
     ASSERT_INT_EQUAL(rate_limiter_check(rl, "127.0.0.1", 500, 2), SSO_OK);
     ASSERT_INT_EQUAL(rate_limiter_check(rl, "127.0.0.1", 500, 2), SSO_ERR_RATE_LIMIT);
 
-    /* Manual reset */
     rate_limiter_reset(rl, "127.0.0.1");
     ASSERT_INT_EQUAL(rate_limiter_check(rl, "127.0.0.1", 500, 2), SSO_OK);
+
+    rate_limiter_destroy(rl);
+    return 0;
+}
+
+static const char *test_ratelimit_multi_ip() {
+    printf("  Running test_ratelimit_multi_ip...\n");
+    rate_limiter_t *rl;
+    rate_limiter_create(&rl, 100);
+
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "10.0.0.1", 60000, 2), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "10.0.0.1", 60000, 2), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "10.0.0.1", 60000, 2), SSO_ERR_RATE_LIMIT);
+
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "10.0.0.2", 60000, 2), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "10.0.0.2", 60000, 2), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "10.0.0.2", 60000, 2), SSO_ERR_RATE_LIMIT);
+
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "10.0.0.3", 60000, 2), SSO_OK);
+
+    rate_limiter_destroy(rl);
+    return 0;
+}
+
+static const char *test_ratelimit_window_expiry() {
+    printf("  Running test_ratelimit_window_expiry...\n");
+    rate_limiter_t *rl;
+    rate_limiter_create(&rl, 100);
+
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "10.0.0.1", 100, 2), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "10.0.0.1", 100, 2), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "10.0.0.1", 100, 2), SSO_ERR_RATE_LIMIT);
+
+    usleep(150000);
+
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "10.0.0.1", 100, 2), SSO_OK);
 
     rate_limiter_destroy(rl);
     return 0;
@@ -47,6 +81,8 @@ static const char *test_ratelimit_reset() {
 static const char *all_tests() {
     mu_run_test(test_ratelimit_basic);
     mu_run_test(test_ratelimit_reset);
+    mu_run_test(test_ratelimit_multi_ip);
+    mu_run_test(test_ratelimit_window_expiry);
     return 0;
 }
 

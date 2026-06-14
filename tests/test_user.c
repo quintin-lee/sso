@@ -22,19 +22,16 @@ static const char *test_user_creation_and_auth() {
     user_manager_create(&umgr, &ctx);
     ctx.user_mgr = umgr;
 
-    /* Create user */
     user_t user;
     sso_error_t err = user_create(umgr, "testuser", "password123", "test@example.com", "Test User", &user);
     ASSERT_INT_EQUAL(err, SSO_OK);
     ASSERT_STR_EQUAL(user.username, "testuser");
 
-    /* Authenticate */
     user_t authed;
     err = user_authenticate(umgr, "testuser", "password123", &authed);
     ASSERT_INT_EQUAL(err, SSO_OK);
     ASSERT_INT_EQUAL(authed.id, user.id);
 
-    /* Failed auth */
     err = user_authenticate(umgr, "testuser", "wrongpassword", &authed);
     ASSERT_INT_EQUAL(err, SSO_ERR_AUTH_FAILED);
 
@@ -50,6 +47,7 @@ static const char *all_tests() {
 }
 
 int main(int argc, char **argv) {
+    (void)argc; (void)argv;
     const char *result = all_tests();
     if (result != 0) printf("FAILED\n");
     else printf("ALL TESTS PASSED\n");

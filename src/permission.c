@@ -386,11 +386,10 @@ sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
                                         char **decision_trace) {
     if (!engine || !policy || !ctx || !result) return SSO_ERR_INVALID_PARAM;
 
-    /* Skip disabled policies */
+    /* Skip disabled policies — return NOT_FOUND so callers skip them */
     if (policy->status == POLICY_STATUS_DISABLED) {
-        if (decision_trace) *decision_trace = strdup("Policy disabled");
-        *result = true; 
-        return SSO_OK;
+        if (decision_trace) *decision_trace = strdup("Policy disabled (skipped)");
+        return SSO_ERR_NOT_FOUND;
     }
 
     /* Find the strategy for this policy */

@@ -124,6 +124,11 @@ sso_error_t sso_server_start(sso_server_t *server);
 void        sso_server_stop(sso_server_t *server);
 
 /* -----------------------------------------------------------------------
+ * Route matching (exposed for testing)
+ * ----------------------------------------------------------------------- */
+bool match_route(const char *pattern, const char *path, char **params);
+
+/* -----------------------------------------------------------------------
  * Response helpers
  * ----------------------------------------------------------------------- */
 
