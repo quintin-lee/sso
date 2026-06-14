@@ -76,6 +76,7 @@ typedef struct {
     char             *body;             /* response body (JSON)                 */
     size_t           body_len;
     char             content_type[64];  /* e.g. "application/json"              */
+    char             extra_headers[512]; /* Custom headers: "Key: Value\r\n..." */
 } http_response_t;
 
 /* ========================================================================

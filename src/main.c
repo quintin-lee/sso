@@ -1732,6 +1732,8 @@ static sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
         return SSO_OK;
     }
 
+    snprintf(resp->extra_headers, sizeof(resp->extra_headers), "X-SSO-User: %s\r\n", user.username);
+
     char buf[2048];
     snprintf(buf, sizeof(buf),
         "{"
@@ -1839,6 +1841,8 @@ static sso_error_t handle_me(sso_context_t *ctx, const http_request_t *req,
         sso_response_error(resp, 401, "Authentication required");
         return SSO_OK;
     }
+
+    snprintf(resp->extra_headers, sizeof(resp->extra_headers), "X-SSO-User: %s\r\n", auth->user.username);
 
     char buf[2048];
     snprintf(buf, sizeof(buf),

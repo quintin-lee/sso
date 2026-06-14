@@ -196,13 +196,15 @@ static int parse_request(int client_fd, http_request_t *req, long max_body_size)
     }
 
     /* Parse headers — look for Content-Length and Authorization */
-    int content_length = 0;
+    long content_length = 0;
     while (1) {
         if (read_line(client_fd, line, sizeof(line)) <= 0) break;
         if (line[0] == '\0') break; /* end of headers */
 
         if (strncasecmp(line, "Content-Length:", 15) == 0) {
-            content_length = atoi(line + 15);
+            char *end = NULL;
+            long val = strtol(line + 15, &end, 10);
+            if (end != line + 15 && val >= 0) content_length = val;
         }
         if (strncasecmp(line, "Authorization:", 14) == 0) {
             const char *token = line + 14;
@@ -215,7 +217,7 @@ static int parse_request(int client_fd, http_request_t *req, long max_body_size)
 
     /* Read body if present */
     if (content_length > 0) {
-        if (max_body_size > 0 && (long)content_length > max_body_size) { return -1; }
+        if (max_body_size > 0 && content_length > max_body_size) { return -1; }
         req->body = (char *)malloc((size_t)content_length + 1);
         if (req->body) {
             size_t total = 0;
@@ -263,6 +265,7 @@ static void send_response(int fd, const http_response_t *resp) {
         "Access-Control-Allow-Origin: *\r\n"
         "Cache-Control: no-cache, no-store, must-revalidate\r\n"
         "Pragma: no-cache\r\n"
+        "%s"
         "\r\n",
         resp->status_code,
         resp->status_code == 200 ? "OK" :
@@ -272,7 +275,8 @@ static void send_response(int fd, const http_response_t *resp) {
         resp->status_code == 403 ? "Forbidden" :
         resp->status_code == 404 ? "Not Found" : "Internal Server Error",
         resp->content_type,
-        resp->body_len);
+        resp->body_len,
+        resp->extra_headers);
 
     write(fd, header, (size_t)n);
     if (resp->body && resp->body_len > 0) {

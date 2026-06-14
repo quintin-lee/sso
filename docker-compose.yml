@@ -1,22 +1,38 @@
 version: '3.8'
 
 services:
-  sso_system:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: sso-system:latest
-    container_name: sso_system
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
+  sso:
+    build: .
+    container_name: sso_service
+    command: ["./sso_system", "--server"]
     environment:
-      # Generate a strong, secure token secret for production
-      - SSO_TOKEN_SECRET=your_super_secret_key_change_me_in_production
+      - SSO_TOKEN_SECRET=your_super_secret_key_32chars_at_least
+      - SSO_ADMIN_PASSWORD=admin123
     volumes:
       - sso_data:/app
-      # Optional: Mount audit log to host
       - ./audit.log:/app/audit.log
+    restart: unless-stopped
+
+  gogs:
+    image: gogs/gogs:latest
+    container_name: gogs_service
+    volumes:
+      - gogs_data:/data
+      - ./gogs/conf/app.ini:/data/gogs/conf/app.ini:ro
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx_proxy
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - sso
+      - gogs
+    restart: unless-stopped
 
 volumes:
   sso_data:
+  gogs_data:

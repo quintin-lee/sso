@@ -1,3 +1,6 @@
+# Logs
+audit.log
+
 # Build artifacts
 build/
 sso_system

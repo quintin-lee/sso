@@ -312,6 +312,8 @@ async function doRegister() {
 
 function onSuccess(res) {
   localStorage.setItem('sso_token', res.token);
+  // Set cookie for Nginx auth_request
+  document.cookie = `sso_token=${res.token}; path=/; max-age=3600; SameSite=Lax`;
   document.getElementById('loginView').style.display = 'none';
   document.getElementById('successView').style.display = 'block';
   document.getElementById('tokenDisplay').textContent = res.token;

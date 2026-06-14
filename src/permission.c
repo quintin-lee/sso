@@ -442,6 +442,8 @@ sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
 #define AUDIT_LOG_MAX_SIZE (10 * 1024 * 1024)
 #define AUDIT_LOG_MAX_BACKUPS 5
 
+static pthread_mutex_t audit_log_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static void rotate_audit_log(void) {
     struct stat st;
     if (stat("audit.log", &st) != 0 || st.st_size <= AUDIT_LOG_MAX_SIZE) return;
@@ -457,10 +459,15 @@ static void rotate_audit_log(void) {
 
 static void audit_log_decision(eval_context_t *ctx, bool allowed, const char *trace,
                                 uint64_t duration_ms, bool cache_hit) {
+    pthread_mutex_lock(&audit_log_lock);
+
     rotate_audit_log();
 
     FILE *f = fopen("audit.log", "a");
-    if (!f) return;
+    if (!f) {
+        pthread_mutex_unlock(&audit_log_lock);
+        return;
+    }
 
     char escaped_trace[8192] = {0};
     if (trace) {
@@ -488,6 +495,8 @@ static void audit_log_decision(eval_context_t *ctx, bool allowed, const char *tr
             cache_hit ? "true" : "false",
             escaped_trace);
     fclose(f);
+
+    pthread_mutex_unlock(&audit_log_lock);
 }
 
 sso_error_t perm_engine_evaluate(permission_engine_t *engine,

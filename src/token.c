@@ -22,6 +22,7 @@
 #include <openssl/bio.h>
 #include <openssl/err.h>
 #include <sodium.h>
+#include <pthread.h>
 
 /* ========================================================================
  * Internal helpers
@@ -461,7 +462,8 @@ static struct {
     size_t count;
     size_t capacity;
     bool   sorted;
-} revocations = {NULL, 0, 0, true};
+    pthread_mutex_t lock;
+} revocations = {NULL, 0, 0, true, PTHREAD_MUTEX_INITIALIZER};
 
 static int compare_jtis(const void *a, const void *b) {
     return strcmp((const char *)a, (const char *)b);
@@ -471,20 +473,26 @@ sso_error_t token_revoke(token_manager_t *mgr, const char *jti) {
     (void)mgr;
     if (!jti) return SSO_ERR_INVALID_PARAM;
 
-    /* Lazily initialise the array */
+    pthread_mutex_lock(&revocations.lock);
+
     if (revocations.jtis == NULL) {
         revocations.jtis = (char (*)[REVOCATION_STR_LEN])calloc(
             REVOCATIONS_INIT_CAP, REVOCATION_STR_LEN);
-        if (!revocations.jtis) return SSO_ERR_OUT_OF_MEMORY;
+        if (!revocations.jtis) {
+            pthread_mutex_unlock(&revocations.lock);
+            return SSO_ERR_OUT_OF_MEMORY;
+        }
         revocations.capacity = REVOCATIONS_INIT_CAP;
     }
 
-    /* Grow if full */
     if (revocations.count >= revocations.capacity) {
         size_t new_cap = revocations.capacity * 2;
         char (*new_jtis)[REVOCATION_STR_LEN] = (char (*)[REVOCATION_STR_LEN])realloc(
             revocations.jtis, new_cap * REVOCATION_STR_LEN);
-        if (!new_jtis) return SSO_ERR_OUT_OF_MEMORY;
+        if (!new_jtis) {
+            pthread_mutex_unlock(&revocations.lock);
+            return SSO_ERR_OUT_OF_MEMORY;
+        }
         revocations.jtis = new_jtis;
         revocations.capacity = new_cap;
     }
@@ -493,17 +501,28 @@ sso_error_t token_revoke(token_manager_t *mgr, const char *jti) {
     revocations.jtis[revocations.count][REVOCATION_STR_LEN - 1] = '\0';
     revocations.count++;
     revocations.sorted = false;
+
+    pthread_mutex_unlock(&revocations.lock);
     return SSO_OK;
 }
 
 bool token_is_revoked(token_manager_t *mgr, const char *jti) {
     (void)mgr;
-    if (!jti || !revocations.jtis || revocations.count == 0) return false;
+    if (!jti) return false;
+
+    pthread_mutex_lock(&revocations.lock);
+
+    if (!revocations.jtis || revocations.count == 0) {
+        pthread_mutex_unlock(&revocations.lock);
+        return false;
+    }
 
     if (!revocations.sorted) {
         qsort(revocations.jtis, revocations.count, REVOCATION_STR_LEN, compare_jtis);
         revocations.sorted = true;
     }
 
-    return bsearch(jti, revocations.jtis, revocations.count, REVOCATION_STR_LEN, compare_jtis) != NULL;
+    bool found = bsearch(jti, revocations.jtis, revocations.count, REVOCATION_STR_LEN, compare_jtis) != NULL;
+    pthread_mutex_unlock(&revocations.lock);
+    return found;
 }
