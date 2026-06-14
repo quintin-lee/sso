@@ -444,6 +444,7 @@ sso_error_t sso_server_start(sso_server_t *server) {
 
     g_server = server;
     signal(SIGINT, sigint_handler);
+    signal(SIGTERM, sigint_handler);
     signal(SIGPIPE, SIG_IGN);
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);

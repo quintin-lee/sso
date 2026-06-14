@@ -2666,6 +2666,60 @@ static sso_error_t handle_get_user(sso_context_t *ctx, const http_request_t *req
     return SSO_OK;
 }
 
+/* GET /api/v1/audit/logs */
+static sso_error_t handle_list_audit_logs(sso_context_t *ctx, const http_request_t *req,
+                                           http_response_t *resp) {
+    (void)ctx; (void)req;
+    FILE *f = fopen("audit.log", "r");
+    if (!f) {
+        sso_response_ok(resp, "[]");
+        return SSO_OK;
+    }
+
+    /* Simple tail implementation: read last 100 lines */
+    char *lines[100];
+    int count = 0;
+    char buffer[10240];
+
+    while (fgets(buffer, sizeof(buffer), f)) {
+        if (count < 100) {
+            lines[count++] = strdup(buffer);
+        } else {
+            free(lines[0]);
+            for (int i = 0; i < 99; i++) lines[i] = lines[i+1];
+            lines[99] = strdup(buffer);
+        }
+    }
+    fclose(f);
+
+    /* Construct JSON array */
+    size_t total_len = 3; /* [ ] \0 */
+    for (int i = 0; i < count; i++) total_len += strlen(lines[i]) + 1;
+
+    char *json = (char *)malloc(total_len);
+    if (!json) {
+        for (int i = 0; i < count; i++) free(lines[i]);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
+    strcpy(json, "[");
+    for (int i = 0; i < count; i++) {
+        /* Remove newline if present */
+        char *nl = strchr(lines[i], '\n');
+        if (nl) *nl = '\0';
+        
+        strcat(json, lines[i]);
+        if (i < count - 1) strcat(json, ",");
+        free(lines[i]);
+    }
+    strcat(json, "]");
+
+    sso_response_ok(resp, json);
+    free(json);
+    return SSO_OK;
+}
+
 /* GET /api/v1/roles */
 static sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *req,
                                       http_response_t *resp) {
@@ -3471,6 +3525,7 @@ static int run_server(void) {
         {"/api/v1/auth/logout",     HTTP_POST, handle_logout,           true},
         {"/api/v1/auth/password",   HTTP_POST, handle_change_password,  true},
         {"/api/v1/auth/me",         HTTP_GET,  handle_me,               true},
+        {"/api/v1/audit/logs",      HTTP_GET,  handle_list_audit_logs,  true},
 
         /* Permission checks */
         {"/api/v1/check",           HTTP_POST, handle_check_permission,  true},

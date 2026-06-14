@@ -377,6 +377,7 @@ input:focus, select:focus, textarea:focus{border-color:var(--accent);box-shadow:
     <div class="nav-item" id="nav-roles" onclick="switchTab('roles')"><span>🔐</span> 角色管理</div>
     <div class="nav-item" id="nav-groups" onclick="switchTab('groups')"><span>🏢</span> 组织架构</div>
     <div class="nav-item" id="nav-policies" onclick="switchTab('policies')"><span>📜</span> 策略配置</div>
+    <div class="nav-item" id="nav-audit" onclick="switchTab('audit')"><span>🔍</span> 审计日志</div>
     <div class="nav-item" id="nav-metrics" onclick="switchTab('metrics')"><span>📊</span> 系统指标</div>
   </div>
   <div class="sidebar-footer">
@@ -463,11 +464,11 @@ function switchTab(tab) {
   const el = document.getElementById('nav-' + tab);
   if(el) el.classList.add('active');
   
-  const labels = { 'users': '用户管理', 'roles': '角色管理', 'groups': '组织架构', 'policies': '策略配置', 'metrics': '系统指标' };
+  const labels = { 'users': '用户管理', 'roles': '角色管理', 'groups': '组织架构', 'policies': '策略配置', 'audit': '审计日志', 'metrics': '系统指标' };
   document.getElementById('pageTitle').textContent = labels[tab];
   const addBtn = document.getElementById('addBtn');
   addBtn.textContent = '+ 新增' + labels[tab].substring(0, 2);
-  addBtn.style.display = tab === 'metrics' ? 'none' : 'flex';
+  addBtn.style.display = (tab === 'metrics' || tab === 'audit') ? 'none' : 'flex';
   loadData();
 }
 
@@ -529,6 +530,23 @@ function loadData() {
       const types = {1:'FUNC', 2:'API', 3:'DATA', 4:'RBAC', 5:'LOC', 6:'ABAC', 7:'LBAC'};
       data.forEach(p => {
         html += `<tr><td>#${p.id}</td><td style="color:var(--text-bright);font-weight:600">${p.name}</td><td><span class="tag">${types[p.strategy_type]}</span></td><td style="color:${p.effect? 'var(--success)':'var(--error)'}">${p.effect?'ALLOW':'DENY'}</td><td><button class="btn btn-outline btn-sm" onclick="showEditPolicy(${p.id})">配置</button> <button class="btn btn-danger btn-sm" onclick="deleteItem('policies', ${p.id})">删除</button></td></tr>`;
+      });
+      container.innerHTML = html + '</tbody></table>';
+    });
+  } else if(currentTab === 'audit') {
+    api('/api/v1/audit/logs').then(data => {
+      let html = '<table><thead><tr><th>时间</th><th>用户</th><th>决策</th><th>耗时</th><th>缓存</th><th>详情</th></tr></thead><tbody>';
+      data.reverse().forEach(log => {
+        const date = new Date(log.timestamp_ms).toLocaleString();
+        const isAllow = log.decision === 'ALLOW';
+        html += `<tr>
+          <td style="font-size:12px">${date}</td>
+          <td>#${log.user_id}</td>
+          <td><span class="status-pill" style="background:${isAllow?'rgba(158,206,106,0.1)':'rgba(247,118,142,0.1)'};color:${isAllow?'var(--success)':'var(--error)'}">${log.decision}</span></td>
+          <td style="font-family:monospace">${log.duration_ms}ms</td>
+          <td>${log.cache_hit ? '⚡' : '-'}</td>
+          <td style="font-size:11px;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${log.trace}">${log.trace}</td>
+        </tr>`;
       });
       container.innerHTML = html + '</tbody></table>';
     });
