@@ -18,6 +18,8 @@ typedef struct {
     int      port;
     int      thread_pool_size;
     int      queue_size;
+    int      request_timeout_ms;
+    long     max_body_size;
 
     /* [database] */
     char     path[256];

@@ -24,6 +24,9 @@ extern "C" {
  * ======================================================================== */
 typedef sso_error_t (*storage_open_fn)(storage_backend_t *self, const char *dsn);
 typedef void        (*storage_close_fn)(storage_backend_t *self);
+typedef sso_error_t (*storage_begin_fn)(storage_backend_t *self);
+typedef sso_error_t (*storage_commit_fn)(storage_backend_t *self);
+typedef sso_error_t (*storage_rollback_fn)(storage_backend_t *self);
 
 /* User CRUD — create writes back the assigned id */
 typedef sso_error_t (*storage_user_create_fn)(storage_backend_t *self, user_t *user);
@@ -109,6 +112,9 @@ struct storage_backend {
     /* Lifecycle */
     storage_open_fn                 open;
     storage_close_fn                close;
+    storage_begin_fn                begin;
+    storage_commit_fn               commit;
+    storage_rollback_fn             rollback;
 
     /* User */
     storage_user_create_fn          user_create;

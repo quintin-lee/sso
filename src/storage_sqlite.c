@@ -279,6 +279,45 @@ static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
         return SSO_ERR_STORAGE;
     }
 
+    /* Schema migration */
+    sqlite3_exec(priv->db,
+        "CREATE TABLE IF NOT EXISTS _migrations ("
+        "  version INTEGER PRIMARY KEY,"
+        "  applied_at INTEGER NOT NULL"
+        ")", NULL, NULL, NULL);
+
+    /* Determine current migration version */
+    int current_version = 0;
+    sqlite3_stmt *s = NULL;
+    if (sqlite3_prepare_v2(priv->db, "SELECT COALESCE(MAX(version),0) FROM _migrations", -1, &s, NULL) == SQLITE_OK) {
+        if (sqlite3_step(s) == SQLITE_ROW) current_version = sqlite3_column_int(s, 0);
+        sqlite3_finalize(s);
+    }
+
+    /* Run pending migrations */
+    for (int v = current_version + 1; ; v++) {
+        const char *migration = NULL;
+        if (v == 1) {
+            migration = NULL; /* Placeholder for first migration */
+        } else {
+            break;
+        }
+        if (!migration) break;
+        char *merr = NULL;
+        if (sqlite3_exec(priv->db, migration, NULL, NULL, &merr) != SQLITE_OK) {
+            sqlite3_close(priv->db);
+            priv->db = NULL;
+            return SSO_ERR_STORAGE;
+        }
+        sqlite3_stmt *insert = NULL;
+        if (sqlite3_prepare_v2(priv->db, "INSERT INTO _migrations (version, applied_at) VALUES (?1, ?2)", -1, &insert, NULL) == SQLITE_OK) {
+            sqlite3_bind_int(insert, 1, v);
+            sqlite3_bind_int64(insert, 2, (sqlite3_int64)sso_timestamp_now());
+            sqlite3_step(insert);
+            sqlite3_finalize(insert);
+        }
+    }
+
     return SSO_OK;
 }
 
@@ -293,6 +332,35 @@ static void sqlite_close(storage_backend_t *self) {
         free(priv);
         self->handle = NULL;
     }
+}
+
+/* --- transactions --- */
+static sso_error_t sqlite_begin(storage_backend_t *self) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db) return SSO_ERR_STORAGE;
+    char *errmsg = NULL;
+    if (sqlite3_exec(priv->db, "BEGIN", NULL, NULL, &errmsg) != SQLITE_OK) {
+        return SSO_ERR_STORAGE;
+    }
+    return SSO_OK;
+}
+
+static sso_error_t sqlite_commit(storage_backend_t *self) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db) return SSO_ERR_STORAGE;
+    char *errmsg = NULL;
+    if (sqlite3_exec(priv->db, "COMMIT", NULL, NULL, &errmsg) != SQLITE_OK) {
+        return SSO_ERR_STORAGE;
+    }
+    return SSO_OK;
+}
+
+static sso_error_t sqlite_rollback(storage_backend_t *self) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db) return SSO_ERR_STORAGE;
+    char *errmsg = NULL;
+    sqlite3_exec(priv->db, "ROLLBACK", NULL, NULL, &errmsg);
+    return SSO_OK;
 }
 
 /* ========================================================================
@@ -461,9 +529,68 @@ static sso_error_t sqlite_##table##_delete(storage_backend_t *self, sso_id_t id)
     return (rc == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE; \
 }
 
-MAKE_DELETE(users)
-MAKE_DELETE(roles)
-MAKE_DELETE(groups_t)
+/* Cascade delete helper: execute a parameterized SQL with one int64 arg */
+static sso_error_t cascade_delete(sqlite3 *db, const char *sql, sqlite3_int64 id) {
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
+        return SSO_ERR_STORAGE;
+    sqlite3_bind_int64(stmt, 1, id);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return SSO_OK;
+}
+
+/* Custom delete with cascade for users */
+static sso_error_t sqlite_users_delete(storage_backend_t *self, sso_id_t id) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db) return SSO_ERR_STORAGE;
+    cascade_delete(priv->db, "DELETE FROM user_roles WHERE user_id=?1", id);
+    cascade_delete(priv->db, "DELETE FROM user_groups WHERE user_id=?1", id);
+    cascade_delete(priv->db, "DELETE FROM policy_assignments WHERE target_type=0 AND target_id=?1", id);
+    const char *sql = "DELETE FROM users WHERE id=?1";
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK)
+        return SSO_ERR_STORAGE;
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+}
+
+/* Custom delete with cascade for roles */
+static sso_error_t sqlite_roles_delete(storage_backend_t *self, sso_id_t id) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db) return SSO_ERR_STORAGE;
+    cascade_delete(priv->db, "DELETE FROM user_roles WHERE role_id=?1", id);
+    cascade_delete(priv->db, "DELETE FROM role_groups WHERE role_id=?1", id);
+    cascade_delete(priv->db, "DELETE FROM policy_assignments WHERE target_type=1 AND target_id=?1", id);
+    const char *sql = "DELETE FROM roles WHERE id=?1";
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK)
+        return SSO_ERR_STORAGE;
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+}
+
+/* Custom delete with cascade for groups_t */
+static sso_error_t sqlite_groups_t_delete(storage_backend_t *self, sso_id_t id) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db) return SSO_ERR_STORAGE;
+    cascade_delete(priv->db, "DELETE FROM user_groups WHERE group_id=?1", id);
+    cascade_delete(priv->db, "DELETE FROM role_groups WHERE group_id=?1", id);
+    cascade_delete(priv->db, "DELETE FROM policy_assignments WHERE target_type=2 AND target_id=?1", id);
+    const char *sql = "DELETE FROM groups_t WHERE id=?1";
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK)
+        return SSO_ERR_STORAGE;
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+}
+
 MAKE_DELETE(policies)
 
 /* --- Paginated List helper --- */
@@ -1021,6 +1148,9 @@ sso_error_t storage_sqlite_create(storage_backend_t **backend) {
     /* Lifecycle */
     (*backend)->open       = sqlite_open;
     (*backend)->close      = sqlite_close;
+    (*backend)->begin      = sqlite_begin;
+    (*backend)->commit     = sqlite_commit;
+    (*backend)->rollback   = sqlite_rollback;
 
     /* User */
     (*backend)->user_create       = sqlite_user_create;

@@ -86,6 +86,24 @@ static sso_error_t al_add(al_t *l, sso_id_t p, int t, sso_id_t id) {
     l->p[l->n].pid=p; l->p[l->n].tt=t; l->p[l->n].tid=id; l->n++; return SSO_OK;
 }
 
+static void pl_rm_by_b(pl_t *l, sso_id_t bval) {
+    for (size_t i = l->n; i > 0; i--)
+        if (l->p[i-1].b == bval)
+            { size_t idx = i-1; if (idx < l->n-1) memmove(&l->p[idx], &l->p[idx+1], (l->n-idx-1)*sizeof(pair_t)); l->n--; }
+}
+
+static void pl_rm_by_a(pl_t *l, sso_id_t aval) {
+    for (size_t i = l->n; i > 0; i--)
+        if (l->p[i-1].a == aval)
+            { size_t idx = i-1; if (idx < l->n-1) memmove(&l->p[idx], &l->p[idx+1], (l->n-idx-1)*sizeof(pair_t)); l->n--; }
+}
+
+static void al_rm_by_target(al_t *l, int tt, sso_id_t tid) {
+    for (size_t i = l->n; i > 0; i--)
+        if (l->p[i-1].tt == tt && l->p[i-1].tid == tid)
+            { size_t idx = i-1; if (idx < l->n-1) memmove(&l->p[idx], &l->p[idx+1], (l->n-idx-1)*sizeof(a3_t)); l->n--; }
+}
+
 typedef struct { char p[32]; char c[16]; sso_timestamp_t ex; } sms_t;
 
 typedef struct {
@@ -118,6 +136,10 @@ static void mem_close(storage_backend_t *self) {
     self->handle = NULL;
 }
 
+static sso_error_t mem_begin(storage_backend_t *self)   { (void)self; return SSO_OK; }
+static sso_error_t mem_commit(storage_backend_t *self)  { (void)self; return SSO_OK; }
+static sso_error_t mem_rollback(storage_backend_t *self){ (void)self; return SSO_OK; }
+
 /* ===== User CRUD ===== */
 
 static sso_error_t mem_user_create(storage_backend_t *self, user_t *u) {
@@ -143,7 +165,7 @@ MK_GETID(user,users)
 MK_GETID(role,roles) MK_GETID(group,groups) MK_GETID(policy,policies)
 MK_GETNM(role,roles,name) MK_GETNM(group,groups,name) MK_GETNM(policy,policies,name)
 MK_UPD(role,roles) MK_UPD(group,groups) MK_UPD(policy,policies)
-MK_DEL(role,roles) MK_DEL(group,groups) MK_DEL(policy,policies)
+MK_DEL(policy,policies)
 MK_LIST(role,roles) MK_LIST(group,groups) MK_LIST(policy,policies)
 
 static sso_error_t mem_user_get_by_name(storage_backend_t *self, const char *n, user_t *o) {
@@ -168,8 +190,9 @@ static sso_error_t mem_user_delete(storage_backend_t *self, sso_id_t id) {
     ssize_t i=da_find_id(&P->users,offsetof(user_t,id),id);
     if (i<0) return SSO_ERR_NOT_FOUND;
     da_rm(&P->users,(size_t)i);
-    if (P->user_roles.n) for (size_t k=P->user_roles.n; k>0; k--)
-        if (P->user_roles.p[k-1].b==id) pl_rm(&P->user_roles, P->user_roles.p[k-1].a, id);
+    pl_rm_by_b(&P->user_roles, id);
+    pl_rm_by_b(&P->user_groups, id);
+    al_rm_by_target(&P->policy_assignments, 0, id);
     return SSO_OK;
 }
 
@@ -180,6 +203,26 @@ static sso_error_t mem_user_list(storage_backend_t *self, const char *q, int sta
     size_t n = 0;
     for (size_t i = (size_t)offset; i < total && n < (size_t)limit; i++) ids[n++] = ((const user_t*)P->users.items+i)->id;
     *count = n; return SSO_OK;
+}
+
+static sso_error_t mem_role_delete(storage_backend_t *self, sso_id_t id) {
+    ssize_t i=da_find_id(&P->roles,offsetof(role_t,id),id);
+    if (i<0) return SSO_ERR_NOT_FOUND;
+    da_rm(&P->roles,(size_t)i);
+    pl_rm_by_a(&P->user_roles, id);
+    pl_rm_by_a(&P->role_groups, id);
+    al_rm_by_target(&P->policy_assignments, 1, id);
+    return SSO_OK;
+}
+
+static sso_error_t mem_group_delete(storage_backend_t *self, sso_id_t id) {
+    ssize_t i=da_find_id(&P->groups,offsetof(group_t,id),id);
+    if (i<0) return SSO_ERR_NOT_FOUND;
+    da_rm(&P->groups,(size_t)i);
+    pl_rm_by_a(&P->role_groups, id);
+    pl_rm_by_b(&P->user_groups, id);
+    al_rm_by_target(&P->policy_assignments, 2, id);
+    return SSO_OK;
 }
 
 /* ===== Role/Group/Policy Create ===== */
@@ -340,6 +383,7 @@ sso_error_t storage_memory_create(storage_backend_t **backend) {
 
     strncpy((*backend)->name,"memory",sizeof((*backend)->name)-1);
     (*backend)->open=mem_open; (*backend)->close=mem_close;
+    (*backend)->begin=mem_begin; (*backend)->commit=mem_commit; (*backend)->rollback=mem_rollback;
 
     /* User */
     (*backend)->user_create=mem_user_create; (*backend)->user_get_by_id=mem_user_get_by_id;

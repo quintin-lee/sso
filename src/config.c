@@ -18,6 +18,8 @@ void sso_config_default(sso_config_t *cfg) {
     cfg->port = 8080;
     cfg->thread_pool_size = 8;
     cfg->queue_size = 1024;
+    cfg->request_timeout_ms = 10000;
+    cfg->max_body_size = 1048576;
 
     /* [database] defaults */
     strcpy(cfg->path, "sso_server.db");
@@ -84,6 +86,8 @@ sso_error_t sso_config_load(const char *filename, sso_config_t *cfg) {
         get_int(server, "port", &cfg->port);
         get_int(server, "thread_pool_size", &cfg->thread_pool_size);
         get_int(server, "queue_size", &cfg->queue_size);
+        get_int(server, "request_timeout_ms", &cfg->request_timeout_ms);
+        get_long(server, "max_body_size", &cfg->max_body_size);
     }
 
     /* [database] */
@@ -136,4 +140,6 @@ void sso_config_apply_env(sso_config_t *cfg) {
     if ((val = getenv("SSO_SMS_API_KEY"))) strncpy(cfg->sms_api_key, val, sizeof(cfg->sms_api_key)-1);
     { char *ev = getenv("SSO_PASSWORD_OPSLIMIT"); if (ev) cfg->password_opslimit = (unsigned long)atol(ev); }
     { char *ev = getenv("SSO_PASSWORD_MEMLIMIT"); if (ev) cfg->password_memlimit = (unsigned long)atol(ev); }
+    if ((val = getenv("SSO_REQUEST_TIMEOUT_MS"))) cfg->request_timeout_ms = atoi(val);
+    if ((val = getenv("SSO_MAX_BODY_SIZE"))) cfg->max_body_size = atol(val);
 }

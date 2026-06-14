@@ -20,12 +20,14 @@
 #include "permission.h"
 #include "token.h"
 #include "storage.h"
+#include "config.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <errno.h>
 #include <arpa/inet.h>
@@ -150,7 +152,7 @@ static ssize_t read_line(int fd, char *buf, size_t max) {
     return (ssize_t)i;
 }
 
-static int parse_request(int client_fd, http_request_t *req) {
+static int parse_request(int client_fd, http_request_t *req, long max_body_size) {
     memset(req, 0, sizeof(*req));
 
     char line[4096];
@@ -212,7 +214,8 @@ static int parse_request(int client_fd, http_request_t *req) {
     }
 
     /* Read body if present */
-    if (content_length > 0 && content_length < 65536) {
+    if (content_length > 0) {
+        if (max_body_size > 0 && (long)content_length > max_body_size) { return -1; }
         req->body = (char *)malloc((size_t)content_length + 1);
         if (req->body) {
             size_t total = 0;
@@ -346,7 +349,19 @@ static void handle_client(sso_server_t *server, int client_fd, const char *clien
     http_request_t req;
     http_response_t resp;
 
-    if (parse_request(client_fd, &req) != 0) {
+    /* Set receive timeout on client socket */
+    struct timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+    sso_config_t *cfg = (sso_config_t *)server->sso_ctx->config;
+    if (cfg) {
+        tv.tv_sec  = cfg->request_timeout_ms / 1000;
+        tv.tv_usec = (cfg->request_timeout_ms % 1000) * 1000;
+        setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    }
+
+    long max_body = cfg ? cfg->max_body_size : 1048576;
+    if (parse_request(client_fd, &req, max_body) != 0) {
         close(client_fd);
         return;
     }
