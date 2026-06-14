@@ -542,6 +542,21 @@ static void print_menu(void) {
     printf("  │  8. Assign a policy to a role                    │\n");
     printf("  │  9. Test a permission check                      │\n");
     printf("  │  10. List all policies                           │\n");
+    printf("  ├───── User Management ────────────────────────────┤\n");
+    printf("  │  11. Create user                                 │\n");
+    printf("  │  12. List all users                              │\n");
+    printf("  │  13. Delete user                                 │\n");
+    printf("  ├───── Role Management ────────────────────────────┤\n");
+    printf("  │  14. Create role                                 │\n");
+    printf("  │  15. List all roles                              │\n");
+    printf("  │  16. Delete role                                 │\n");
+    printf("  │  17. Assign role to user                         │\n");
+    printf("  │  18. Unassign role from user                     │\n");
+    printf("  ├───── Group Management ───────────────────────────┤\n");
+    printf("  │  19. Create group                                │\n");
+    printf("  │  20. List all groups                             │\n");
+    printf("  │  21. Add user to group                           │\n");
+    printf("  │  22. Remove user from group                      │\n");
     printf("  │  0. Exit                                         │\n");
     printf("  └──────────────────────────────────────────────────┘\n");
     printf("  Choice: ");
@@ -902,6 +917,243 @@ static void action_list(policy_manager_t *pmgr) {
     }
 }
 
+/* ------------------------------------------------------------------
+ * Entity management actions
+ * ------------------------------------------------------------------ */
+
+static void action_create_user(user_manager_t *umgr) {
+    printf("\n  ─── Create User ───\n");
+    char username[SSO_MAX_USERNAME];
+    char password[SSO_MAX_USERNAME];
+    char email[SSO_MAX_EMAIL];
+    char display_name[SSO_MAX_DISPLAY_NAME];
+
+    prompt_line("  Username: ", username, sizeof(username));
+    if (username[0] == '\0') return;
+    prompt_line("  Password: ", password, sizeof(password));
+    if (password[0] == '\0') return;
+    prompt_line("  Email (optional): ", email, sizeof(email));
+    prompt_line("  Display name (optional): ", display_name, sizeof(display_name));
+
+    user_t u;
+    sso_error_t err = user_create(umgr, username, password, email, display_name, &u);
+    printf("  → %s (id=%lu)\n",
+        err == SSO_OK ? "Created" : sso_strerror(err),
+        (unsigned long)u.id);
+}
+
+static void action_list_users(sso_context_t *ctx) {
+    printf("\n  ─── All Users ───\n");
+    user_manager_t  *umgr = (user_manager_t  *)ctx->user_mgr;
+    role_manager_t  *rmgr = (role_manager_t  *)ctx->role_mgr;
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+
+    sso_id_t ids[256];
+    size_t count = 0;
+    if (user_list(umgr, ids, &count, 256) != SSO_OK) {
+        printf("  Failed to list users.\n");
+        return;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+        user_t u;
+        if (user_get_by_id(umgr, ids[i], &u) != SSO_OK) continue;
+
+        sso_id_t role_ids[16], group_ids[16];
+        size_t rc = 0, gc = 0;
+        user_get_roles(umgr, u.id, role_ids, &rc, 16);
+        user_get_groups(umgr, u.id, group_ids, &gc, 16);
+
+        printf("  [%2lu] %-12s  status=%-6s  email=%-20s",
+            (unsigned long)u.id, u.username,
+            u.status == USER_STATUS_ACTIVE ? "active" :
+            u.status == USER_STATUS_LOCKED ? "locked" : "inactive",
+            u.email);
+
+        if (rc > 0) {
+            printf("  roles=[");
+            for (size_t j = 0; j < rc; j++) {
+                role_t r;
+                if (role_get_by_id(rmgr, role_ids[j], &r) == SSO_OK)
+                    printf("%s%s", r.name, j < rc - 1 ? "," : "");
+            }
+            printf("]");
+        }
+
+        if (gc > 0) {
+            printf("  groups=[");
+            for (size_t j = 0; j < gc; j++) {
+                group_t g;
+                if (group_get_by_id(gmgr, group_ids[j], &g) == SSO_OK)
+                    printf("%s%s", g.name, j < gc - 1 ? "," : "");
+            }
+            printf("]");
+        }
+        printf("\n");
+    }
+    printf("  Total: %zu user(s)\n", count);
+}
+
+static void action_delete_user(user_manager_t *umgr) {
+    printf("\n  ─── Delete User ───\n");
+    char uid_str[16];
+    prompt_line("  User ID: ", uid_str, sizeof(uid_str));
+    if (uid_str[0] == '\0') return;
+    sso_id_t uid = (sso_id_t)atoll(uid_str);
+
+    user_t u;
+    if (user_get_by_id(umgr, uid, &u) != SSO_OK) {
+        printf("  User %lu not found.\n", (unsigned long)uid);
+        return;
+    }
+    sso_error_t err = user_delete(umgr, uid);
+    printf("  → %s\n", err == SSO_OK ? "Deleted" : sso_strerror(err));
+}
+
+static void action_create_role(role_manager_t *rmgr) {
+    printf("\n  ─── Create Role ───\n");
+    char name[SSO_MAX_ROLE_NAME], desc[SSO_MAX_DESCRIPTION], pid_str[16];
+    prompt_line("  Role name: ", name, sizeof(name));
+    if (name[0] == '\0') return;
+    prompt_line("  Description (optional): ", desc, sizeof(desc));
+    prompt_line("  Parent role ID (0=none): ", pid_str, sizeof(pid_str));
+    sso_id_t parent_id = pid_str[0] ? (sso_id_t)atoll(pid_str) : SSO_ID_NONE;
+
+    role_t r;
+    sso_error_t err = role_create(rmgr, name, desc, parent_id, &r);
+    printf("  → %s (id=%lu)\n",
+        err == SSO_OK ? "Created" : sso_strerror(err),
+        (unsigned long)r.id);
+}
+
+static void action_list_roles(role_manager_t *rmgr) {
+    printf("\n  ─── All Roles ───\n");
+    sso_id_t ids[256];
+    size_t count = 0;
+    if (role_list(rmgr, ids, &count, 256) != SSO_OK) {
+        printf("  Failed to list roles.\n");
+        return;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+        role_t r;
+        if (role_get_by_id(rmgr, ids[i], &r) != SSO_OK) continue;
+        printf("  [%2lu] %-16s  parent=%-3lu  desc=%s\n",
+            (unsigned long)r.id, r.name,
+            (unsigned long)r.parent_role_id,
+            r.description);
+    }
+    printf("  Total: %zu role(s)\n", count);
+}
+
+static void action_delete_role(role_manager_t *rmgr) {
+    printf("\n  ─── Delete Role ───\n");
+    char rid_str[16];
+    prompt_line("  Role ID: ", rid_str, sizeof(rid_str));
+    if (rid_str[0] == '\0') return;
+    sso_id_t rid = (sso_id_t)atoll(rid_str);
+
+    role_t r;
+    if (role_get_by_id(rmgr, rid, &r) != SSO_OK) {
+        printf("  Role %lu not found.\n", (unsigned long)rid);
+        return;
+    }
+    sso_error_t err = role_delete(rmgr, rid);
+    printf("  → %s\n", err == SSO_OK ? "Deleted" : sso_strerror(err));
+}
+
+static void action_assign_role_to_user(role_manager_t *rmgr) {
+    printf("\n  ─── Assign Role to User ───\n");
+    char rid_str[16], uid_str[16];
+    prompt_line("  Role ID: ", rid_str, sizeof(rid_str));
+    if (rid_str[0] == '\0') return;
+    prompt_line("  User ID: ", uid_str, sizeof(uid_str));
+    if (uid_str[0] == '\0') return;
+
+    sso_id_t rid = (sso_id_t)atoll(rid_str);
+    sso_id_t uid = (sso_id_t)atoll(uid_str);
+    sso_error_t err = role_assign_to_user(rmgr, rid, uid);
+    printf("  → %s\n", err == SSO_OK ? "Assigned" : sso_strerror(err));
+}
+
+static void action_unassign_role_from_user(role_manager_t *rmgr) {
+    printf("\n  ─── Unassign Role from User ───\n");
+    char rid_str[16], uid_str[16];
+    prompt_line("  Role ID: ", rid_str, sizeof(rid_str));
+    if (rid_str[0] == '\0') return;
+    prompt_line("  User ID: ", uid_str, sizeof(uid_str));
+    if (uid_str[0] == '\0') return;
+
+    sso_id_t rid = (sso_id_t)atoll(rid_str);
+    sso_id_t uid = (sso_id_t)atoll(uid_str);
+    sso_error_t err = role_unassign_from_user(rmgr, rid, uid);
+    printf("  → %s\n", err == SSO_OK ? "Unassigned" : sso_strerror(err));
+}
+
+static void action_create_group(group_manager_t *gmgr) {
+    printf("\n  ─── Create Group ───\n");
+    char name[SSO_MAX_GROUP_NAME], desc[SSO_MAX_DESCRIPTION], pid_str[16];
+    prompt_line("  Group name: ", name, sizeof(name));
+    if (name[0] == '\0') return;
+    prompt_line("  Description (optional): ", desc, sizeof(desc));
+    prompt_line("  Parent group ID (0=none): ", pid_str, sizeof(pid_str));
+    sso_id_t parent_id = pid_str[0] ? (sso_id_t)atoll(pid_str) : SSO_ID_NONE;
+
+    group_t g;
+    sso_error_t err = group_create(gmgr, name, desc, parent_id, &g);
+    printf("  → %s (id=%lu)\n",
+        err == SSO_OK ? "Created" : sso_strerror(err),
+        (unsigned long)g.id);
+}
+
+static void action_list_groups(group_manager_t *gmgr) {
+    printf("\n  ─── All Groups ───\n");
+    sso_id_t ids[256];
+    size_t count = 0;
+    if (group_list(gmgr, ids, &count, 256) != SSO_OK) {
+        printf("  Failed to list groups.\n");
+        return;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+        group_t g;
+        if (group_get_by_id(gmgr, ids[i], &g) != SSO_OK) continue;
+        printf("  [%2lu] %-16s  parent=%-3lu  desc=%s\n",
+            (unsigned long)g.id, g.name,
+            (unsigned long)g.parent_group_id,
+            g.description);
+    }
+    printf("  Total: %zu group(s)\n", count);
+}
+
+static void action_add_user_to_group(group_manager_t *gmgr) {
+    printf("\n  ─── Add User to Group ───\n");
+    char gid_str[16], uid_str[16];
+    prompt_line("  Group ID: ", gid_str, sizeof(gid_str));
+    if (gid_str[0] == '\0') return;
+    prompt_line("  User ID: ", uid_str, sizeof(uid_str));
+    if (uid_str[0] == '\0') return;
+
+    sso_id_t gid = (sso_id_t)atoll(gid_str);
+    sso_id_t uid = (sso_id_t)atoll(uid_str);
+    sso_error_t err = group_add_user(gmgr, gid, uid);
+    printf("  → %s\n", err == SSO_OK ? "Added" : sso_strerror(err));
+}
+
+static void action_remove_user_from_group(group_manager_t *gmgr) {
+    printf("\n  ─── Remove User from Group ───\n");
+    char gid_str[16], uid_str[16];
+    prompt_line("  Group ID: ", gid_str, sizeof(gid_str));
+    if (gid_str[0] == '\0') return;
+    prompt_line("  User ID: ", uid_str, sizeof(uid_str));
+    if (uid_str[0] == '\0') return;
+
+    sso_id_t gid = (sso_id_t)atoll(gid_str);
+    sso_id_t uid = (sso_id_t)atoll(uid_str);
+    sso_error_t err = group_remove_user(gmgr, gid, uid);
+    printf("  → %s\n", err == SSO_OK ? "Removed" : sso_strerror(err));
+}
+
 /* ========================================================================
  * Interactive configuration shell entry point
  * ======================================================================== */
@@ -970,8 +1222,8 @@ static int interactive_config(void) {
 
     user_manager_t  *umgr = (user_manager_t  *)ctx.user_mgr;
     role_manager_t  *rmgr = (role_manager_t  *)ctx.role_mgr;
+    group_manager_t *gmgr = (group_manager_t *)ctx.group_mgr;
     policy_manager_t *pmgr = (policy_manager_t *)ctx.policy_mgr;
-    (void)umgr;
 
     char choice[16];
     int running = 1;
@@ -991,6 +1243,18 @@ static int interactive_config(void) {
         case 8:  action_assign(pmgr, rmgr); break;
         case 9:  action_check(&ctx); break;
         case 10: action_list(pmgr); break;
+        case 11: action_create_user(umgr); break;
+        case 12: action_list_users(&ctx); break;
+        case 13: action_delete_user(umgr); break;
+        case 14: action_create_role(rmgr); break;
+        case 15: action_list_roles(rmgr); break;
+        case 16: action_delete_role(rmgr); break;
+        case 17: action_assign_role_to_user(rmgr); break;
+        case 18: action_unassign_role_from_user(rmgr); break;
+        case 19: action_create_group(gmgr); break;
+        case 20: action_list_groups(gmgr); break;
+        case 21: action_add_user_to_group(gmgr); break;
+        case 22: action_remove_user_from_group(gmgr); break;
         case 0:  running = 0; break;
         default: printf("  Invalid option.\n"); break;
         }
