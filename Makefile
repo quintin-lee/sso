@@ -22,6 +22,7 @@ INCLUDES = -Iinclude
 
 SRCDIR   = src
 STRATEGIES = strategies
+TESTDIR  = tests
 BUILDDIR = build
 
 # Sources
@@ -41,6 +42,10 @@ SRCS = $(SRCDIR)/sso.c           \
        $(SRCDIR)/config.c        \
        $(SRCDIR)/main.c
 
+# Tests
+TEST_SRCS = $(wildcard $(TESTDIR)/test_*.c)
+TEST_BINS = $(TEST_SRCS:$(TESTDIR)/%.c=$(BUILDDIR)/$(TESTDIR)/%)
+
 STRAT_SRCS = $(STRATEGIES)/func_perm.c \
              $(STRATEGIES)/api_perm.c  \
              $(STRATEGIES)/data_perm.c \
@@ -56,13 +61,14 @@ TARGET   = sso_system
 # Debug target
 DEBUG_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O0 -DDEBUG -Wno-overlength-strings -MD -MP
 
-.PHONY: all clean run server debug dirs
+.PHONY: all clean run server debug dirs test
 
 all: dirs $(TARGET)
 
 dirs:
 	@mkdir -p $(BUILDDIR)/$(SRCDIR)
 	@mkdir -p $(BUILDDIR)/$(STRATEGIES)
+	@mkdir -p $(BUILDDIR)/$(TESTDIR)
 
 # Compile rule: every .c file gets a .o in build/
 $(BUILDDIR)/%.c.o: %.c
@@ -71,6 +77,14 @@ $(BUILDDIR)/%.c.o: %.c
 $(TARGET): $(OBJS)
 	$(CC) $(OBJS) $(LDFLAGS) -o $@
 	@echo "Build complete: $(TARGET)"
+
+# Test compilation rule
+$(BUILDDIR)/$(TESTDIR)/test_%: $(TESTDIR)/test_%.c $(filter-out $(BUILDDIR)/$(SRCDIR)/main.c.o, $(OBJS))
+	$(CC) $(CFLAGS) $(INCLUDES) $< $(filter-out $(BUILDDIR)/$(SRCDIR)/main.c.o, $(OBJS)) $(LDFLAGS) -lcmocka -o $@
+
+test: dirs $(TEST_BINS)
+	@echo "Running tests..."
+	@for bin in $(TEST_BINS); do ./$$bin; done
 
 debug: CFLAGS = $(DEBUG_CFLAGS)
 debug: all
