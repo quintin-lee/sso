@@ -1,0 +1,14 @@
+.git
+.codegraph/
+.cache/
+.kilo/
+build/
+audit.log
+*.db
+gogs/
+nginx.conf
+docker-compose.yml
+README.md
+LICENSE
+.gitignore
+.dockerignore

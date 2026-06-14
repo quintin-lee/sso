@@ -1466,25 +1466,37 @@ static sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
     user_get_groups(umgr, user.id, groups, &gc, 16);
 
     token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
-    token_t token;
-    err = token_issue(tmgr, &user, roles, rc, groups, gc, 3600000, &token);
+    token_t access_token, refresh_token;
+    err = token_issue(tmgr, &user, roles, rc, groups, gc, 900000, &access_token);
     if (err != SSO_OK) {
-        sso_response_error(resp, 500, "Failed to issue token");
+        sso_response_error(resp, 500, "Failed to issue access token");
+        return SSO_OK;
+    }
+    err = token_issue(tmgr, &user, roles, rc, groups, gc, 604800000, &refresh_token);
+    if (err != SSO_OK) {
+        token_destroy(&access_token);
+        sso_response_error(resp, 500, "Failed to issue refresh token");
         return SSO_OK;
     }
 
-    char buf[2048];
+    char buf[4096];
     snprintf(buf, sizeof(buf),
         "{"
-        "\"token\":\"%s\","
+        "\"access_token\":\"%s\","
+        "\"refresh_token\":\"%s\","
+        "\"expires_in\":%lld,"
         "\"user_id\":%llu,"
         "\"username\":\"%s\","
         "\"display_name\":\"%s\""
         "}",
-        token.token_str,
+        access_token.token_str,
+        refresh_token.token_str,
+        (long long)access_token.expires_at,
         (unsigned long long)user.id,
         user.username,
         user.display_name);
+    token_destroy(&access_token);
+    token_destroy(&refresh_token);
     sso_response_ok(resp, buf);
     return SSO_OK;
 }
@@ -1631,9 +1643,30 @@ static sso_error_t handle_login_by_sms(sso_context_t *ctx, const http_request_t 
     return SSO_OK;
 }
 
+/* Password validation */
+static const char *validate_password(const char *password) {
+    if (!password) return "Password required";
+    size_t len = strlen(password);
+    if (len < 8) return "Password must be at least 8 characters";
+    if (len > 128) return "Password must not exceed 128 characters";
+    bool has_upper = false, has_lower = false, has_digit = false, has_special = false;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)password[i];
+        if (c >= 'A' && c <= 'Z') has_upper = true;
+        else if (c >= 'a' && c <= 'z') has_lower = true;
+        else if (c >= '0' && c <= '9') has_digit = true;
+        else if (c > 32 && c < 127) has_special = true;
+    }
+    if (!has_upper) return "Password must contain an uppercase letter";
+    if (!has_lower) return "Password must contain a lowercase letter";
+    if (!has_digit) return "Password must contain a digit";
+    if (!has_special) return "Password must contain a special character";
+    return NULL;
+}
+
 /* POST /api/v1/auth/register */
 static sso_error_t handle_register(sso_context_t *ctx, const http_request_t *req,
-                                     http_response_t *resp) {
+                                      http_response_t *resp) {
     if (!req->body) {
         sso_response_error(resp, 400, "Request body required");
         return SSO_OK;
@@ -1647,6 +1680,13 @@ static sso_error_t handle_register(sso_context_t *ctx, const http_request_t *req
     if (!username || !password) {
         free(username); free(password); free(email); free(display);
         sso_response_error(resp, 400, "username and password required");
+        return SSO_OK;
+    }
+
+    const char *pw_err = validate_password(password);
+    if (pw_err) {
+        free(username); free(password); free(email); free(display);
+        sso_response_error(resp, 400, pw_err);
         return SSO_OK;
     }
 
@@ -1702,7 +1742,7 @@ static sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
         token_str = req->auth_token;
     }
     if (!token_str) {
-        sso_response_error(resp, 400, "Token required in body or Authorization header");
+        sso_response_error(resp, 401, "Token required");
         return SSO_OK;
     }
 
@@ -1728,7 +1768,7 @@ static sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
     user_t user;
     err = user_get_by_id(umgr, tok.user_id, &user);
     if (err != SSO_OK) {
-        sso_response_error(resp, 500, "User not found");
+        sso_response_error(resp, 401, "User not found");
         return SSO_OK;
     }
 
@@ -1756,24 +1796,71 @@ static sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
 /* POST /api/v1/auth/refresh */
 static sso_error_t handle_refresh(sso_context_t *ctx, const http_request_t *req,
                                    http_response_t *resp) {
-    auth_context_t *auth = (auth_context_t *)req->userdata;
-    if (!auth) {
-        sso_response_error(resp, 401, "Authentication required");
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *refresh_token_str = json_str_value(req->body, "refresh_token");
+    if (!refresh_token_str) {
+        sso_response_error(resp, 400, "refresh_token required");
         return SSO_OK;
     }
 
     token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
-    token_t new_token;
-    sso_error_t err = token_refresh(tmgr, &auth->token, 3600000, &new_token);
+    token_t old_token;
+    sso_error_t err = token_verify(tmgr, refresh_token_str, &old_token);
+    free(refresh_token_str);
     if (err != SSO_OK) {
-        sso_response_error(resp, 500, "Failed to refresh token");
+        const char *msg = (err == SSO_ERR_TOKEN_EXPIRED) ? "Refresh token expired" : "Invalid refresh token";
+        sso_response_error(resp, 401, msg);
         return SSO_OK;
     }
 
-    char buf[1024];
+    if (token_is_revoked(tmgr, old_token.jti)) {
+        token_destroy(&old_token);
+        sso_response_error(resp, 401, "Refresh token revoked");
+        return SSO_OK;
+    }
+
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    user_t user;
+    err = user_get_by_id(umgr, old_token.user_id, &user);
+    if (err != SSO_OK) {
+        token_destroy(&old_token);
+        sso_response_error(resp, 401, "User not found");
+        return SSO_OK;
+    }
+
+    token_t access_token, refresh_token;
+    err = token_issue(tmgr, &user,
+                      old_token.role_ids, old_token.role_count,
+                      old_token.group_ids, old_token.group_count,
+                      900000, &access_token);
+    if (err == SSO_OK) {
+        err = token_issue(tmgr, &user,
+                          old_token.role_ids, old_token.role_count,
+                          old_token.group_ids, old_token.group_count,
+                          604800000, &refresh_token);
+    }
+    token_destroy(&old_token);
+
+    if (err != SSO_OK) {
+        token_destroy(&access_token);
+        sso_response_error(resp, 500, "Failed to issue tokens");
+        return SSO_OK;
+    }
+
+    char buf[4096];
     snprintf(buf, sizeof(buf),
-        "{\"token\":\"%s\",\"expires_at\":%lld}",
-        new_token.token_str, (long long)new_token.expires_at);
+        "{"
+        "\"access_token\":\"%s\","
+        "\"refresh_token\":\"%s\""
+        "}",
+        access_token.token_str,
+        refresh_token.token_str);
+    token_destroy(&access_token);
+    token_destroy(&refresh_token);
     sso_response_ok(resp, buf);
     return SSO_OK;
 }
@@ -1813,9 +1900,10 @@ static sso_error_t handle_change_password(sso_context_t *ctx, const http_request
     }
 
     char *new_pass = json_str_value(req->body, "password");
-    if (!new_pass || strlen(new_pass) < 6) {
+    const char *pw_err = validate_password(new_pass);
+    if (pw_err) {
         if (new_pass) free(new_pass);
-        sso_response_error(resp, 400, "Password must be at least 6 characters");
+        sso_response_error(resp, 400, pw_err);
         return SSO_OK;
     }
 
@@ -2737,51 +2825,66 @@ static sso_error_t handle_get_user(sso_context_t *ctx, const http_request_t *req
 /* GET /api/v1/audit/logs */
 static sso_error_t handle_list_audit_logs(sso_context_t *ctx, const http_request_t *req,
                                            http_response_t *resp) {
-    (void)ctx; (void)req;
+    (void)ctx;
     FILE *f = fopen("audit.log", "r");
     if (!f) {
         sso_response_ok(resp, "[]");
         return SSO_OK;
     }
 
-    /* Simple tail implementation: read last 100 lines */
-    char *lines[100];
-    int count = 0;
-    char buffer[10240];
-
-    while (fgets(buffer, sizeof(buffer), f)) {
-        if (count < 100) {
-            lines[count++] = strdup(buffer);
-        } else {
-            free(lines[0]);
-            for (int i = 0; i < 99; i++) lines[i] = lines[i+1];
-            lines[99] = strdup(buffer);
+    /* Parse query params: user_id filter, limit, offset */
+    sso_id_t filter_uid = SSO_ID_NONE;
+    int limit = 100, offset_local = 0;
+    if (req->query_params) {
+        for (size_t i = 0; req->query_params[i]; i++) {
+            char *eq = strchr(req->query_params[i], '=');
+            if (!eq) continue;
+            *eq++ = '\0';
+            if (strcmp(req->query_params[i], "user_id") == 0) filter_uid = (sso_id_t)atoll(eq);
+            if (strcmp(req->query_params[i], "limit") == 0) { int v = atoi(eq); if (v > 0 && v <= 1000) limit = v; }
+            if (strcmp(req->query_params[i], "offset") == 0) { int v = atoi(eq); if (v > 0) offset_local = v; }
         }
     }
-    fclose(f);
 
-    /* Construct JSON array */
-    size_t total_len = 3; /* [ ] \0 */
-    for (int i = 0; i < count; i++) total_len += strlen(lines[i]) + 1;
+    /* Read matching lines into a growing buffer */
+    size_t cap = 4096, total = 0, match_idx = 0;
+    char *json = (char *)malloc(cap);
+    if (!json) { fclose(f); sso_response_error(resp, 500, "Out of memory"); return SSO_OK; }
+    json[0] = '['; total = 1;
+    bool first = true;
+    char buffer[10240];
+    size_t line_num = 0;
 
-    char *json = (char *)malloc(total_len);
-    if (!json) {
-        for (int i = 0; i < count; i++) free(lines[i]);
-        sso_response_error(resp, 500, "Out of memory");
-        return SSO_OK;
-    }
+    while (fgets(buffer, sizeof(buffer), f)) {
+        line_num++;
+        if (offset_local > 0 && line_num <= (size_t)offset_local) continue;
+        if (filter_uid != SSO_ID_NONE) {
+            char uid_str[32];
+            snprintf(uid_str, sizeof(uid_str), "\"user_id\":%llu", (unsigned long long)filter_uid);
+            if (!strstr(buffer, uid_str)) continue;
+        }
 
-    strcpy(json, "[");
-    for (int i = 0; i < count; i++) {
-        /* Remove newline if present */
-        char *nl = strchr(lines[i], '\n');
+        char *nl = strchr(buffer, '\n');
         if (nl) *nl = '\0';
-        
-        strcat(json, lines[i]);
-        if (i < count - 1) strcat(json, ",");
-        free(lines[i]);
+
+        size_t needed = total + strlen(buffer) + 3;
+        if (needed > cap) {
+            cap = needed * 2;
+            char *new_json = (char *)realloc(json, cap);
+            if (!new_json) { free(json); fclose(f); sso_response_error(resp, 500, "Out of memory"); return SSO_OK; }
+            json = new_json;
+        }
+
+        if (!first) json[total++] = ',';
+        first = false;
+        memcpy(json + total, buffer, strlen(buffer));
+        total += strlen(buffer);
+
+        if (++match_idx >= (size_t)limit) break;
     }
-    strcat(json, "]");
+    fclose(f);
+    json[total++] = ']';
+    json[total] = '\0';
 
     sso_response_ok(resp, json);
     free(json);
@@ -3646,8 +3749,9 @@ static int run_server(sso_config_t *cfg) {
         {"/api/v1/auth/register",   HTTP_POST, handle_register,        false},
 
         /* Auth required */
+        {"/api/v1/auth/verify",     HTTP_GET,  handle_verify,           false},
         {"/api/v1/auth/verify",     HTTP_POST, handle_verify,           false},
-        {"/api/v1/auth/refresh",    HTTP_POST, handle_refresh,          true},
+        {"/api/v1/auth/refresh",    HTTP_POST, handle_refresh,          false},
         {"/api/v1/auth/logout",     HTTP_POST, handle_logout,           true},
         {"/api/v1/auth/password",   HTTP_POST, handle_change_password,  true},
         {"/api/v1/auth/me",         HTTP_GET,  handle_me,               true},

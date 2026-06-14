@@ -306,6 +306,10 @@ static ssize_t conn_write_all(conn_t *c, const void *buf, size_t n) {
 }
 
 static void send_response(conn_t *c, const http_response_t *resp) {
+    char hsts[128] = "";
+    if (g_server && g_server->ssl_ctx) {
+        snprintf(hsts, sizeof(hsts), "Strict-Transport-Security: max-age=31536000; includeSubDomains\r\n");
+    }
     char header[4096];
     int n = snprintf(header, sizeof(header),
         "HTTP/1.1 %d %s\r\n"
@@ -313,8 +317,13 @@ static void send_response(conn_t *c, const http_response_t *resp) {
         "Content-Length: %zu\r\n"
         "Connection: close\r\n"
         "Access-Control-Allow-Origin: *\r\n"
+        "Access-Control-Allow-Credentials: true\r\n"
+        "X-Content-Type-Options: nosniff\r\n"
+        "X-Frame-Options: SAMEORIGIN\r\n"
+        "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';\r\n"
         "Cache-Control: no-cache, no-store, must-revalidate\r\n"
         "Pragma: no-cache\r\n"
+        "%s"
         "%s"
         "\r\n",
         resp->status_code,
@@ -326,6 +335,7 @@ static void send_response(conn_t *c, const http_response_t *resp) {
         resp->status_code == 404 ? "Not Found" : "Internal Server Error",
         resp->content_type,
         resp->body_len,
+        hsts,
         resp->extra_headers);
 
     conn_write_all(c, header, (size_t)n);
@@ -418,6 +428,26 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
     resp.body_len = 0;
     strcpy(resp.content_type, "application/json");
 
+    /* CORS preflight */
+    if (req.method == HTTP_OPTIONS) {
+        snprintf(resp.extra_headers, sizeof(resp.extra_headers),
+            "Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS\r\n"
+            "Access-Control-Allow-Headers: Authorization, Content-Type, X-Requested-With\r\n"
+            "Access-Control-Max-Age: 86400\r\n");
+        resp.body = strdup("");
+        resp.body_len = 0;
+        send_response(conn, &resp);
+        free(resp.body);
+        if (req.query_params) {
+            for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
+            free(req.query_params);
+        }
+        free(req.body);
+        conn_close(conn);
+        return;
+    }
+
+    /* Find matching route */
     route_t *matched = NULL;
     for (size_t i = 0; i < server->route_count; i++) {
         if (server->routes[i].method == req.method &&

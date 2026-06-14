@@ -4,12 +4,11 @@ services:
   sso:
     build: .
     container_name: sso_service
-    command: ["./sso_system", "--server"]
     environment:
       - SSO_TOKEN_SECRET=your_super_secret_key_32chars_at_least
       - SSO_ADMIN_PASSWORD=admin123
     volumes:
-      - sso_data:/app
+      - sso_data:/app/data
       - ./audit.log:/app/audit.log
     restart: unless-stopped
 

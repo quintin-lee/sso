@@ -213,7 +213,6 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     out->role_count = role_count;
     out->group_count = group_count;
 
-    /* Generate jti (timestamp + 8 bytes cryptographic random) */
     unsigned char rand_bytes[8];
     randombytes_buf(rand_bytes, sizeof(rand_bytes));
     snprintf(out->jti, sizeof(out->jti), "%llx%02x%02x%02x%02x%02x%02x%02x%02x",
@@ -221,7 +220,6 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
              rand_bytes[0], rand_bytes[1], rand_bytes[2], rand_bytes[3],
              rand_bytes[4], rand_bytes[5], rand_bytes[6], rand_bytes[7]);
 
-    /* Copy role/group IDs */
     if (role_ids && role_count > 0) {
         out->role_ids = (sso_id_t *)malloc(role_count * sizeof(sso_id_t));
         if (!out->role_ids) return SSO_ERR_OUT_OF_MEMORY;
@@ -237,12 +235,24 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
         memcpy(out->group_ids, group_ids, group_count * sizeof(sso_id_t));
     }
 
-    /* Build the token payload using cJSON */
+    /* JWT Header */
+    cJSON *header = cJSON_CreateObject();
+    cJSON_AddStringToObject(header, "alg", mgr->mode == SSO_TOKEN_MODE_RS256 ? "RS256" : "HS256");
+    cJSON_AddStringToObject(header, "typ", "JWT");
+    char *header_str = cJSON_PrintUnformatted(header);
+    cJSON_Delete(header);
+    char b64_header[128];
+    base64_encode((unsigned char *)header_str, strlen(header_str), b64_header, sizeof(b64_header));
+    free(header_str);
+
+    /* JWT Payload */
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jti", out->jti);
     cJSON_AddNumberToObject(root, "sub", (double)out->user_id);
     cJSON_AddNumberToObject(root, "iat", (double)out->issued_at);
     cJSON_AddNumberToObject(root, "exp", (double)out->expires_at);
+    cJSON_AddStringToObject(root, "iss", "sso-server");
+    cJSON_AddStringToObject(root, "aud", "sso-api");
 
     cJSON *roles_arr = cJSON_CreateArray();
     for (size_t i = 0; i < role_count; i++) {
@@ -260,32 +270,32 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     cJSON_Delete(root);
     if (!payload_str) return SSO_ERR_OUT_OF_MEMORY;
 
-    /* Base64-encode the payload */
     char b64_payload[2048];
     base64_encode((unsigned char *)payload_str, strlen(payload_str), b64_payload, sizeof(b64_payload));
     free(payload_str);
 
-    /* Final token: payload.signature */
+    /* signing_input = header.payload */
+    char signing_input[2560];
+    snprintf(signing_input, sizeof(signing_input), "%s.%s", b64_header, b64_payload);
+
     if (mgr->mode == SSO_TOKEN_MODE_HS256) {
-        /* HMAC-SHA256 */
         unsigned char hmac_result[EVP_MAX_MD_SIZE];
         unsigned int hmac_len = 0;
         HMAC(EVP_sha256(), mgr->keys.secret, (int)sizeof(mgr->keys.secret),
-             (unsigned char *)b64_payload, strlen(b64_payload),
+             (unsigned char *)signing_input, strlen(signing_input),
              hmac_result, &hmac_len);
 
         char hmac_hex[EVP_MAX_MD_SIZE * 2 + 1];
         to_hex(hmac_result, hmac_len, hmac_hex, sizeof(hmac_hex));
-        snprintf(out->token_str, sizeof(out->token_str), "%s.%s", b64_payload, hmac_hex);
+        snprintf(out->token_str, sizeof(out->token_str), "%s.%s", signing_input, hmac_hex);
     } else {
-        /* RS256 */
         EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
         EVP_PKEY_CTX *pk_ctx = NULL;
         size_t sig_len = 0;
         unsigned char *sig = NULL;
 
         if (EVP_DigestSignInit(md_ctx, &pk_ctx, EVP_sha256(), NULL, (EVP_PKEY *)mgr->keys.rsa.priv_key) <= 0) goto rs_fail;
-        if (EVP_DigestSignUpdate(md_ctx, b64_payload, strlen(b64_payload)) <= 0) goto rs_fail;
+        if (EVP_DigestSignUpdate(md_ctx, signing_input, strlen(signing_input)) <= 0) goto rs_fail;
         if (EVP_DigestSignFinal(md_ctx, NULL, &sig_len) <= 0) goto rs_fail;
         
         sig = (unsigned char *)malloc(sig_len);
@@ -293,7 +303,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
 
         char *sig_hex = (char *)malloc(sig_len * 2 + 1);
         to_hex(sig, sig_len, sig_hex, sig_len * 2 + 1);
-        snprintf(out->token_str, sizeof(out->token_str), "%s.%s", b64_payload, sig_hex);
+        snprintf(out->token_str, sizeof(out->token_str), "%s.%s", signing_input, sig_hex);
         
         free(sig);
         free(sig_hex);
@@ -314,24 +324,39 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
     memset(out, 0, sizeof(*out));
     strncpy(out->token_str, token_str, SSO_MAX_TOKEN_STR - 1);
 
-    /* Split into payload and signature */
-    const char *dot = strchr(token_str, '.');
-    if (!dot) return SSO_ERR_TOKEN_INVALID;
+    /* Split into header, payload, and signature */
+    const char *dot1 = strchr(token_str, '.');
+    if (!dot1) return SSO_ERR_TOKEN_INVALID;
 
-    size_t b64_len = (size_t)(dot - token_str);
+    const char *dot2 = strchr(dot1 + 1, '.');
+    if (!dot2) return SSO_ERR_TOKEN_INVALID;
+
+    size_t hdr_len = (size_t)(dot1 - token_str);
+    size_t b64_len = (size_t)(dot2 - dot1 - 1);
+
+    char b64_header[128];
     char b64_payload[2048];
-    if (b64_len >= sizeof(b64_payload)) return SSO_ERR_TOKEN_INVALID;
-    strncpy(b64_payload, token_str, b64_len);
+    if (hdr_len >= sizeof(b64_header) || b64_len >= sizeof(b64_payload))
+        return SSO_ERR_TOKEN_INVALID;
+
+    strncpy(b64_header, token_str, hdr_len);
+    b64_header[hdr_len] = '\0';
+
+    strncpy(b64_payload, dot1 + 1, b64_len);
     b64_payload[b64_len] = '\0';
 
-    const char *sig_hex = dot + 1;
+    const char *sig_hex = dot2 + 1;
+
+    /* signing_input = header.payload */
+    char signing_input[2560];
+    snprintf(signing_input, sizeof(signing_input), "%s.%s", b64_header, b64_payload);
 
     /* Verify signature */
     if (mgr->mode == SSO_TOKEN_MODE_HS256) {
         unsigned char hmac_result[EVP_MAX_MD_SIZE];
         unsigned int hmac_len = 0;
         HMAC(EVP_sha256(), mgr->keys.secret, (int)sizeof(mgr->keys.secret),
-             (unsigned char *)b64_payload, strlen(b64_payload),
+             (unsigned char *)signing_input, strlen(signing_input),
              hmac_result, &hmac_len);
 
         char expected_sig[EVP_MAX_MD_SIZE * 2 + 1];
@@ -341,7 +366,6 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
             return SSO_ERR_TOKEN_INVALID;
         }
     } else {
-        /* RS256 Verification */
         size_t sig_len = strlen(sig_hex) / 2;
         unsigned char *sig = (unsigned char *)malloc(sig_len);
         for (size_t i = 0; i < sig_len; i++) {
@@ -355,7 +379,7 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         sso_error_t v_err = SSO_OK;
 
         if (EVP_DigestVerifyInit(md_ctx, &pk_ctx, EVP_sha256(), NULL, (EVP_PKEY *)mgr->keys.rsa.pub_key) <= 0) v_err = SSO_ERR_INIT;
-        if (v_err == SSO_OK && EVP_DigestVerifyUpdate(md_ctx, b64_payload, strlen(b64_payload)) <= 0) v_err = SSO_ERR_INIT;
+        if (v_err == SSO_OK && EVP_DigestVerifyUpdate(md_ctx, signing_input, strlen(signing_input)) <= 0) v_err = SSO_ERR_INIT;
         if (v_err == SSO_OK && EVP_DigestVerifyFinal(md_ctx, sig, sig_len) <= 0) v_err = SSO_ERR_TOKEN_INVALID;
 
         free(sig);
@@ -369,7 +393,6 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
     if (decoded_len == 0) return SSO_ERR_TOKEN_INVALID;
     decoded[decoded_len] = '\0';
 
-    /* Extract fields using cJSON */
     cJSON *root = cJSON_Parse((const char *)decoded);
     if (!root) return SSO_ERR_TOKEN_INVALID;
 
@@ -393,7 +416,6 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         out->expires_at = (sso_timestamp_t)exp_item->valuedouble;
     }
 
-    /* Roles */
     cJSON *roles_arr = cJSON_GetObjectItem(root, "roles");
     if (cJSON_IsArray(roles_arr)) {
         out->role_count = (size_t)cJSON_GetArraySize(roles_arr);
@@ -406,7 +428,6 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         }
     }
 
-    /* Groups */
     cJSON *groups_arr = cJSON_GetObjectItem(root, "groups");
     if (cJSON_IsArray(groups_arr)) {
         out->group_count = (size_t)cJSON_GetArraySize(groups_arr);

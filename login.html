@@ -268,7 +268,7 @@ async function post(url, data) {
 document.getElementById('passForm').onsubmit = async (e) => {
   e.preventDefault();
   try {
-    const res = await post('/api/v1/auth/login', {username:document.getElementById('username').value, password:document.getElementById('password').value});
+    const res = await post('api/v1/auth/login', {username:document.getElementById('username').value, password:document.getElementById('password').value});
     onSuccess(res);
   } catch(e) { showError(e.message); }
 };
@@ -277,7 +277,7 @@ document.getElementById('smsBtn').onclick = async () => {
   const phone = document.getElementById('phone').value;
   if(phone.length < 11) return showError('请输入正确的手机号');
   try {
-    await post('/api/v1/auth/send_sms', {phone});
+    await post('api/v1/auth/send_sms', {phone});
     let s = 60;
     const btn = document.getElementById('smsBtn');
     btn.disabled = true;
@@ -291,14 +291,14 @@ document.getElementById('smsBtn').onclick = async () => {
 document.getElementById('smsForm').onsubmit = async (e) => {
   e.preventDefault();
   try {
-    const res = await post('/api/v1/auth/login_by_sms', {phone:document.getElementById('phone').value, code:document.getElementById('code').value});
+    const res = await post('api/v1/auth/login_by_sms', {phone:document.getElementById('phone').value, code:document.getElementById('code').value});
     onSuccess(res);
   } catch(e) { showError(e.message); }
 };
 
 async function doRegister() {
   try {
-    const res = await post('/api/v1/auth/register', {
+    const res = await post('api/v1/auth/register', {
       username: document.getElementById('r_user').value, 
       password: document.getElementById('r_pass').value, 
       display_name: document.getElementById('r_name').value
@@ -314,16 +314,24 @@ function onSuccess(res) {
   localStorage.setItem('sso_token', res.token);
   // Set cookie for Nginx auth_request
   document.cookie = `sso_token=${res.token}; path=/; max-age=3600; SameSite=Lax`;
+
+  const params = new URLSearchParams(window.location.search);
+  const redirect = params.get('redirect');
+  if (redirect) {
+    window.location.href = redirect;
+    return;
+  }
+
   document.getElementById('loginView').style.display = 'none';
   document.getElementById('successView').style.display = 'block';
   document.getElementById('tokenDisplay').textContent = res.token;
-  document.getElementById('adminLink').href = `/admin#${encodeURIComponent(res.token)}`;
+  document.getElementById('adminLink').href = `admin#${encodeURIComponent(res.token)}`;
 }
 
 // Redirect if already has token
 const t = localStorage.getItem('sso_token');
 if(t) {
-  fetch('/api/v1/auth/verify', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})})
+  fetch('api/v1/auth/verify', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})})
     .then(r => r.json()).then(d => { if(d.valid) onSuccess({token:t}); });
 }
 </script>

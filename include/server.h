@@ -57,6 +57,7 @@ typedef enum {
     HTTP_PUT,
     HTTP_DELETE,
     HTTP_PATCH,
+    HTTP_OPTIONS,
 } http_method_t;
 
 /* ========================================================================
