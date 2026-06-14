@@ -192,20 +192,36 @@ sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
     if (err != SSO_OK) goto fail;
     ctx->rate_limiter = rl;
 
-    /* 3. Token manager — load secret securely */
+    /* 3. Token manager — load secret or RSA keys */
     token_manager_t *tmgr = (token_manager_t *)calloc(1, sizeof(token_manager_t));
     if (!tmgr) return SSO_ERR_OUT_OF_MEMORY;
 
-    unsigned char secret[SSO_SECRET_BYTES];
-    err = load_token_secret(secret, SSO_SECRET_BYTES);
-    if (err != SSO_OK) {
-        free(tmgr);
-        return err;
+    const char *env_priv = getenv("SSO_PRIVATE_KEY");
+    const char *env_pub  = getenv("SSO_PUBLIC_KEY");
+
+    if (env_priv) {
+        /* RS256 mode */
+        err = token_manager_init_rs256(tmgr, env_priv, env_pub, 3600000LL);
+        if (err == SSO_OK) {
+            printf("[sso] Asymmetric signing (RS256) enabled.\n");
+        } else {
+            fprintf(stderr, "[sso] Failed to init RS256: %s. Falling back to HS256.\n", sso_strerror(err));
+            env_priv = NULL; /* trigger fallback */
+        }
     }
-    token_manager_init(tmgr, secret, SSO_SECRET_BYTES,
-                       3600000LL); /* 1 hour default TTL */
-    /* Securely wipe the stack copy of the key after use. */
-    sodium_memzero(secret, SSO_SECRET_BYTES);
+
+    if (!env_priv) {
+        /* HS256 mode */
+        unsigned char secret[SSO_SECRET_BYTES];
+        err = load_token_secret(secret, SSO_SECRET_BYTES);
+        if (err != SSO_OK) {
+            free(tmgr);
+            return err;
+        }
+        token_manager_init(tmgr, secret, SSO_SECRET_BYTES, 3600000LL);
+        /* Securely wipe the stack copy of the key after use. */
+        sodium_memzero(secret, SSO_SECRET_BYTES);
+    }
     ctx->token_mgr = tmgr;
 
     /* 3. Managers */

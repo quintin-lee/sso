@@ -31,6 +31,7 @@
 #include "storage.h"
 #include "server.h"
 #include "ratelimit.h"
+#include "cJSON.h"
 #include "login_page.h"
 #include "admin_page.h"
 
@@ -3024,10 +3025,40 @@ static sso_error_t handle_create_group(sso_context_t *ctx, const http_request_t 
         (unsigned long long)group.id, group.name);
     sso_response_ok(resp, buf);
     return SSO_OK;
+    }
+
+/* GET /api/v1/auth/certs — export public key for RS256 */
+static sso_error_t handle_certs(sso_context_t *ctx, const http_request_t *req,
+                                http_response_t *resp) {
+    (void)req;
+    token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
+    if (tmgr->mode != SSO_TOKEN_MODE_RS256) {
+        sso_response_error(resp, 404, "Server not in RS256 mode");
+        return SSO_OK;
+    }
+
+    char *pem = token_manager_get_public_key_pem(tmgr);
+    if (!pem) {
+        sso_response_error(resp, 500, "Failed to export public key");
+        return SSO_OK;
+    }
+
+    /* Wrap in JSON */
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "public_key", pem);
+    cJSON_AddStringToObject(root, "alg", "RS256");
+
+    char *json = cJSON_PrintUnformatted(root);
+    sso_response_ok(resp, json);
+
+    free(json);
+    cJSON_Delete(root);
+    free(pem);
+    return SSO_OK;
 }
 
 /* ========================================================================
- * CRUD: Update / Delete handlers
+ * Permission checks — POST handlers
  * ======================================================================== */
 
 /* PUT /api/v1/users/:id */
@@ -3525,6 +3556,7 @@ static int run_server(void) {
         {"/api/v1/auth/logout",     HTTP_POST, handle_logout,           true},
         {"/api/v1/auth/password",   HTTP_POST, handle_change_password,  true},
         {"/api/v1/auth/me",         HTTP_GET,  handle_me,               true},
+        {"/api/v1/auth/certs",      HTTP_GET,  handle_certs,            false},
         {"/api/v1/audit/logs",      HTTP_GET,  handle_list_audit_logs,  true},
 
         /* Permission checks */

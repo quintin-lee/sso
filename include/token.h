@@ -46,8 +46,20 @@ struct token {
 /* ========================================================================
  * Token manager (opaque)
  * ======================================================================== */
+typedef enum {
+    SSO_TOKEN_MODE_HS256,   /* Symmetric (shared secret) */
+    SSO_TOKEN_MODE_RS256    /* Asymmetric (RSA private/public pair) */
+} sso_token_mode_t;
+
 struct token_manager {
-    unsigned char     secret[32];           /* HMAC key                    */
+    sso_token_mode_t  mode;
+    union {
+        unsigned char secret[32];   /* HS256 key */
+        struct {
+            void *priv_key;         /* EVP_PKEY* (OpenSSL) */
+            void *pub_key;          /* EVP_PKEY* (OpenSSL) */
+        } rsa;
+    } keys;
     sso_timestamp_t   default_ttl_ms;       /* default token lifetime (ms)*/
 };
 
@@ -55,9 +67,16 @@ struct token_manager {
  * Lifecycle
  * ----------------------------------------------------------------------- */
 
-/* Initialise the token manager with a secret key and default TTL. */
+/* Initialise the token manager with a secret key (HS256). */
 sso_error_t token_manager_init(token_manager_t *mgr, const unsigned char *secret,
                                size_t secret_len, sso_timestamp_t default_ttl_ms);
+
+/* Initialise the token manager with an RSA key pair (RS256).
+ * keys are PEM-encoded strings. */
+sso_error_t token_manager_init_rs256(token_manager_t *mgr, 
+                                     const char *priv_key_pem,
+                                     const char *pub_key_pem,
+                                     sso_timestamp_t default_ttl_ms);
 
 /* Destroy the token manager and securely wipe sensitive data. */
 void        token_manager_destroy(token_manager_t *mgr);
@@ -65,6 +84,10 @@ void        token_manager_destroy(token_manager_t *mgr);
 /* -----------------------------------------------------------------------
  * Token operations
  * ----------------------------------------------------------------------- */
+
+/* Get the current public key in PEM format (only for RS256 mode).
+ * Caller must free the returned string. */
+char *token_manager_get_public_key_pem(token_manager_t *mgr);
 
 /* Free dynamically allocated fields inside a token (role_ids, group_ids).
  * Does NOT free the token struct itself. */

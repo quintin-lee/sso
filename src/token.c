@@ -18,6 +18,9 @@
 #include <stdio.h>
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/bio.h>
+#include <openssl/err.h>
 #include <sodium.h>
 
 /* ========================================================================
@@ -89,22 +92,96 @@ static size_t base64_decode(const char *input, unsigned char *output, size_t out
 sso_error_t token_manager_init(token_manager_t *mgr, const unsigned char *secret,
                                size_t secret_len, sso_timestamp_t default_ttl_ms) {
     if (!mgr || !secret || secret_len == 0) return SSO_ERR_INVALID_PARAM;
-    memset(mgr->secret, 0, sizeof(mgr->secret));
-    size_t copy_len = secret_len < sizeof(mgr->secret) ? secret_len : sizeof(mgr->secret);
-    memcpy(mgr->secret, secret, copy_len);
+    
+    memset(mgr, 0, sizeof(*mgr));
+    mgr->mode = SSO_TOKEN_MODE_HS256;
+    
+    size_t copy_len = secret_len < sizeof(mgr->keys.secret) ? secret_len : sizeof(mgr->keys.secret);
+    memcpy(mgr->keys.secret, secret, copy_len);
     /* Lock the secret in memory to prevent it from being swapped to disk. */
-    if (sodium_mlock(mgr->secret, sizeof(mgr->secret)) != 0) {
+    if (sodium_mlock(mgr->keys.secret, sizeof(mgr->keys.secret)) != 0) {
         /* Non-fatal: best-effort protection. */
     }
     mgr->default_ttl_ms = default_ttl_ms;
     return SSO_OK;
 }
 
+sso_error_t token_manager_init_rs256(token_manager_t *mgr, 
+                                     const char *priv_key_pem,
+                                     const char *pub_key_pem,
+                                     sso_timestamp_t default_ttl_ms) {
+    if (!mgr || !priv_key_pem) return SSO_ERR_INVALID_PARAM;
+
+    memset(mgr, 0, sizeof(*mgr));
+    mgr->mode = SSO_TOKEN_MODE_RS256;
+    mgr->default_ttl_ms = default_ttl_ms;
+
+    /* Load private key */
+    BIO *priv_bio = BIO_new_mem_buf(priv_key_pem, -1);
+    if (!priv_bio) return SSO_ERR_GENERAL;
+    mgr->keys.rsa.priv_key = (void *)PEM_read_bio_PrivateKey(priv_bio, NULL, NULL, NULL);
+    BIO_free(priv_bio);
+
+    if (!mgr->keys.rsa.priv_key) {
+        return SSO_ERR_GENERAL;
+    }
+
+    /* Load public key if provided, otherwise derive it from private */
+    if (pub_key_pem) {
+        BIO *pub_bio = BIO_new_mem_buf(pub_key_pem, -1);
+        mgr->keys.rsa.pub_key = (void *)PEM_read_bio_PUBKEY(pub_bio, NULL, NULL, NULL);
+        BIO_free(pub_bio);
+    } else {
+        /* Extract public key from private key */
+        BIO *pub_bio = BIO_new(BIO_s_mem());
+        if (PEM_write_bio_PUBKEY(pub_bio, (EVP_PKEY *)mgr->keys.rsa.priv_key)) {
+            mgr->keys.rsa.pub_key = (void *)PEM_read_bio_PUBKEY(pub_bio, NULL, NULL, NULL);
+        }
+        BIO_free(pub_bio);
+    }
+
+    if (!mgr->keys.rsa.pub_key) {
+        EVP_PKEY_free((EVP_PKEY *)mgr->keys.rsa.priv_key);
+        mgr->keys.rsa.priv_key = NULL;
+        return SSO_ERR_GENERAL;
+    }
+
+    return SSO_OK;
+}
+
+char *token_manager_get_public_key_pem(token_manager_t *mgr) {
+    if (!mgr || mgr->mode != SSO_TOKEN_MODE_RS256 || !mgr->keys.rsa.pub_key) return NULL;
+
+    BIO *bio = BIO_new(BIO_s_mem());
+    if (!PEM_write_bio_PUBKEY(bio, (EVP_PKEY *)mgr->keys.rsa.pub_key)) {
+        BIO_free(bio);
+        return NULL;
+    }
+
+    char *buf;
+    long len = BIO_get_mem_data(bio, &buf);
+    char *ret = (char *)malloc((size_t)len + 1);
+    if (ret) {
+        memcpy(ret, buf, (size_t)len);
+        ret[len] = '\0';
+    }
+
+    BIO_free(bio);
+    return ret;
+}
+
 void token_manager_destroy(token_manager_t *mgr) {
     if (!mgr) return;
-    /* Securely wipe the HMAC key before freeing. */
-    sodium_memzero(mgr->secret, sizeof(mgr->secret));
-    sodium_munlock(mgr->secret, sizeof(mgr->secret));
+    
+    if (mgr->mode == SSO_TOKEN_MODE_HS256) {
+        /* Securely wipe the HMAC key before freeing. */
+        sodium_memzero(mgr->keys.secret, sizeof(mgr->keys.secret));
+        sodium_munlock(mgr->keys.secret, sizeof(mgr->keys.secret));
+    } else {
+        if (mgr->keys.rsa.priv_key) EVP_PKEY_free((EVP_PKEY *)mgr->keys.rsa.priv_key);
+        if (mgr->keys.rsa.pub_key) EVP_PKEY_free((EVP_PKEY *)mgr->keys.rsa.pub_key);
+    }
+    
     free(mgr);
 }
 
@@ -191,18 +268,45 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     base64_encode((unsigned char *)payload_str, strlen(payload_str), b64_payload, sizeof(b64_payload));
     free(payload_str);
 
-    /* HMAC-SHA256 */
-    unsigned char hmac_result[EVP_MAX_MD_SIZE];
-    unsigned int hmac_len = 0;
-    HMAC(EVP_sha256(), mgr->secret, (int)sizeof(mgr->secret),
-         (unsigned char *)b64_payload, strlen(b64_payload),
-         hmac_result, &hmac_len);
-
-    char hmac_hex[EVP_MAX_MD_SIZE * 2 + 1];
-    to_hex(hmac_result, hmac_len, hmac_hex, sizeof(hmac_hex));
-
     /* Final token: payload.signature */
-    snprintf(out->token_str, sizeof(out->token_str), "%s.%s", b64_payload, hmac_hex);
+    if (mgr->mode == SSO_TOKEN_MODE_HS256) {
+        /* HMAC-SHA256 */
+        unsigned char hmac_result[EVP_MAX_MD_SIZE];
+        unsigned int hmac_len = 0;
+        HMAC(EVP_sha256(), mgr->keys.secret, (int)sizeof(mgr->keys.secret),
+             (unsigned char *)b64_payload, strlen(b64_payload),
+             hmac_result, &hmac_len);
+
+        char hmac_hex[EVP_MAX_MD_SIZE * 2 + 1];
+        to_hex(hmac_result, hmac_len, hmac_hex, sizeof(hmac_hex));
+        snprintf(out->token_str, sizeof(out->token_str), "%s.%s", b64_payload, hmac_hex);
+    } else {
+        /* RS256 */
+        EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
+        EVP_PKEY_CTX *pk_ctx = NULL;
+        size_t sig_len = 0;
+        unsigned char *sig = NULL;
+
+        if (EVP_DigestSignInit(md_ctx, &pk_ctx, EVP_sha256(), NULL, (EVP_PKEY *)mgr->keys.rsa.priv_key) <= 0) goto rs_fail;
+        if (EVP_DigestSignUpdate(md_ctx, b64_payload, strlen(b64_payload)) <= 0) goto rs_fail;
+        if (EVP_DigestSignFinal(md_ctx, NULL, &sig_len) <= 0) goto rs_fail;
+        
+        sig = (unsigned char *)malloc(sig_len);
+        if (EVP_DigestSignFinal(md_ctx, sig, &sig_len) <= 0) { free(sig); goto rs_fail; }
+
+        char *sig_hex = (char *)malloc(sig_len * 2 + 1);
+        to_hex(sig, sig_len, sig_hex, sig_len * 2 + 1);
+        snprintf(out->token_str, sizeof(out->token_str), "%s.%s", b64_payload, sig_hex);
+        
+        free(sig);
+        free(sig_hex);
+        EVP_MD_CTX_free(md_ctx);
+        return SSO_OK;
+
+    rs_fail:
+        if (md_ctx) EVP_MD_CTX_free(md_ctx);
+        return SSO_ERR_GENERAL;
+    }
 
     return SSO_OK;
 }
@@ -226,17 +330,40 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
     const char *sig_hex = dot + 1;
 
     /* Verify signature */
-    unsigned char hmac_result[EVP_MAX_MD_SIZE];
-    unsigned int hmac_len = 0;
-    HMAC(EVP_sha256(), mgr->secret, (int)sizeof(mgr->secret),
-         (unsigned char *)b64_payload, strlen(b64_payload),
-         hmac_result, &hmac_len);
+    if (mgr->mode == SSO_TOKEN_MODE_HS256) {
+        unsigned char hmac_result[EVP_MAX_MD_SIZE];
+        unsigned int hmac_len = 0;
+        HMAC(EVP_sha256(), mgr->keys.secret, (int)sizeof(mgr->keys.secret),
+             (unsigned char *)b64_payload, strlen(b64_payload),
+             hmac_result, &hmac_len);
 
-    char expected_sig[EVP_MAX_MD_SIZE * 2 + 1];
-    to_hex(hmac_result, hmac_len, expected_sig, sizeof(expected_sig));
+        char expected_sig[EVP_MAX_MD_SIZE * 2 + 1];
+        to_hex(hmac_result, hmac_len, expected_sig, sizeof(expected_sig));
 
-    if (strcmp(sig_hex, expected_sig) != 0) {
-        return SSO_ERR_TOKEN_INVALID;
+        if (strcmp(sig_hex, expected_sig) != 0) {
+            return SSO_ERR_TOKEN_INVALID;
+        }
+    } else {
+        /* RS256 Verification */
+        size_t sig_len = strlen(sig_hex) / 2;
+        unsigned char *sig = (unsigned char *)malloc(sig_len);
+        for (size_t i = 0; i < sig_len; i++) {
+            unsigned int val;
+            sscanf(sig_hex + i*2, "%02x", &val);
+            sig[i] = (unsigned char)val;
+        }
+
+        EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
+        EVP_PKEY_CTX *pk_ctx = NULL;
+        sso_error_t v_err = SSO_OK;
+
+        if (EVP_DigestVerifyInit(md_ctx, &pk_ctx, EVP_sha256(), NULL, (EVP_PKEY *)mgr->keys.rsa.pub_key) <= 0) v_err = SSO_ERR_GENERAL;
+        if (v_err == SSO_OK && EVP_DigestVerifyUpdate(md_ctx, b64_payload, strlen(b64_payload)) <= 0) v_err = SSO_ERR_GENERAL;
+        if (v_err == SSO_OK && EVP_DigestVerifyFinal(md_ctx, sig, sig_len) <= 0) v_err = SSO_ERR_TOKEN_INVALID;
+
+        free(sig);
+        EVP_MD_CTX_free(md_ctx);
+        if (v_err != SSO_OK) return v_err;
     }
 
     /* Decode payload */

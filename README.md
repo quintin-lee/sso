@@ -314,8 +314,28 @@ perm_engine_evaluate()
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `SSO_TOKEN_SECRET` | Yes (server mode) | 32-byte HMAC secret for token signing. If not set, falls back to `/dev/urandom` |
-| `SSO_ADMIN_PASSWORD` | Recommended | Admin user password. If not set, defaults to `admin123` |
+| `SSO_TOKEN_SECRET` | Yes (HS256) | 32-byte HMAC secret for token signing. |
+| `SSO_PRIVATE_KEY` | Yes (RS256) | RSA Private Key (PEM format) for asymmetric signing. |
+| `SSO_PUBLIC_KEY` | No (RS256) | RSA Public Key (PEM format). If not set, derived from private key. |
+| `SSO_ADMIN_PASSWORD` | Recommended | Initial admin password. If not set, a random one is generated. |
+
+### Generating RS256 Keys
+
+To enable industrial-grade asymmetric signing, generate an RSA key pair:
+
+```bash
+# Generate 2048-bit RSA private key
+openssl genrsa -out private.pem 2048
+
+# Extract public key
+openssl rsa -in private.pem -pubout -out public.pem
+
+# Use in environment
+export SSO_PRIVATE_KEY=$(cat private.pem)
+export SSO_PUBLIC_KEY=$(cat public.pem)
+```
+
+The system automatically switches to **RS256** mode if `SSO_PRIVATE_KEY` is present. Public keys for verification are exported at `/api/v1/auth/certs`.
 
 ---
 
