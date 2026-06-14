@@ -1796,8 +1796,11 @@ static sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
         return SSO_OK;
     }
 
-    LOG_INFO("[verify] User identified: %s", user.username);
-    snprintf(resp->extra_headers, sizeof(resp->extra_headers), "X-SSO-User: %s\r\n", user.username);
+    LOG_INFO("[verify] Authentication successful for user: %s", user.username);
+    snprintf(resp->extra_headers, sizeof(resp->extra_headers), 
+             "X-SSO-User: %s\r\n"
+             "X-SSO-Email: %s\r\n", 
+             user.username, user.email);
 
     char buf[8192];
     snprintf(buf, sizeof(buf),
