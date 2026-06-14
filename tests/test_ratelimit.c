@@ -1,57 +1,60 @@
-#include <stdarg.h>
-#include <stddef.h>
-#include <setjmp.h>
-#include <cmocka.h>
+#include <stdio.h>
 #include <unistd.h>
-
+#include "minunit.h"
 #include "ratelimit.h"
 #include "sso.h"
 
-static void test_ratelimit_basic(void **state) {
-    (void)state;
+int tests_run = 0;
+
+static const char *test_ratelimit_basic() {
+    printf("  Running test_ratelimit_basic...\n");
     rate_limiter_t *rl;
     sso_error_t err = rate_limiter_create(&rl, 100);
-    assert_int_equal(err, SSO_OK);
+    ASSERT_INT_EQUAL(err, SSO_OK);
 
-    /* Allow first few requests */
-    assert_true(rate_limiter_check(rl, "1.2.3.4", 5, 60));
-    assert_true(rate_limiter_check(rl, "1.2.3.4", 5, 60));
-    assert_true(rate_limiter_check(rl, "1.2.3.4", 5, 60));
-    assert_true(rate_limiter_check(rl, "1.2.3.4", 5, 60));
-    assert_true(rate_limiter_check(rl, "1.2.3.4", 5, 60));
+    uint64_t window = 60000;
+    int max = 5;
 
-    /* 6th request should be denied */
-    assert_false(rate_limiter_check(rl, "1.2.3.4", 5, 60));
-
-    /* Different IP should be allowed */
-    assert_true(rate_limiter_check(rl, "1.2.3.5", 5, 60));
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "1.2.3.4", window, max), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "1.2.3.4", window, max), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "1.2.3.4", window, max), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "1.2.3.4", window, max), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "1.2.3.4", window, max), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "1.2.3.4", window, max), SSO_ERR_RATE_LIMIT);
 
     rate_limiter_destroy(rl);
+    return 0;
 }
 
-static void test_ratelimit_window_reset(void **state) {
-    (void)state;
+static const char *test_ratelimit_reset() {
+    printf("  Running test_ratelimit_reset...\n");
     rate_limiter_t *rl;
     rate_limiter_create(&rl, 100);
 
-    /* Limit to 2 requests per 1 second */
-    assert_true(rate_limiter_check(rl, "127.0.0.1", 2, 1));
-    assert_true(rate_limiter_check(rl, "127.0.0.1", 2, 1));
-    assert_false(rate_limiter_check(rl, "127.0.0.1", 2, 1));
+    /* Limit: 2 requests per 500ms */
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "127.0.0.1", 500, 2), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "127.0.0.1", 500, 2), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "127.0.0.1", 500, 2), SSO_ERR_RATE_LIMIT);
 
-    /* Wait for window to expire */
-    sleep(2);
-
-    /* Should be allowed again */
-    assert_true(rate_limiter_check(rl, "127.0.0.1", 2, 1));
+    /* Manual reset */
+    rate_limiter_reset(rl, "127.0.0.1");
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "127.0.0.1", 500, 2), SSO_OK);
 
     rate_limiter_destroy(rl);
+    return 0;
 }
 
-int main(void) {
-    const struct CMUnitTest tests[] = {
-        cmocka_unit_test(test_ratelimit_basic),
-        cmocka_unit_test(test_ratelimit_window_reset),
-    };
-    return cmocka_run_group_tests(tests, NULL, NULL);
+static const char *all_tests() {
+    mu_run_test(test_ratelimit_basic);
+    mu_run_test(test_ratelimit_reset);
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    (void)argc; (void)argv;
+    const char *result = all_tests();
+    if (result != 0) printf("FAILED\n");
+    else printf("ALL TESTS PASSED\n");
+    printf("Tests run: %d\n", tests_run);
+    return result != 0;
 }

@@ -1,16 +1,15 @@
-#include <stdarg.h>
-#include <stddef.h>
-#include <setjmp.h>
-#include <cmocka.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include "minunit.h"
 #include "user.h"
 #include "storage.h"
 #include "sso.h"
 
-static void test_user_creation_and_auth(void **state) {
-    (void)state;
+int tests_run = 0;
+
+static const char *test_user_creation_and_auth() {
+    printf("  Running test_user_creation_and_auth...\n");
     storage_backend_t *storage;
     storage_sqlite_create(&storage);
     storage->open(storage, ":memory:");
@@ -26,27 +25,34 @@ static void test_user_creation_and_auth(void **state) {
     /* Create user */
     user_t user;
     sso_error_t err = user_create(umgr, "testuser", "password123", "test@example.com", "Test User", &user);
-    assert_int_equal(err, SSO_OK);
-    assert_string_equal(user.username, "testuser");
+    ASSERT_INT_EQUAL(err, SSO_OK);
+    ASSERT_STR_EQUAL(user.username, "testuser");
 
     /* Authenticate */
     user_t authed;
     err = user_authenticate(umgr, "testuser", "password123", &authed);
-    assert_int_equal(err, SSO_OK);
-    assert_int_equal(authed.id, user.id);
+    ASSERT_INT_EQUAL(err, SSO_OK);
+    ASSERT_INT_EQUAL(authed.id, user.id);
 
     /* Failed auth */
     err = user_authenticate(umgr, "testuser", "wrongpassword", &authed);
-    assert_int_equal(err, SSO_ERR_AUTH_FAILED);
+    ASSERT_INT_EQUAL(err, SSO_ERR_AUTH_FAILED);
 
     user_manager_destroy(umgr);
     storage->close(storage);
     free(storage);
+    return 0;
 }
 
-int main(void) {
-    const struct CMUnitTest tests[] = {
-        cmocka_unit_test(test_user_creation_and_auth),
-    };
-    return cmocka_run_group_tests(tests, NULL, NULL);
+static const char *all_tests() {
+    mu_run_test(test_user_creation_and_auth);
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    const char *result = all_tests();
+    if (result != 0) printf("FAILED\n");
+    else printf("ALL TESTS PASSED\n");
+    printf("Tests run: %d\n", tests_run);
+    return result != 0;
 }

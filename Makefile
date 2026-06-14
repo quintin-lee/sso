@@ -78,13 +78,13 @@ $(TARGET): $(OBJS)
 	$(CC) $(OBJS) $(LDFLAGS) -o $@
 	@echo "Build complete: $(TARGET)"
 
-# Test compilation rule
+# Test compilation rule (minimal unit mode)
 $(BUILDDIR)/$(TESTDIR)/test_%: $(TESTDIR)/test_%.c $(filter-out $(BUILDDIR)/$(SRCDIR)/main.c.o, $(OBJS))
-	$(CC) $(CFLAGS) $(INCLUDES) $< $(filter-out $(BUILDDIR)/$(SRCDIR)/main.c.o, $(OBJS)) $(LDFLAGS) -lcmocka -o $@
+	$(CC) $(CFLAGS) $(INCLUDES) $< $(filter-out $(BUILDDIR)/$(SRCDIR)/main.c.o, $(OBJS)) $(LDFLAGS) -o $@
 
 test: dirs $(TEST_BINS)
-	@echo "Running tests..."
-	@for bin in $(TEST_BINS); do ./$$bin; done
+	@echo "Running minimal unit tests..."
+	@for bin in $(TEST_BINS); do ./$$bin || exit 1; done
 
 debug: CFLAGS = $(DEBUG_CFLAGS)
 debug: all
