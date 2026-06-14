@@ -170,6 +170,28 @@ static int parse_request(int client_fd, http_request_t *req) {
     memcpy(req->path, path, SSO_MAX_PATH - 1);
     req->path[SSO_MAX_PATH - 1] = '\0';
 
+    /* Split query string from path */
+    char *qmark = strchr(req->path, '?');
+    if (qmark) {
+        *qmark++ = '\0';
+        /* Count params by counting & */
+        int count = 1;
+        for (char *p = qmark; *p; p++) {
+            if (*p == '&') count++;
+        }
+        req->query_params = (char **)calloc((size_t)(count + 1), sizeof(char *));
+        if (req->query_params) {
+            size_t idx = 0;
+            char *save;
+            char *token = strtok_r(qmark, "&", &save);
+            while (token) {
+                req->query_params[idx++] = strdup(token);
+                token = strtok_r(NULL, "&", &save);
+            }
+            req->query_params[idx] = NULL;
+        }
+    }
+
     /* Parse headers — look for Content-Length and Authorization */
     int content_length = 0;
     while (1) {
@@ -349,6 +371,10 @@ static void handle_client(sso_server_t *server, int client_fd, const char *clien
         sso_response_error(&resp, 404, "Not found");
         send_response(client_fd, &resp);
         free(resp.body);
+        if (req.query_params) {
+            for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
+            free(req.query_params);
+        }
         free(req.body);
         close(client_fd);
         return;
@@ -362,6 +388,10 @@ static void handle_client(sso_server_t *server, int client_fd, const char *clien
             sso_response_error(&resp, 500, "Internal server error");
             send_response(client_fd, &resp);
             free(resp.body);
+            if (req.query_params) {
+                for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
+                free(req.query_params);
+            }
             free(req.body);
             close(client_fd);
             return;
@@ -374,6 +404,10 @@ static void handle_client(sso_server_t *server, int client_fd, const char *clien
             free(auth);
             send_response(client_fd, &resp);
             free(resp.body);
+            if (req.query_params) {
+                for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
+                free(req.query_params);
+            }
             free(req.body);
             close(client_fd);
             return;
@@ -395,6 +429,10 @@ static void handle_client(sso_server_t *server, int client_fd, const char *clien
 
     send_response(client_fd, &resp);
     free(resp.body);
+    if (req.query_params) {
+        for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
+        free(req.query_params);
+    }
     free(req.body);
     close(client_fd);
 }
