@@ -86,6 +86,11 @@ typedef enum {
     SSO_ERR_OUT_OF_MEMORY    = -13,
     SSO_ERR_NOT_IMPLEMENTED  = -14,
     SSO_ERR_RATE_LIMIT       = -15,
+    SSO_ERR_SOCKET           = -16,
+    SSO_ERR_BIND             = -17,
+    SSO_ERR_LISTEN           = -18,
+    SSO_ERR_INIT             = -19,
+    SSO_ERR_CURL             = -20,
 } sso_error_t;
 
 /* Return a human-readable string for an error code. */

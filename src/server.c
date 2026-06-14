@@ -12,6 +12,7 @@
 
 #include "sso.h"
 #include "server.h"
+#include "logger.h"
 #include "user.h"
 #include "role.h"
 #include "group.h"
@@ -486,7 +487,7 @@ sso_error_t sso_server_start(sso_server_t *server) {
     signal(SIGPIPE, SIG_IGN);
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) { perror("socket"); return SSO_ERR_GENERAL; }
+    if (server_fd < 0) { LOG_ERROR("socket() failed"); return SSO_ERR_SOCKET; }
 
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
@@ -498,20 +499,20 @@ sso_error_t sso_server_start(sso_server_t *server) {
     addr.sin_port = htons((uint16_t)server->port);
 
     if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        perror("bind");
+        LOG_ERROR("bind() failed on port %d", server->port);
         close(server_fd);
-        return SSO_ERR_GENERAL;
+        return SSO_ERR_BIND;
     }
 
     if (listen(server_fd, 128) < 0) {
-        perror("listen");
+        LOG_ERROR("listen() failed");
         close(server_fd);
-        return SSO_ERR_GENERAL;
+        return SSO_ERR_LISTEN;
     }
 
     server->server_data = (void *)(intptr_t)server_fd;
-    printf("SSO management API listening on http://%s:%d\n",
-           server->host, server->port);
+    LOG_INFO("SSO management API listening on http://%s:%d",
+             server->host, server->port);
            
     pool_init(server);
 
@@ -543,6 +544,6 @@ sso_error_t sso_server_start(sso_server_t *server) {
     pool_shutdown();
     close(server_fd);
     server->server_data = NULL;
-    printf("SSO management API stopped.\n");
+    LOG_INFO("SSO management API stopped.");
     return SSO_OK;
 }

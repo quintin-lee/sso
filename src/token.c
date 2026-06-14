@@ -118,12 +118,12 @@ sso_error_t token_manager_init_rs256(token_manager_t *mgr,
 
     /* Load private key */
     BIO *priv_bio = BIO_new_mem_buf(priv_key_pem, -1);
-    if (!priv_bio) return SSO_ERR_GENERAL;
+    if (!priv_bio) { return SSO_ERR_INIT; }
     mgr->keys.rsa.priv_key = (void *)PEM_read_bio_PrivateKey(priv_bio, NULL, NULL, NULL);
     BIO_free(priv_bio);
 
     if (!mgr->keys.rsa.priv_key) {
-        return SSO_ERR_GENERAL;
+        return SSO_ERR_INIT;
     }
 
     /* Load public key if provided, otherwise derive it from private */
@@ -143,7 +143,7 @@ sso_error_t token_manager_init_rs256(token_manager_t *mgr,
     if (!mgr->keys.rsa.pub_key) {
         EVP_PKEY_free((EVP_PKEY *)mgr->keys.rsa.priv_key);
         mgr->keys.rsa.priv_key = NULL;
-        return SSO_ERR_GENERAL;
+        return SSO_ERR_INIT;
     }
 
     return SSO_OK;
@@ -306,7 +306,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
 
     rs_fail:
         if (md_ctx) EVP_MD_CTX_free(md_ctx);
-        return SSO_ERR_GENERAL;
+        return SSO_ERR_INIT;
     }
 
     return SSO_OK;
@@ -358,8 +358,8 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         EVP_PKEY_CTX *pk_ctx = NULL;
         sso_error_t v_err = SSO_OK;
 
-        if (EVP_DigestVerifyInit(md_ctx, &pk_ctx, EVP_sha256(), NULL, (EVP_PKEY *)mgr->keys.rsa.pub_key) <= 0) v_err = SSO_ERR_GENERAL;
-        if (v_err == SSO_OK && EVP_DigestVerifyUpdate(md_ctx, b64_payload, strlen(b64_payload)) <= 0) v_err = SSO_ERR_GENERAL;
+        if (EVP_DigestVerifyInit(md_ctx, &pk_ctx, EVP_sha256(), NULL, (EVP_PKEY *)mgr->keys.rsa.pub_key) <= 0) v_err = SSO_ERR_INIT;
+        if (v_err == SSO_OK && EVP_DigestVerifyUpdate(md_ctx, b64_payload, strlen(b64_payload)) <= 0) v_err = SSO_ERR_INIT;
         if (v_err == SSO_OK && EVP_DigestVerifyFinal(md_ctx, sig, sig_len) <= 0) v_err = SSO_ERR_TOKEN_INVALID;
 
         free(sig);

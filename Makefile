@@ -26,7 +26,8 @@ TESTDIR  = tests
 BUILDDIR = build
 
 # Sources
-SRCS = $(SRCDIR)/sso.c           \
+SRCS = $(SRCDIR)/logger.c        \
+       $(SRCDIR)/sso.c           \
        $(SRCDIR)/permission.c    \
        $(SRCDIR)/user.c          \
        $(SRCDIR)/role.c          \

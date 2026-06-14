@@ -12,6 +12,7 @@
  */
 
 #include "sso.h"
+#include "logger.h"
 #include "permission.h"
 #include "policy.h"
 #include "user.h"
@@ -23,6 +24,7 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <sys/stat.h>
 
 /* ========================================================================
  * Built-in strategy declarations (defined in strategies/ dir)
@@ -131,7 +133,8 @@ sso_error_t perm_engine_create(permission_engine_t **engine, sso_context_t *ctx)
 
     if (pthread_rwlock_init(&(*engine)->lock, NULL) != 0) {
         free(*engine);
-        return SSO_ERR_GENERAL;
+        LOG_ERROR("pthread_rwlock_init failed");
+        return SSO_ERR_INIT;
     }
 
     sso_error_t err;
@@ -436,11 +439,29 @@ sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
     return SSO_OK;
 }
 
-static void audit_log_decision(eval_context_t *ctx, bool allowed, const char *trace, uint64_t duration_ms, bool cache_hit) {
+#define AUDIT_LOG_MAX_SIZE (10 * 1024 * 1024)
+#define AUDIT_LOG_MAX_BACKUPS 5
+
+static void rotate_audit_log(void) {
+    struct stat st;
+    if (stat("audit.log", &st) != 0 || st.st_size <= AUDIT_LOG_MAX_SIZE) return;
+
+    char oldpath[512], newpath[512];
+    for (int i = AUDIT_LOG_MAX_BACKUPS - 1; i > 0; i--) {
+        snprintf(oldpath, sizeof(oldpath), "audit.log.%d", i);
+        snprintf(newpath, sizeof(newpath), "audit.log.%d", i + 1);
+        rename(oldpath, newpath);
+    }
+    rename("audit.log", "audit.log.1");
+}
+
+static void audit_log_decision(eval_context_t *ctx, bool allowed, const char *trace,
+                                uint64_t duration_ms, bool cache_hit) {
+    rotate_audit_log();
+
     FILE *f = fopen("audit.log", "a");
     if (!f) return;
 
-    /* Simple escaping for trace string */
     char escaped_trace[8192] = {0};
     if (trace) {
         size_t j = 0;
@@ -452,7 +473,14 @@ static void audit_log_decision(eval_context_t *ctx, bool allowed, const char *tr
         }
     }
 
-    fprintf(f, "{\"timestamp_ms\": %llu, \"user_id\": %llu, \"decision\": \"%s\", \"duration_ms\": %llu, \"cache_hit\": %s, \"trace\": \"%s\"}\n",
+    fprintf(f, "{"
+            "\"timestamp_ms\":%llu,"
+            "\"user_id\":%llu,"
+            "\"decision\":\"%s\","
+            "\"duration_ms\":%llu,"
+            "\"cache_hit\":%s,"
+            "\"trace\":\"%s\""
+            "}\n",
             (unsigned long long)get_time_ms(),
             (unsigned long long)ctx->user_id,
             allowed ? "ALLOW" : "DENY",
@@ -494,7 +522,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         /* Telemetry: Cache Hit */
         uint64_t duration = get_time_ms() - now;
         if (duration > 5) {
-             fprintf(stderr, "[perm] CACHE HIT (SLOW): user=%ld duration=%lums\n", 
+            LOG_WARN("[perm] CACHE HIT (SLOW): user=%ld duration=%lums",
                      (long)ctx->user_id, (long)duration);
         }
         audit_log_decision(ctx, *result, "Decision from Result Cache (L2)", duration, true);
@@ -526,7 +554,8 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         if (!pmgr) {
             pthread_rwlock_unlock(&engine->lock);
             audit_log_decision(ctx, false, "Error: policy manager not found", get_time_ms() - now, false);
-            return SSO_ERR_GENERAL;
+            LOG_ERROR("policy manager not found in engine context");
+            return SSO_ERR_INIT;
         }
 
         err = policy_resolve_for_user(pmgr, ctx->user_id, policies_buf, &policy_count, max_policies);
@@ -617,9 +646,9 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
     /* Telemetry: Log evaluation time */
     uint64_t duration = get_time_ms() - now;
     atomic_fetch_add(&engine->metrics.total_duration_us, (unsigned long long)duration * 1000);
-    if (duration > 10) { /* Log only slow evaluations (>10ms) */
-        fprintf(stderr, "[perm] SLOW EVAL: user=%ld duration=%lums cache=MISS\n", 
-                (long)ctx->user_id, (long)duration);
+    if (duration > 10) {
+        LOG_WARN("[perm] SLOW EVAL: user=%ld duration=%lums cache=MISS",
+                 (long)ctx->user_id, (long)duration);
     }
 
     audit_log_decision(ctx, any_allowed, full_trace, duration, false);

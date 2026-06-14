@@ -195,7 +195,7 @@ sso_error_t policy_resolve_for_user(policy_manager_t *mgr, sso_id_t user_id,
     *count = 0;
 
     user_manager_t *umgr = (user_manager_t *)mgr->ctx->user_mgr;
-    if (!umgr) return SSO_ERR_GENERAL;
+    if (!umgr) { return SSO_ERR_NOT_FOUND; }
 
     /* 1. Policies assigned directly to the user */
     collect_policies_for_target(mgr, POLICY_TARGET_USER, user_id,

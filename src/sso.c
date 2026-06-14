@@ -11,6 +11,7 @@
 #define _POSIX_C_SOURCE 199309L
 
 #include "sso.h"
+#include "logger.h"
 #include "user.h"
 #include "role.h"
 #include "group.h"
@@ -48,6 +49,11 @@ const char *sso_strerror(sso_error_t err) {
         case SSO_ERR_OUT_OF_MEMORY:    return "Out of memory";
         case SSO_ERR_NOT_IMPLEMENTED:  return "Not implemented";
         case SSO_ERR_RATE_LIMIT:       return "Rate limit exceeded";
+        case SSO_ERR_SOCKET:           return "Socket creation failed";
+        case SSO_ERR_BIND:             return "Socket bind failed";
+        case SSO_ERR_LISTEN:           return "Socket listen failed";
+        case SSO_ERR_INIT:             return "Initialisation failed";
+        case SSO_ERR_CURL:             return "CURL operation failed";
         default:                       return "Unknown error";
     }
 }
@@ -136,8 +142,8 @@ static sso_error_t load_token_secret(unsigned char *out, size_t out_len) {
         if (sodium_mlock(out, out_len) != 0) {
             /* Non-fatal: best-effort protection. */
         }
-        printf("[sso] Token secret loaded from %s environment variable.\n",
-               SSO_ENV_TOKEN_SECRET);
+        LOG_INFO("[sso] Token secret loaded from %s environment variable.",
+                 SSO_ENV_TOKEN_SECRET);
         return SSO_OK;
     }
 
@@ -151,20 +157,18 @@ static sso_error_t load_token_secret(unsigned char *out, size_t out_len) {
             if (sodium_mlock(out, out_len) != 0) {
                 /* Non-fatal: best-effort protection. */
             }
-            fprintf(stderr,
-                    "[sso] WARNING: No %s set. Generated a random token secret.\n"
-                    "       This secret will change on every restart, invalidating\n"
-                    "       all previously issued tokens. Set %s for production use.\n",
-                    SSO_ENV_TOKEN_SECRET, SSO_ENV_TOKEN_SECRET);
+            LOG_WARN("[sso] No %s set. Generated a random token secret. "
+                     "This secret will change on every restart, invalidating "
+                     "all previously issued tokens. Set %s for production use.",
+                     SSO_ENV_TOKEN_SECRET, SSO_ENV_TOKEN_SECRET);
             return SSO_OK;
         }
     }
 
     /* Fallback (should never happen on a normal system). */
-    fprintf(stderr,
-            "[sso] CRITICAL: Cannot read /dev/urandom and no %s set.\n"
-            "       Using a time-based fallback — TOKENS ARE NOT SECURE.\n",
-            SSO_ENV_TOKEN_SECRET);
+    LOG_ERROR("[sso] Cannot read /dev/urandom and no %s set. "
+              "Using a time-based fallback — TOKENS ARE NOT SECURE.",
+              SSO_ENV_TOKEN_SECRET);
     sso_timestamp_t now = sso_timestamp_now();
     memcpy(out, &now, sizeof(now) < out_len ? sizeof(now) : out_len);
     return SSO_OK;
@@ -178,7 +182,7 @@ sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
     ctx->config = config;
 
     sso_error_t err;
-    if (sodium_init() < 0) { fprintf(stderr, "[sso] Failed to init libsodium\n"); return SSO_ERR_GENERAL; }
+    if (sodium_init() < 0) { LOG_ERROR("[sso] Failed to init libsodium"); return SSO_ERR_INIT; }
 
     /* 1. Storage backend */
     if (storage) {
@@ -211,9 +215,9 @@ sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
                                       config->public_key_pem[0] ? config->public_key_pem : NULL,
                                       ttl);
         if (err == SSO_OK) {
-            printf("[sso] Asymmetric signing (RS256) enabled.\n");
+            LOG_INFO("[sso] Asymmetric signing (RS256) enabled.");
         } else {
-            fprintf(stderr, "[sso] Failed to init RS256: %s. Falling back to HS256.\n", sso_strerror(err));
+            LOG_WARN("[sso] Failed to init RS256: %s. Falling back to HS256.", sso_strerror(err));
             config->private_key_pem[0] = '\0'; /* trigger fallback */
         }
     }

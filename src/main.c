@@ -22,6 +22,7 @@
  */
 
 #include "sso.h"
+#include "logger.h"
 #include "user.h"
 #include "role.h"
 #include "group.h"
@@ -119,15 +120,14 @@ static sso_error_t send_real_sms(const char *phone, const char *code) {
     sso_error_t err = SSO_OK;
 
     curl = curl_easy_init();
-    if (!curl) return SSO_ERR_GENERAL;
+    if (!curl) { LOG_ERROR("curl_easy_init() failed"); return SSO_ERR_CURL; }
 
     /* Configuration: in production, load these from environment variables */
     const char *url = getenv("SSO_SMS_GATEWAY_URL");
     const char *api_key = getenv("SSO_SMS_API_KEY");
 
     if (!url) {
-        /* Fallback for demo: just log and return OK */
-        printf("[SMS] MOCK SEND: Code %s sent to %s (Set SSO_SMS_GATEWAY_URL for real send)\n", code, phone);
+        LOG_INFO("[SMS] MOCK SEND: Code %s sent to %s (Set SSO_SMS_GATEWAY_URL for real send)", code, phone);
         curl_easy_cleanup(curl);
         return SSO_OK;
     }
@@ -148,16 +148,16 @@ static sso_error_t send_real_sms(const char *phone, const char *code) {
 
     res = curl_easy_perform(curl);
     if (res != CURLE_OK) {
-        fprintf(stderr, "[SMS] curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-        err = SSO_ERR_GENERAL;
+        LOG_ERROR("[SMS] curl_easy_perform() failed: %s", curl_easy_strerror(res));
+        err = SSO_ERR_CURL;
     } else {
         long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
         if (http_code >= 200 && http_code < 300) {
-            printf("[SMS] Real SMS request sent to %s (HTTP %ld)\n", phone, http_code);
+            LOG_INFO("[SMS] Real SMS request sent to %s (HTTP %ld)", phone, http_code);
         } else {
-            fprintf(stderr, "[SMS] Gateway returned error: HTTP %ld\n", http_code);
-            err = SSO_ERR_GENERAL;
+            LOG_ERROR("[SMS] Gateway returned error: HTTP %ld", http_code);
+            err = SSO_ERR_CURL;
         }
     }
 
@@ -192,14 +192,14 @@ static int run_demo(sso_config_t *cfg) {
     storage_backend_t *storage = NULL;
     err = storage_sqlite_create(&storage);
     if (err != SSO_OK) {
-        fprintf(stderr, "  Failed to create storage: %s\n", sso_strerror(err));
+        LOG_ERROR("Failed to create storage: %s", sso_strerror(err));
         return 1;
     }
 
     sso_context_t ctx;
     err = sso_init(&ctx, storage, cfg);
     if (err != SSO_OK) {
-        fprintf(stderr, "  Failed to init SSO: %s\n", sso_strerror(err));
+        LOG_ERROR("Failed to init SSO: %s", sso_strerror(err));
         return 1;
     }
     printf("  OK\n\n");
@@ -1224,14 +1224,14 @@ static int interactive_config(sso_config_t *cfg) {
     storage_backend_t *storage = NULL;
     err = storage_sqlite_create(&storage);
     if (err != SSO_OK) {
-        fprintf(stderr, "Failed to create storage: %s\n", sso_strerror(err));
+        LOG_ERROR("Failed to create storage: %s", sso_strerror(err));
         return 1;
     }
 
     sso_context_t ctx;
     err = sso_init(&ctx, storage, cfg);
     if (err != SSO_OK) {
-        fprintf(stderr, "Failed to init SSO: %s\n", sso_strerror(err));
+        LOG_ERROR("Failed to init SSO: %s", sso_strerror(err));
         return 1;
     }
     printf("System initialized (db: sso_config.db)\n");
@@ -3540,7 +3540,7 @@ static sso_error_t bootstrap_data(sso_context_t *ctx) {
     }
 
     /* Create admin user */
-    printf("[bootstrap] Creating admin user...\n");
+    LOG_INFO("[bootstrap] Creating admin user...");
     if (using_random) {
         printf("\n======================================================================\n");
         printf("⚠️  WARNING: No SSO_ADMIN_PASSWORD set in environment.\n");
@@ -3551,10 +3551,10 @@ static sso_error_t bootstrap_data(sso_context_t *ctx) {
 
     err = user_create(umgr, "admin", admin_password, "admin@example.com", "Admin", &admin_user);
     if (err != SSO_OK) {
-        fprintf(stderr, "[bootstrap] Failed to create admin: %s\n", sso_strerror(err));
+        LOG_ERROR("[bootstrap] Failed to create admin: %s", sso_strerror(err));
         return err;
     }
-    printf("[bootstrap] admin id=%lu\n", (unsigned long)admin_user.id);
+    LOG_INFO("[bootstrap] admin id=%lu", (unsigned long)admin_user.id);
 
     /* Create roles */
     role_t admin_role, editor_role, viewer_role, member_role;
@@ -3615,11 +3615,11 @@ static int run_server(sso_config_t *cfg) {
     sso_context_t ctx;
     err = sso_init(&ctx, storage, cfg);
     if (err != SSO_OK) {
-        fprintf(stderr, "Failed to init SSO: %s\n", sso_strerror(err));
+        LOG_ERROR("Failed to init SSO: %s", sso_strerror(err));
         return 1;
     }
 
-    printf("Starting SSO management server...\n");
+    LOG_INFO("Starting SSO management server...");
 
     /* Bootstrap default data on first run */
     bootstrap_data(&ctx);
@@ -3713,7 +3713,7 @@ static int run_server(sso_config_t *cfg) {
 
     err = sso_server_start(&server);
     if (err != SSO_OK) {
-        fprintf(stderr, "Server error: %s\n", sso_strerror(err));
+        LOG_ERROR("Server error: %s", sso_strerror(err));
     }
 
     sso_destroy(&ctx);
@@ -3730,12 +3730,11 @@ int main(int argc, char *argv[]) {
     /* Load Configuration */
     sso_config_default(&g_config);
     if (sso_config_load(config_path, &g_config) == SSO_OK) {
-        printf("[sso] Loaded configuration from %s\n", config_path);
+        LOG_INFO("[sso] Loaded configuration from %s", config_path);
     } else {
-        /* If user specified a config but it failed, exit */
         for (int i = 1; i < argc; i++) {
             if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--config") == 0) {
-                fprintf(stderr, "[sso] Error: Could not load config file: %s\n", config_path);
+                LOG_ERROR("Could not load config file: %s", config_path);
                 return 1;
             }
         }

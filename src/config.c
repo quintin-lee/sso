@@ -3,6 +3,7 @@
  */
 
 #include "config.h"
+#include "logger.h"
 #include "toml.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,8 +73,8 @@ sso_error_t sso_config_load(const char *filename, sso_config_t *cfg) {
     fclose(fp);
 
     if (!root) {
-        fprintf(stderr, "[config] TOML parse error: %s\n", errbuf);
-        return SSO_ERR_GENERAL;
+        LOG_ERROR("[config] TOML parse error: %s", errbuf);
+        return SSO_ERR_INIT;
     }
 
     /* [server] */
