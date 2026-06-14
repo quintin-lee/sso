@@ -153,12 +153,20 @@ static sso_error_t mem_user_create(storage_backend_t *self, user_t *u) {
 #define MK_UPD(typ,arr) static sso_error_t mem_##typ##_update(storage_backend_t *self, const typ##_t *o) {     ssize_t i=da_find_id(&P->arr,offsetof(typ##_t,id),o->id);     if (i<0) return SSO_ERR_NOT_FOUND;     memcpy((typ##_t*)P->arr.items+i,o,sizeof(typ##_t)); return SSO_OK; }
 #define MK_DEL(typ,arr) static sso_error_t mem_##typ##_delete(storage_backend_t *self, sso_id_t id) {     ssize_t i=da_find_id(&P->arr,offsetof(typ##_t,id),id);     if (i<0) return SSO_ERR_NOT_FOUND;     da_rm(&P->arr,(size_t)i); return SSO_OK; }
 #define MK_LIST(typ,arr) static sso_error_t mem_##typ##_list(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count) { \
-    (void)q; (void)status; \
     size_t total = P->arr.count; \
-    *total_count = total; \
-    size_t n = 0; \
-    for (size_t i = (size_t)offset; i < total && n < (size_t)limit; i++) ids[n++] = ((const typ##_t*)P->arr.items + i)->id; \
-    *count = n; return SSO_OK; \
+    bool has_q = (q && q[0] != '\0'); \
+    size_t match = 0; \
+    for (size_t i = 0; i < total; i++) { \
+        const typ##_t *o = (const typ##_t*)P->arr.items + i; \
+        if (status != -1 && (int)o->status != status) continue; \
+        if (has_q && !strstr(o->name, q)) continue; \
+        if (match++ < (size_t)offset) continue; \
+        if ((match - 1 - (size_t)offset) >= (size_t)limit) continue; \
+        ids[(match - 1 - (size_t)offset)] = o->id; \
+    } \
+    *total_count = match; \
+    *count = (match > (size_t)offset) ? ((match - (size_t)offset) > (size_t)limit ? (size_t)limit : (match - (size_t)offset)) : 0; \
+    return SSO_OK; \
 }
 
 MK_GETID(user,users)
@@ -197,12 +205,20 @@ static sso_error_t mem_user_delete(storage_backend_t *self, sso_id_t id) {
 }
 
 static sso_error_t mem_user_list(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count) {
-    (void)q; (void)status;
     size_t total = P->users.count;
-    *total_count = total;
-    size_t n = 0;
-    for (size_t i = (size_t)offset; i < total && n < (size_t)limit; i++) ids[n++] = ((const user_t*)P->users.items+i)->id;
-    *count = n; return SSO_OK;
+    bool has_q = (q && q[0] != '\0');
+    size_t match = 0;
+    for (size_t i = 0; i < total; i++) {
+        const user_t *u = (const user_t*)P->users.items + i;
+        if (status != -1 && (int)u->status != status) continue;
+        if (has_q && !strstr(u->username, q) && !strstr(u->display_name, q) && !strstr(u->email, q) && !strstr(u->phone, q)) continue;
+        if (match++ < (size_t)offset) continue;
+        if ((match - 1 - (size_t)offset) >= (size_t)limit) continue;
+        ids[(match - 1 - (size_t)offset)] = u->id;
+    }
+    *total_count = match;
+    *count = (match > (size_t)offset) ? ((match - (size_t)offset) > (size_t)limit ? (size_t)limit : (match - (size_t)offset)) : 0;
+    return SSO_OK;
 }
 
 static sso_error_t mem_role_delete(storage_backend_t *self, sso_id_t id) {

@@ -213,18 +213,13 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     out->role_count = role_count;
     out->group_count = group_count;
 
-    /* Generate jti (simple: timestamp + random) */
+    /* Generate jti (timestamp + 8 bytes cryptographic random) */
     unsigned char rand_bytes[8];
-    FILE *f = fopen("/dev/urandom", "r");
-    if (f) {
-        fread(rand_bytes, 1, 8, f);
-        fclose(f);
-    } else {
-        for (int i = 0; i < 8; i++) rand_bytes[i] = rand() & 0xFF;
-    }
-    snprintf(out->jti, sizeof(out->jti), "%llx%02x%02x",
+    randombytes_buf(rand_bytes, sizeof(rand_bytes));
+    snprintf(out->jti, sizeof(out->jti), "%llx%02x%02x%02x%02x%02x%02x%02x%02x",
              (unsigned long long)out->issued_at,
-             rand_bytes[0], rand_bytes[1]);
+             rand_bytes[0], rand_bytes[1], rand_bytes[2], rand_bytes[3],
+             rand_bytes[4], rand_bytes[5], rand_bytes[6], rand_bytes[7]);
 
     /* Copy role/group IDs */
     if (role_ids && role_count > 0) {

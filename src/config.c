@@ -29,6 +29,9 @@ void sso_config_default(sso_config_t *cfg) {
     cfg->token_ttl_ms = 3600000; /* 1 hour */
     cfg->password_opslimit = 3;    /* crypto_pwhash_OPSLIMIT_MODERATE */
     cfg->password_memlimit = 268435456UL; /* crypto_pwhash_MEMLIMIT_MODERATE (256MB) */
+    cfg->tls_enabled = false;
+    cfg->tls_cert_file[0] = '\0';
+    cfg->tls_key_file[0] = '\0';
     
     /* [ratelimit] defaults */
     cfg->max_ips = 10000;
@@ -107,6 +110,9 @@ sso_error_t sso_config_load(const char *filename, sso_config_t *cfg) {
         get_long(sec, "token_ttl_ms", &cfg->token_ttl_ms);
         { unsigned long v; toml_datum_t d = toml_int_in(sec, "password_opslimit"); if (d.ok) { v = (unsigned long)d.u.i; cfg->password_opslimit = v; } }
         { unsigned long v; toml_datum_t d = toml_int_in(sec, "password_memlimit"); if (d.ok) { v = (unsigned long)d.u.i; cfg->password_memlimit = v; } }
+        get_bool(sec, "tls_enabled", &cfg->tls_enabled);
+        get_string(sec, "tls_cert_file", cfg->tls_cert_file, sizeof(cfg->tls_cert_file));
+        get_string(sec, "tls_key_file", cfg->tls_key_file, sizeof(cfg->tls_key_file));
     }
 
     /* [sms] */
@@ -142,4 +148,7 @@ void sso_config_apply_env(sso_config_t *cfg) {
     { char *ev = getenv("SSO_PASSWORD_MEMLIMIT"); if (ev) cfg->password_memlimit = (unsigned long)atol(ev); }
     if ((val = getenv("SSO_REQUEST_TIMEOUT_MS"))) cfg->request_timeout_ms = atoi(val);
     if ((val = getenv("SSO_MAX_BODY_SIZE"))) cfg->max_body_size = atol(val);
+    if ((val = getenv("SSO_TLS_ENABLED"))) cfg->tls_enabled = (strcmp(val, "1") == 0 || strcasecmp(val, "true") == 0);
+    if ((val = getenv("SSO_TLS_CERT_FILE"))) strncpy(cfg->tls_cert_file, val, sizeof(cfg->tls_cert_file)-1);
+    if ((val = getenv("SSO_TLS_KEY_FILE"))) strncpy(cfg->tls_key_file, val, sizeof(cfg->tls_key_file)-1);
 }

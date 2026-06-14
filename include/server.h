@@ -34,6 +34,8 @@
 #include "user.h"
 #include "token.h"
 
+typedef struct ssl_ctx_st SSL_CTX;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -106,6 +108,7 @@ struct sso_server {
     size_t           route_count;
     sso_context_t   *sso_ctx;
     void            *server_data;       /* platform-specific (socket, ctx)     */
+    SSL_CTX         *ssl_ctx;           /* TLS context, NULL if disabled      */
 };
 
 /* -----------------------------------------------------------------------

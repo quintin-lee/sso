@@ -1,15 +1,3 @@
-/*
- * server.c — Simple embedded HTTP server for the SSO management API.
- *
- * Uses POSIX sockets (no external dependency).  Handles one connection
- * at a time (accept → parse → dispatch → respond → close).
- * In production, use libmicrohttpd or nginx as a reverse proxy.
- *
- * Route dispatching:
- *   The server matches incoming requests against registered routes.
- *   Route patterns support :param segments for path parameters.
- */
-
 #include "sso.h"
 #include "server.h"
 #include "logger.h"
@@ -35,9 +23,87 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <pthread.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
-/* Global so signal handler can stop the server */
 static sso_server_t *g_server = NULL;
+
+/* ========================================================================
+ * Connection wrapper (raw fd or TLS)
+ * ======================================================================== */
+typedef struct {
+    int     fd;
+    SSL    *ssl;
+} conn_t;
+
+static ssize_t conn_read(conn_t *c, void *buf, size_t n) {
+    if (c->ssl) return SSL_read(c->ssl, buf, (int)n);
+    return read(c->fd, buf, n);
+}
+
+static ssize_t conn_write(conn_t *c, const void *buf, size_t n) {
+    if (c->ssl) return SSL_write(c->ssl, buf, (int)n);
+    return write(c->fd, buf, n);
+}
+
+static void conn_close(conn_t *c) {
+    if (c->ssl) { SSL_shutdown(c->ssl); SSL_free(c->ssl); c->ssl = NULL; }
+    if (c->fd >= 0) { close(c->fd); c->fd = -1; }
+}
+
+/* ========================================================================
+ * Buffered reader
+ * ======================================================================== */
+#define BUF_READER_SIZE 4096
+
+typedef struct {
+    conn_t *conn;
+    char    buf[BUF_READER_SIZE];
+    size_t  pos;
+    size_t  end;
+} buf_reader_t;
+
+static void br_init(buf_reader_t *br, conn_t *conn) {
+    br->conn = conn;
+    br->pos = 0;
+    br->end = 0;
+}
+
+static ssize_t br_read_line(buf_reader_t *br, char *out, size_t max) {
+    size_t oi = 0;
+    while (oi < max - 1) {
+        if (br->pos >= br->end) {
+            ssize_t n = conn_read(br->conn, br->buf, sizeof(br->buf));
+            if (n <= 0) break;
+            br->pos = 0;
+            br->end = (size_t)n;
+        }
+        char c = br->buf[br->pos++];
+        if (c == '\r') continue;
+        if (c == '\n') break;
+        out[oi++] = c;
+    }
+    out[oi] = '\0';
+    return (ssize_t)oi;
+}
+
+static ssize_t br_read(buf_reader_t *br, void *buf, size_t n) {
+    size_t total = 0;
+    while (total < n) {
+        if (br->pos >= br->end) {
+            ssize_t r = conn_read(br->conn, (char *)buf + total, n - total);
+            if (r <= 0) break;
+            total += (size_t)r;
+        } else {
+            size_t avail = br->end - br->pos;
+            size_t to_copy = (n - total < avail) ? n - total : avail;
+            memcpy((char *)buf + total, br->buf + br->pos, to_copy);
+            br->pos += to_copy;
+            total += to_copy;
+        }
+    }
+    return (ssize_t)total;
+}
 
 /* ========================================================================
  * Thread Pool for HTTP Server
@@ -46,8 +112,8 @@ static sso_server_t *g_server = NULL;
 #define QUEUE_SIZE 1024
 
 typedef struct {
-    int  client_fd;
-    char client_ip[64];
+    conn_t conn;
+    char   client_ip[64];
 } task_t;
 
 typedef struct {
@@ -64,7 +130,7 @@ typedef struct {
 
 static thread_pool_t g_pool;
 
-static void handle_client(sso_server_t *server, int client_fd, const char *client_ip);
+static void handle_client(sso_server_t *server, conn_t *conn, const char *client_ip);
 
 static void *worker_thread(void *arg) {
     (void)arg;
@@ -83,8 +149,7 @@ static void *worker_thread(void *arg) {
         g_pool.count--;
         pthread_mutex_unlock(&g_pool.lock);
 
-        /* Handle connection */
-        handle_client(g_pool.server, task.client_fd, task.client_ip);
+        handle_client(g_pool.server, &task.conn, task.client_ip);
     }
     return NULL;
 }
@@ -103,18 +168,17 @@ static void pool_init(sso_server_t *server) {
     }
 }
 
-static void pool_submit(int client_fd, const char *client_ip) {
+static void pool_submit(conn_t *conn, const char *client_ip) {
     pthread_mutex_lock(&g_pool.lock);
     if (g_pool.count < QUEUE_SIZE) {
-        g_pool.queue[g_pool.tail].client_fd = client_fd;
-        snprintf(g_pool.queue[g_pool.tail].client_ip, 
+        g_pool.queue[g_pool.tail].conn = *conn;
+        snprintf(g_pool.queue[g_pool.tail].client_ip,
                  sizeof(g_pool.queue[g_pool.tail].client_ip), "%s", client_ip);
         g_pool.tail = (g_pool.tail + 1) % QUEUE_SIZE;
         g_pool.count++;
         pthread_cond_signal(&g_pool.notify);
     } else {
-        /* Queue full, drop connection */
-        close(client_fd);
+        conn_close(conn);
     }
     pthread_mutex_unlock(&g_pool.lock);
 }
@@ -137,32 +201,15 @@ static void pool_shutdown() {
  * Internal: HTTP request parser (minimal)
  * ======================================================================== */
 
-/* Read a line from a socket (up to newline or max). */
-static ssize_t read_line(int fd, char *buf, size_t max) {
-    size_t i = 0;
-    while (i < max - 1) {
-        char c;
-        ssize_t n = read(fd, &c, 1);
-        if (n <= 0) break;
-        if (c == '\r') continue;
-        if (c == '\n') break;
-        buf[i++] = c;
-    }
-    buf[i] = '\0';
-    return (ssize_t)i;
-}
-
-static int parse_request(int client_fd, http_request_t *req, long max_body_size) {
+static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_size) {
     memset(req, 0, sizeof(*req));
 
     char line[4096];
-    if (read_line(client_fd, line, sizeof(line)) <= 0) return -1;
+    if (br_read_line(br, line, sizeof(line)) <= 0) return -1;
 
-    /* Parse: METHOD /path HTTP/1.1 */
     char method[16], path[SSO_MAX_PATH], version[16];
     if (sscanf(line, "%15s %255s %15s", method, path, version) < 2) return -1;
 
-    /* Convert method string to enum */
     if (strcmp(method, "GET") == 0)        req->method = HTTP_GET;
     else if (strcmp(method, "POST") == 0)  req->method = HTTP_POST;
     else if (strcmp(method, "PUT") == 0)   req->method = HTTP_PUT;
@@ -173,11 +220,9 @@ static int parse_request(int client_fd, http_request_t *req, long max_body_size)
     memcpy(req->path, path, SSO_MAX_PATH - 1);
     req->path[SSO_MAX_PATH - 1] = '\0';
 
-    /* Split query string from path */
     char *qmark = strchr(req->path, '?');
     if (qmark) {
         *qmark++ = '\0';
-        /* Count params by counting & */
         int count = 1;
         for (char *p = qmark; *p; p++) {
             if (*p == '&') count++;
@@ -195,11 +240,10 @@ static int parse_request(int client_fd, http_request_t *req, long max_body_size)
         }
     }
 
-    /* Parse headers — look for Content-Length and Authorization */
     long content_length = 0;
     while (1) {
-        if (read_line(client_fd, line, sizeof(line)) <= 0) break;
-        if (line[0] == '\0') break; /* end of headers */
+        if (br_read_line(br, line, sizeof(line)) <= 0) break;
+        if (line[0] == '\0') break;
 
         if (strncasecmp(line, "Content-Length:", 15) == 0) {
             char *end = NULL;
@@ -215,20 +259,15 @@ static int parse_request(int client_fd, http_request_t *req, long max_body_size)
         }
     }
 
-    /* Read body if present */
     if (content_length > 0) {
         if (max_body_size > 0 && content_length > max_body_size) { return -1; }
         req->body = (char *)malloc((size_t)content_length + 1);
         if (req->body) {
-            size_t total = 0;
-            while (total < (size_t)content_length) {
-                ssize_t n = read(client_fd, req->body + total,
-                                 (size_t)(content_length - total));
-                if (n <= 0) break;
-                total += (size_t)n;
+            ssize_t total = br_read(br, req->body, (size_t)content_length);
+            if (total > 0) {
+                req->body[(size_t)total] = '\0';
+                req->body_len = (size_t)total;
             }
-            req->body[total] = '\0';
-            req->body_len = total;
         }
     }
 
@@ -254,8 +293,19 @@ void sso_response_error(http_response_t *resp, int status_code, const char *mess
     strcpy(resp->content_type, "application/json");
 }
 
-/* Send the HTTP response over the socket. */
-static void send_response(int fd, const http_response_t *resp) {
+static ssize_t conn_write_all(conn_t *c, const void *buf, size_t n) {
+    const char *p = (const char *)buf;
+    size_t remaining = n;
+    while (remaining > 0) {
+        ssize_t written = conn_write(c, p, remaining);
+        if (written <= 0) return -1;
+        p += written;
+        remaining -= (size_t)written;
+    }
+    return (ssize_t)n;
+}
+
+static void send_response(conn_t *c, const http_response_t *resp) {
     char header[4096];
     int n = snprintf(header, sizeof(header),
         "HTTP/1.1 %d %s\r\n"
@@ -278,40 +328,31 @@ static void send_response(int fd, const http_response_t *resp) {
         resp->body_len,
         resp->extra_headers);
 
-    write(fd, header, (size_t)n);
+    conn_write_all(c, header, (size_t)n);
     if (resp->body && resp->body_len > 0) {
-        write(fd, resp->body, resp->body_len);
+        conn_write_all(c, resp->body, resp->body_len);
     }
 }
 
 /* ========================================================================
  * Route matching
  * ======================================================================== */
-
-/* Match a path pattern against a request path.  Supports :param segments.
- * Returns true if matched.  Extracts path params into query_params. */
 bool match_route(const char *pattern, const char *path, char **params) {
     if (!pattern || !path) return false;
 
     while (*pattern && *path) {
         if (*pattern == ':') {
-            /* Skip pattern segment name */
             pattern++;
             while (*pattern && *pattern != '/') pattern++;
-            /* Match corresponding path segment */
             while (*path && *path != '/') path++;
-            if (params) {
-                /* In production, store key=value */
-            }
+            if (params) { }
         } else if (*pattern == '*') {
-            pattern++; /* consume '*' */
-            /* Skip path until end of current segment or next pattern char */
+            pattern++;
             while (*path && *path != '/') path++;
-            /* If pattern continues, match the remainder */
             if (*pattern) {
                 return match_route(pattern, path, params);
             }
-            return true; /* '*' at end of pattern matches rest */
+            return true;
         } else {
             if (*pattern != *path) return false;
             pattern++;
@@ -319,7 +360,6 @@ bool match_route(const char *pattern, const char *path, char **params) {
         }
     }
 
-    /* Allow trailing slash differences */
     if (*pattern == '/' && *path == '\0') pattern++;
     if (*path == '/' && *pattern == '\0') path++;
 
@@ -341,7 +381,6 @@ static sso_error_t authenticate_request(sso_server_t *server, const http_request
 
     if (token_is_revoked(tmgr, tok->jti)) return SSO_ERR_TOKEN_INVALID;
 
-    /* Load user */
     user_manager_t *umgr = (user_manager_t *)server->sso_ctx->user_mgr;
     return user_get_by_id(umgr, tok->user_id, user);
 }
@@ -349,11 +388,10 @@ static sso_error_t authenticate_request(sso_server_t *server, const http_request
 /* ========================================================================
  * Handle a single client connection
  * ======================================================================== */
-static void handle_client(sso_server_t *server, int client_fd, const char *client_ip) {
+static void handle_client(sso_server_t *server, conn_t *conn, const char *client_ip) {
     http_request_t req;
     http_response_t resp;
 
-    /* Set receive timeout on client socket */
     struct timeval tv;
     tv.tv_sec = 0;
     tv.tv_usec = 0;
@@ -361,12 +399,15 @@ static void handle_client(sso_server_t *server, int client_fd, const char *clien
     if (cfg) {
         tv.tv_sec  = cfg->request_timeout_ms / 1000;
         tv.tv_usec = (cfg->request_timeout_ms % 1000) * 1000;
-        setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        setsockopt(conn->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     }
 
+    buf_reader_t br;
+    br_init(&br, conn);
+
     long max_body = cfg ? cfg->max_body_size : 1048576;
-    if (parse_request(client_fd, &req, max_body) != 0) {
-        close(client_fd);
+    if (parse_request(&br, &req, max_body) != 0) {
+        conn_close(conn);
         return;
     }
     strncpy(req.client_ip, client_ip, sizeof(req.client_ip) - 1);
@@ -377,7 +418,6 @@ static void handle_client(sso_server_t *server, int client_fd, const char *clien
     resp.body_len = 0;
     strcpy(resp.content_type, "application/json");
 
-    /* Find matching route */
     route_t *matched = NULL;
     for (size_t i = 0; i < server->route_count; i++) {
         if (server->routes[i].method == req.method &&
@@ -389,31 +429,30 @@ static void handle_client(sso_server_t *server, int client_fd, const char *clien
 
     if (!matched) {
         sso_response_error(&resp, 404, "Not found");
-        send_response(client_fd, &resp);
+        send_response(conn, &resp);
         free(resp.body);
         if (req.query_params) {
             for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
             free(req.query_params);
         }
         free(req.body);
-        close(client_fd);
+        conn_close(conn);
         return;
     }
 
-    /* Auth check — populate req->userdata with auth_context_t */
     req.userdata = NULL;
     if (matched->require_auth) {
         auth_context_t *auth = (auth_context_t *)malloc(sizeof(auth_context_t));
         if (!auth) {
             sso_response_error(&resp, 500, "Internal server error");
-            send_response(client_fd, &resp);
+            send_response(conn, &resp);
             free(resp.body);
             if (req.query_params) {
                 for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
                 free(req.query_params);
             }
             free(req.body);
-            close(client_fd);
+            conn_close(conn);
             return;
         }
         sso_error_t aerr = authenticate_request(server, &req, &auth->user, &auth->token);
@@ -422,23 +461,21 @@ static void handle_client(sso_server_t *server, int client_fd, const char *clien
             if (aerr == SSO_ERR_TOKEN_EXPIRED) msg = "Token expired";
             sso_response_error(&resp, 401, msg);
             free(auth);
-            send_response(client_fd, &resp);
+            send_response(conn, &resp);
             free(resp.body);
             if (req.query_params) {
                 for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
                 free(req.query_params);
             }
             free(req.body);
-            close(client_fd);
+            conn_close(conn);
             return;
         }
         req.userdata = auth;
     }
 
-    /* Dispatch to handler */
     sso_error_t err = matched->handler(server->sso_ctx, &req, &resp);
 
-    /* Free auth context if allocated */
     if (req.userdata) {
         free(req.userdata);
         req.userdata = NULL;
@@ -447,14 +484,14 @@ static void handle_client(sso_server_t *server, int client_fd, const char *clien
         sso_response_error(&resp, 500, sso_strerror(err));
     }
 
-    send_response(client_fd, &resp);
+    send_response(conn, &resp);
     free(resp.body);
     if (req.query_params) {
         for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
         free(req.query_params);
     }
     free(req.body);
-    close(client_fd);
+    conn_close(conn);
 }
 
 /* ========================================================================
@@ -482,18 +519,24 @@ sso_error_t sso_server_init(sso_server_t *server, sso_context_t *ctx,
     server->routes = (route_t *)routes;
     server->route_count = route_count;
     server->server_data = NULL;
+    server->ssl_ctx = NULL;
 
     return SSO_OK;
 }
 
 void sso_server_stop(sso_server_t *server) {
     if (!server) return;
-    /* Signal the accept loop to stop — platform-specific */
+
     int *sock = (int *)&server->server_data;
     if (*sock > 0) {
         shutdown(*sock, SHUT_RDWR);
         close(*sock);
         *sock = 0;
+    }
+
+    if (server->ssl_ctx) {
+        SSL_CTX_free(server->ssl_ctx);
+        server->ssl_ctx = NULL;
     }
 }
 
@@ -530,12 +573,41 @@ sso_error_t sso_server_start(sso_server_t *server) {
     }
 
     server->server_data = (void *)(intptr_t)server_fd;
-    LOG_INFO("SSO management API listening on http://%s:%d",
+
+    /* TLS setup */
+    sso_config_t *cfg = (sso_config_t *)server->sso_ctx->config;
+    if (cfg && cfg->tls_enabled) {
+        SSL_CTX *ctx = SSL_CTX_new(TLS_server_method());
+        if (!ctx) {
+            LOG_ERROR("SSL_CTX_new failed");
+            close(server_fd);
+            return SSO_ERR_INIT;
+        }
+
+        if (SSL_CTX_use_certificate_file(ctx, cfg->tls_cert_file, SSL_FILETYPE_PEM) <= 0) {
+            LOG_ERROR("Failed to load TLS cert: %s", cfg->tls_cert_file);
+            SSL_CTX_free(ctx);
+            close(server_fd);
+            return SSO_ERR_INIT;
+        }
+
+        if (SSL_CTX_use_PrivateKey_file(ctx, cfg->tls_key_file, SSL_FILETYPE_PEM) <= 0) {
+            LOG_ERROR("Failed to load TLS key: %s", cfg->tls_key_file);
+            SSL_CTX_free(ctx);
+            close(server_fd);
+            return SSO_ERR_INIT;
+        }
+
+        server->ssl_ctx = ctx;
+        LOG_INFO("TLS enabled (cert: %s)", cfg->tls_cert_file);
+    }
+
+    LOG_INFO("SSO management API listening on http%s://%s:%d",
+             server->ssl_ctx ? "s" : "",
              server->host, server->port);
-           
+
     pool_init(server);
 
-    /* Main accept loop */
     while (1) {
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
@@ -544,7 +616,6 @@ sso_error_t sso_server_start(sso_server_t *server) {
                                (struct sockaddr *)&client_addr, &client_len);
         if (client_fd < 0) {
             if (errno == EINTR || errno == EBADF || errno == EINVAL) {
-                /* Signal caught or socket closed — check if we should stop */
                 int *sock = (int *)&server->server_data;
                 if (*sock == 0) break;
                 continue;
@@ -552,12 +623,29 @@ sso_error_t sso_server_start(sso_server_t *server) {
             break;
         }
 
-        /* Get client IP */
         char client_ip[64] = "unknown";
         inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
 
-        /* Submit connection to thread pool */
-        pool_submit(client_fd, client_ip);
+        conn_t conn;
+        conn.fd = client_fd;
+        conn.ssl = NULL;
+
+        if (server->ssl_ctx) {
+            conn.ssl = SSL_new(server->ssl_ctx);
+            if (conn.ssl) {
+                SSL_set_fd(conn.ssl, client_fd);
+                if (SSL_accept(conn.ssl) != 1) {
+                    SSL_free(conn.ssl);
+                    close(client_fd);
+                    continue;
+                }
+            } else {
+                close(client_fd);
+                continue;
+            }
+        }
+
+        pool_submit(&conn, client_ip);
     }
 
     pool_shutdown();

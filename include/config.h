@@ -33,6 +33,9 @@ typedef struct {
     long     token_ttl_ms;
     unsigned long password_opslimit;   /* argon2id ops limit   */
     unsigned long password_memlimit;   /* argon2id memory limit */
+    bool     tls_enabled;
+    char     tls_cert_file[512];
+    char     tls_key_file[512];
 
     /* [sms] */
     char     sms_gateway_url[256];
