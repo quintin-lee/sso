@@ -9,6 +9,7 @@
 
 #include "sso.h"
 #include "user.h"
+#include "config.h"
 #include "storage.h"
 #include "permission.h"
 
@@ -18,7 +19,9 @@
 #include <sodium.h>
 
 struct user_manager {
-    sso_context_t *ctx;
+    sso_context_t  *ctx;
+    unsigned long   hash_opslimit;   /* argon2id OPSLIMIT */
+    unsigned long   hash_memlimit;   /* argon2id MEMLIMIT */
 };
 
 /* -----------------------------------------------------------------------
@@ -28,16 +31,14 @@ struct user_manager {
  *   $argon2id$v=19$m=65536,t=2,p=1$<salt>$<hash>
  * No separate salt storage is needed — salt and parameters are embedded.
  * ----------------------------------------------------------------------- */
-static void hash_password(const char *password, char *out_hash, size_t out_len) {
+static void hash_password(const char *password, char *out_hash, size_t out_len,
+                          unsigned long opslimit, unsigned long memlimit) {
     if (out_len < crypto_pwhash_STRBYTES) {
-        /* Buffer too small; truncate to be safe. */
         if (out_len > 0) out_hash[0] = '\0';
         return;
     }
     if (crypto_pwhash_str(out_hash, password, strlen(password),
-                          crypto_pwhash_OPSLIMIT_MODERATE,
-                          crypto_pwhash_MEMLIMIT_MODERATE) != 0) {
-        /* Should not happen with valid parameters; fall back to a safe failure. */
+                          opslimit, memlimit) != 0) {
         if (out_len > 0) out_hash[0] = '\0';
     }
 }
@@ -50,7 +51,25 @@ sso_error_t user_manager_create(user_manager_t **mgr, sso_context_t *ctx) {
     *mgr = (user_manager_t *)calloc(1, sizeof(user_manager_t));
     if (!*mgr) return SSO_ERR_OUT_OF_MEMORY;
     (*mgr)->ctx = ctx;
+
+    /* Initialise hash params from config if available, else use moderate defaults */
+    if (ctx->config) {
+        sso_config_t *cfg = (sso_config_t *)ctx->config;
+        (*mgr)->hash_opslimit = cfg->password_opslimit ? cfg->password_opslimit : crypto_pwhash_OPSLIMIT_MODERATE;
+        (*mgr)->hash_memlimit = cfg->password_memlimit ? cfg->password_memlimit : crypto_pwhash_MEMLIMIT_MODERATE;
+    } else {
+        (*mgr)->hash_opslimit = crypto_pwhash_OPSLIMIT_MODERATE;
+        (*mgr)->hash_memlimit = crypto_pwhash_MEMLIMIT_MODERATE;
+    }
     return SSO_OK;
+}
+
+void user_manager_set_hash_params(user_manager_t *mgr,
+                                  unsigned long opslimit,
+                                  unsigned long memlimit) {
+    if (!mgr) return;
+    mgr->hash_opslimit = opslimit;
+    mgr->hash_memlimit = memlimit;
 }
 
 void user_manager_destroy(user_manager_t *mgr) {
@@ -79,7 +98,8 @@ sso_error_t user_create(user_manager_t *mgr, const char *username,
     user.updated_at = user.created_at;
 
     /* Hash password with argon2id */
-    hash_password(password, user.password_hash, sizeof(user.password_hash));
+    hash_password(password, user.password_hash, sizeof(user.password_hash),
+                  mgr->hash_opslimit, mgr->hash_memlimit);
 
     sso_error_t err = sb->user_create(sb, &user);
     if (err == SSO_OK && out) {
@@ -200,7 +220,8 @@ sso_error_t user_set_password(user_manager_t *mgr, sso_id_t user_id,
     sso_error_t err = user_get_by_id(mgr, user_id, &user);
     if (err != SSO_OK) return err;
 
-    hash_password(new_password, user.password_hash, sizeof(user.password_hash));
+    hash_password(new_password, user.password_hash, sizeof(user.password_hash),
+                  mgr->hash_opslimit, mgr->hash_memlimit);
 
     return user_update(mgr, &user);
 }

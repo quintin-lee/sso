@@ -21,12 +21,10 @@ jobs:
     - name: Build the project
       run: make
 
-    - name: Run Demo / Test Suite
-      # Note: Since the demo expects a terminal or runs indefinitely, we might need to 
-      # limit its execution or provide dummy input if it blocks.
-      # For now, we assume `./sso_system` runs the demo and exits. If it doesn't,
-      # you might need to add a command-line flag (e.g. `./sso_system --test`) to just
-      # run unit tests in the future.
+    - name: Build tests and run test suite
+      run: make test
+
+    - name: Run demo (smoke test)
       run: |
         # Run the demo, which returns 0 on success.
         # We redirect stdin from /dev/null in case it tries to read from the console.

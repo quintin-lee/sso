@@ -41,6 +41,12 @@ typedef struct user_manager user_manager_t;
 sso_error_t user_manager_create(user_manager_t **mgr, sso_context_t *ctx);
 void        user_manager_destroy(user_manager_t *mgr);
 
+/* Override default password hash parameters (opslimit/memlimit for argon2id).
+ * Call before any user_create / user_set_password. */
+void        user_manager_set_hash_params(user_manager_t *mgr,
+                                         unsigned long opslimit,
+                                         unsigned long memlimit);
+
 /* -----------------------------------------------------------------------
  * CRUD
  * ----------------------------------------------------------------------- */

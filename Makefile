@@ -61,7 +61,11 @@ TARGET   = sso_system
 # Debug target
 DEBUG_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O0 -DDEBUG -Wno-overlength-strings -MD -MP
 
-.PHONY: all clean run server debug dirs test
+# ASan target
+ASAN_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O1 -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP
+ASAN_LDFLAGS = -fsanitize=address -fsanitize=undefined -lsodium -lsqlite3 -lssl -lcrypto -lcurl
+
+.PHONY: all clean run server debug dirs test asan
 
 all: dirs $(TARGET)
 
@@ -98,6 +102,11 @@ server: all
 clean:
 	rm -rf $(BUILDDIR) $(TARGET) *.db
 	find . -name '*.d' -delete 2>/dev/null || true
+
+# ASan build (AddressSanitizer + UndefinedBehaviorSanitizer)
+asan: CFLAGS = $(ASAN_CFLAGS)
+asan: LDFLAGS = $(ASAN_LDFLAGS)
+asan: clean all test
 
 # Show program size
 size: $(TARGET)

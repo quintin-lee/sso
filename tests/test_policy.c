@@ -20,7 +20,7 @@ static void setup(storage_backend_t **storage, sso_context_t *ctx,
     (*storage)->open(*storage, ":memory:");
     memset(ctx, 0, sizeof(*ctx));
     ctx->storage_backend = *storage;
-    if (umgr)  { user_manager_create(umgr, ctx);  ctx->user_mgr = *umgr; }
+    if (umgr)  { user_manager_create(umgr, ctx); user_manager_set_hash_params(*umgr, 2, 67108864); ctx->user_mgr = *umgr; }
     if (rmgr)  { role_manager_create(rmgr, ctx);  ctx->role_mgr = *rmgr; }
     if (pmgr)  { policy_manager_create(pmgr, ctx); ctx->policy_mgr = *pmgr; }
     if (pengine) { perm_engine_create(pengine, ctx); ctx->perm_engine = *pengine; }

@@ -24,6 +24,8 @@ void sso_config_default(sso_config_t *cfg) {
 
     /* [security] defaults */
     cfg->token_ttl_ms = 3600000; /* 1 hour */
+    cfg->password_opslimit = 3;    /* crypto_pwhash_OPSLIMIT_MODERATE */
+    cfg->password_memlimit = 268435456UL; /* crypto_pwhash_MEMLIMIT_MODERATE (256MB) */
     
     /* [ratelimit] defaults */
     cfg->max_ips = 10000;
@@ -98,6 +100,8 @@ sso_error_t sso_config_load(const char *filename, sso_config_t *cfg) {
         get_string(sec, "public_key", cfg->public_key_pem, sizeof(cfg->public_key_pem));
         get_string(sec, "admin_password", cfg->admin_password, sizeof(cfg->admin_password));
         get_long(sec, "token_ttl_ms", &cfg->token_ttl_ms);
+        { unsigned long v; toml_datum_t d = toml_int_in(sec, "password_opslimit"); if (d.ok) { v = (unsigned long)d.u.i; cfg->password_opslimit = v; } }
+        { unsigned long v; toml_datum_t d = toml_int_in(sec, "password_memlimit"); if (d.ok) { v = (unsigned long)d.u.i; cfg->password_memlimit = v; } }
     }
 
     /* [sms] */
@@ -129,4 +133,6 @@ void sso_config_apply_env(sso_config_t *cfg) {
     if ((val = getenv("SSO_ADMIN_PASSWORD"))) strncpy(cfg->admin_password, val, sizeof(cfg->admin_password)-1);
     if ((val = getenv("SSO_SMS_GATEWAY_URL"))) strncpy(cfg->sms_gateway_url, val, sizeof(cfg->sms_gateway_url)-1);
     if ((val = getenv("SSO_SMS_API_KEY"))) strncpy(cfg->sms_api_key, val, sizeof(cfg->sms_api_key)-1);
+    { char *ev = getenv("SSO_PASSWORD_OPSLIMIT"); if (ev) cfg->password_opslimit = (unsigned long)atol(ev); }
+    { char *ev = getenv("SSO_PASSWORD_MEMLIMIT"); if (ev) cfg->password_memlimit = (unsigned long)atol(ev); }
 }

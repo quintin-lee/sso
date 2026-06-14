@@ -285,11 +285,13 @@ static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
 /* --- close --- */
 static void sqlite_close(storage_backend_t *self) {
     sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
-    if (priv && priv->db) {
-        /* Merge WAL into main database and truncate log for safety */
-        sqlite3_exec(priv->db, "PRAGMA wal_checkpoint(TRUNCATE);", NULL, NULL, NULL);
-        sqlite3_close(priv->db);
-        priv->db = NULL;
+    if (priv) {
+        if (priv->db) {
+            sqlite3_exec(priv->db, "PRAGMA wal_checkpoint(TRUNCATE);", NULL, NULL, NULL);
+            sqlite3_close(priv->db);
+        }
+        free(priv);
+        self->handle = NULL;
     }
 }
 

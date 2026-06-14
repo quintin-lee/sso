@@ -29,6 +29,8 @@ typedef struct {
     char     public_key_pem[4096];
     char     admin_password[128];
     long     token_ttl_ms;
+    unsigned long password_opslimit;   /* argon2id ops limit   */
+    unsigned long password_memlimit;   /* argon2id memory limit */
 
     /* [sms] */
     char     sms_gateway_url[256];

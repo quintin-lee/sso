@@ -114,6 +114,8 @@ static void mem_close(storage_backend_t *self) {
     da_free(&p->users); da_free(&p->roles); da_free(&p->groups); da_free(&p->policies);
     pl_free(&p->user_roles); pl_free(&p->user_groups); pl_free(&p->role_groups);
     al_free(&p->policy_assignments); free(p->sms);
+    free(p);
+    self->handle = NULL;
 }
 
 /* ===== User CRUD ===== */

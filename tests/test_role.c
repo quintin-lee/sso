@@ -19,6 +19,7 @@ static void setup(storage_backend_t **storage, sso_context_t *ctx,
     ctx->role_mgr = *rmgr;
     if (umgr) {
         user_manager_create(umgr, ctx);
+        user_manager_set_hash_params(*umgr, 2, 67108864); /* INTERACTIVE for speed */
         ctx->user_mgr = *umgr;
     }
 }

@@ -20,6 +20,7 @@ static const char *test_user_creation_and_auth() {
 
     user_manager_t *umgr;
     user_manager_create(&umgr, &ctx);
+    user_manager_set_hash_params(umgr, 2, 67108864); /* INTERACTIVE for speed */
     ctx.user_mgr = umgr;
 
     user_t user;
