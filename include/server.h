@@ -65,7 +65,7 @@ typedef enum {
  * ======================================================================== */
 typedef struct {
     http_method_t    method;
-    char             path[SSO_MAX_PATH];
+    char             path[1024];
     char             client_ip[64];     /* requester IP address */
     char             *body;
     size_t           body_len;
@@ -79,7 +79,7 @@ typedef struct {
     char             *body;             /* response body (JSON)                 */
     size_t           body_len;
     char             content_type[64];  /* e.g. "application/json"              */
-    char             extra_headers[512]; /* Custom headers: "Key: Value\r\n..." */
+    char             extra_headers[16384]; /* Custom headers: "Key: Value\r\n..." */
 } http_response_t;
 
 /* ========================================================================

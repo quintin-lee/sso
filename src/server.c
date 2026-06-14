@@ -310,7 +310,7 @@ static void send_response(conn_t *c, const http_response_t *resp) {
     if (g_server && g_server->ssl_ctx) {
         snprintf(hsts, sizeof(hsts), "Strict-Transport-Security: max-age=31536000; includeSubDomains\r\n");
     }
-    char header[4096];
+    char header[16384];
     int n = snprintf(header, sizeof(header),
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: %s\r\n"

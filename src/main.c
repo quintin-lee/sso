@@ -1980,7 +1980,7 @@ static sso_error_t handle_me(sso_context_t *ctx, const http_request_t *req,
 
     char buf[4096];
     snprintf(buf, sizeof(buf),
-        "%s{"
+        "{"
         "\"id\":%llu,"
         "\"username\":\"%s\","
         "\"email\":\"%s\","
@@ -3046,7 +3046,7 @@ static sso_error_t handle_list_policies(sso_context_t *ctx, const http_request_t
         err = policy_get_by_id(pmgr, ids[i], &p);
         if (err != SSO_OK) continue;
 
-        char buf[4096];
+        char buf[10240];
         snprintf(buf, sizeof(buf),
             "%s{"
             "\"id\":%llu,"
