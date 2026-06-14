@@ -1770,20 +1770,19 @@ static sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
         return SSO_OK;
     }
 
+    LOG_INFO("[verify] Verifying token: %.16s...", token_str ? token_str : "NULL");
     token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
     token_t tok;
     sso_error_t err = token_verify(tmgr, token_str, &tok);
     if (token_str != req->auth_token) free((void*)token_str);
 
-    if (err == SSO_ERR_TOKEN_EXPIRED) {
-        sso_response_error(resp, 401, "Token expired");
-        return SSO_OK;
-    }
     if (err != SSO_OK) {
-        sso_response_error(resp, 401, "Invalid token");
+        LOG_WARN("[verify] Token verification failed: %s", sso_strerror(err));
+        sso_response_error(resp, 401, sso_strerror(err));
         return SSO_OK;
     }
     if (token_is_revoked(tmgr, tok.jti)) {
+        LOG_WARN("[verify] Token %s is revoked", tok.jti);
         sso_response_error(resp, 401, "Token revoked");
         return SSO_OK;
     }
@@ -1792,10 +1791,12 @@ static sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
     user_t user;
     err = user_get_by_id(umgr, tok.user_id, &user);
     if (err != SSO_OK) {
+        LOG_WARN("[verify] User not found for ID %llu", (unsigned long long)tok.user_id);
         sso_response_error(resp, 401, "User not found");
         return SSO_OK;
     }
 
+    LOG_INFO("[verify] User identified: %s", user.username);
     snprintf(resp->extra_headers, sizeof(resp->extra_headers), "X-SSO-User: %s\r\n", user.username);
 
     char buf[8192];
