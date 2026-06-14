@@ -955,7 +955,7 @@ static const char ADMIN_PAGE_HTML[] =
     "if(token) {\n"
     "  api('api/v1/auth/me').then(async d => {\n"
     "    // Robust check: fetch full user details to confirm roles\n"
-    "    const u = await api(`/api/v1/users/${d.user_id}`);\n"
+    "    const u = await api(`api/v1/users/${d.user_id}`);\n"
     "    const isAdmin = (u.roles || []).some(r => r.name === 'admin');\n"
     "    \n"
     "    if(!isAdmin) {\n"

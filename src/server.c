@@ -318,6 +318,8 @@ static void send_response(conn_t *c, const http_response_t *resp) {
         "Connection: close\r\n"
         "Access-Control-Allow-Origin: *\r\n"
         "Access-Control-Allow-Credentials: true\r\n"
+        "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
+        "Access-Control-Expose-Headers: X-SSO-User\r\n"
         "X-Content-Type-Options: nosniff\r\n"
         "X-Frame-Options: SAMEORIGIN\r\n"
         "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';\r\n"

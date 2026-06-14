@@ -311,9 +311,9 @@ async function doRegister() {
 }
 
 function onSuccess(res) {
-  localStorage.setItem('sso_token', res.token);
+  localStorage.setItem('sso_token', res.access_token);
   // Set cookie for Nginx auth_request
-  document.cookie = `sso_token=${res.token}; path=/; max-age=3600; SameSite=Lax`;
+  document.cookie = `sso_token=${res.access_token}; path=/; max-age=3600; SameSite=Lax`;
 
   const params = new URLSearchParams(window.location.search);
   const redirect = params.get('redirect');
@@ -324,8 +324,8 @@ function onSuccess(res) {
 
   document.getElementById('loginView').style.display = 'none';
   document.getElementById('successView').style.display = 'block';
-  document.getElementById('tokenDisplay').textContent = res.token;
-  document.getElementById('adminLink').href = `admin#${encodeURIComponent(res.token)}`;
+  document.getElementById('tokenDisplay').textContent = res.access_token;
+  document.getElementById('adminLink').href = `admin#${encodeURIComponent(res.access_token)}`;
 }
 
 // Redirect if already has token
