@@ -1,233 +1,126 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
 <title>SSO 管理后台</title>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg-dark:#0f111a;
-  --bg-card:#161925;
-  --bg-sidebar:#1a1d2c;
-  --bg-input:#1f2335;
+  --bg-dark:#0a0b10;
+  --bg-card:#161922;
+  --bg-input:#1f222d;
+  --border:#2a2e3a;
   --accent:#7aa2f7;
   --accent-light:#bb9af7;
-  --accent-gradient:linear-gradient(135deg, #7aa2f7, #bb9af7);
+  --accent-gradient:linear-gradient(135deg, #7aa2f7 0%, #bb9af7 100%);
   --text-main:#a9b1d6;
-  --text-bright:#c0caf5;
   --text-muted:#565f89;
-  --border:#292e42;
+  --text-bright:#c0caf5;
   --success:#9ece6a;
-  --error:#f7768e;
-  --warning:#e0af68;
-  --radius:12px;
+  --danger:#f7768e;
   --shadow:0 10px 30px rgba(0,0,0,0.5);
+  --radius:12px;
 }
+*{box-sizing:border-box;margin:0;padding:0}
 body{
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   background:var(--bg-dark);
   color:var(--text-main);
-  min-height:100vh;
-  display:none; /* Hide until auth check */
+  font-family:'Inter', system-ui, -apple-system, sans-serif;
+  display:none; /* Hidden until auth */
+  height:100vh;
   overflow:hidden;
 }
+/* Layout */
 .sidebar{
-  width:260px;
-  background:var(--bg-sidebar);
+  width:280px;
+  background:var(--bg-card);
   border-right:1px solid var(--border);
   display:flex;
   flex-direction:column;
-  flex-shrink:0;
-  z-index:100;
+  padding:32px 0;
 }
-.sidebar-header{
-  padding:40px 24px;
-  display:flex;
-  align-items:center;
-  gap:12px;
-}
-.logo-icon{
-  width:36px;
-  height:36px;
-  background:var(--accent-gradient);
-  border-radius:10px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  color:#fff;
-  font-weight:bold;
-  font-size:20px;
-  box-shadow:0 0 20px rgba(122,162,247,0.3);
-}
-.logo-text{
-  font-size:20px;
-  font-weight:800;
-  color:var(--text-bright);
-  letter-spacing:-0.5px;
-}
-.nav-links{
-  padding:0 16px;
-  flex:1;
-}
-.nav-item{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  padding:14px 16px;
-  color:var(--text-main);
-  text-decoration:none;
-  border-radius:var(--radius);
-  margin-bottom:6px;
-  transition:all 0.2s;
-  cursor:pointer;
-  font-size:14px;
-  font-weight:500;
-}
-.nav-item:hover{
-  background:rgba(255,255,255,0.04);
-  color:var(--text-bright);
-}
-.nav-item.active{
-  background:rgba(122,162,247,0.1);
-  color:var(--accent);
-}
-.sidebar-footer{
-  padding:24px;
-  border-top:1px solid var(--border);
-  background:rgba(0,0,0,0.1);
-}
-.user-profile{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  margin-bottom:20px;
-}
-.user-avatar{
-  width:40px;
-  height:40px;
-  background:var(--bg-input);
-  border:1px solid var(--border);
-  border-radius:12px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  color:var(--accent);
-  font-weight:bold;
-}
-.user-meta{
-  flex:1;
-  min-width:0;
-}
-.user-name{
-  font-size:14px;
-  font-weight:600;
-  color:var(--text-bright);
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-.user-role{
-  font-size:11px;
-  color:var(--text-muted);
-}
-/* Main Content */
-.main{
+.main-content{
   flex:1;
   display:flex;
   flex-direction:column;
   overflow:hidden;
 }
-.top-bar{
-  height:72px;
+.header{
+  height:80px;
   padding:0 40px;
   display:flex;
   align-items:center;
   justify-content:space-between;
   border-bottom:1px solid var(--border);
-  background:rgba(15, 17, 26, 0.7);
-  backdrop-filter:blur(20px);
-}
-.controls-bar{
-  padding:16px 40px;
-  display:flex;
-  gap:16px;
-  background:rgba(26, 27, 38, 0.5);
-  border-bottom:1px solid var(--border);
-  align-items:center;
-}
-.search-box{
-  flex:1;
-  max-width:400px;
-  position:relative;
-}
-.search-box input{
-  width:100%;
-  padding-left:40px;
-}
-.search-box::before{
-  content:'🔍';
-  position:absolute;
-  left:14px;
-  top:50%;
-  transform:translateY(-50%);
-  opacity:0.5;
 }
 .content-area{
   flex:1;
-  padding:20px 40px;
   overflow-y:auto;
+  padding:40px;
 }
-.pagination-bar{
-  padding:16px 40px;
+/* Components */
+.logo{
+  padding:0 32px;
+  margin-bottom:40px;
   display:flex;
-  justify-content:space-between;
   align-items:center;
-  border-top:1px solid var(--border);
-  background:rgba(15, 17, 26, 0.5);
-  font-size:13px;
+  gap:12px;
 }
-.grid{
+.logo-icon{
+  width:32px;
+  height:32px;
+  background:var(--accent-gradient);
+  border-radius:8px;
+}
+.logo-text{
+  font-size:20px;
+  font-weight:800;
+  color:#fff;
+  letter-spacing:-0.5px;
+}
+.nav-item{
+  padding:14px 32px;
+  display:flex;
+  align-items:center;
+  gap:16px;
+  color:var(--text-muted);
+  cursor:pointer;
+  transition:all 0.2s;
+  font-weight:600;
+  font-size:15px;
+}
+.nav-item:hover{
+  color:var(--text-bright);
+  background:rgba(255,255,255,0.03);
+}
+.nav-item.active{
+  color:var(--accent);
+  background:rgba(122,162,247,0.1);
+  border-right:3px solid var(--accent);
+}
+.stats-grid{
   display:grid;
-  grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));
   gap:24px;
   margin-bottom:40px;
 }
-/* Stats Card */
 .stat-card{
   background:var(--bg-card);
-  border:1px solid var(--border);
-  border-radius:16px;
   padding:24px;
-  display:flex;
-  align-items:center;
-  gap:20px;
+  border-radius:var(--radius);
+  border:1px solid var(--border);
 }
-.stat-icon{
-  width:56px;
-  height:56px;
-  border-radius:14px;
-  background:var(--bg-input);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:24px;
-  color:var(--accent);
-}
-.stat-info .stat-label{
-  font-size:12px;
+.stat-label{
+  font-size:13px;
   color:var(--text-muted);
-  font-weight:600;
+  margin-bottom:8px;
   text-transform:uppercase;
   letter-spacing:1px;
-  margin-bottom:6px;
 }
-.stat-info .stat-value{
+.stat-value{
   font-size:28px;
   font-weight:800;
-  color:var(--text-bright);
+  color:#fff;
 }
-/* Table Card */
 .card{
   background:var(--bg-card);
   border:1px solid var(--border);
@@ -291,286 +184,201 @@ tr:hover td{background:rgba(255,255,255,0.015)}
   color:#fff;
   box-shadow:0 4px 15px rgba(122,162,247,0.3);
 }
-.btn-primary:hover{opacity:0.9;transform:translateY(-1px);box-shadow:0 6px 20px rgba(122,162,247,0.4)}
 .btn-outline{
-  background:rgba(255,255,255,0.03);
+  background:transparent;
   border:1px solid var(--border);
-  color:var(--text-bright);
+  color:var(--text-main);
 }
-.btn-outline:hover{background:var(--bg-input);border-color:var(--text-muted)}
+.btn-outline:hover{
+  border-color:var(--accent);
+  color:var(--accent);
+}
 .btn-danger{
   background:rgba(247,118,142,0.1);
-  color:var(--error);
-  border: 1px solid rgba(247,118,142,0.1);
+  color:var(--danger);
+  border:1px solid rgba(247,118,142,0.2);
 }
-.btn-danger:hover{background:var(--error);color:#fff}
-.btn-sm{padding:6px 12px;font-size:12px;border-radius:6px}
-
+.btn-danger:hover{
+  background:var(--danger);
+  color:#fff;
+}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:8px}
+.tag{
+  padding:4px 10px;
+  background:rgba(122,162,247,0.1);
+  color:var(--accent);
+  border-radius:6px;
+  font-size:12px;
+  font-weight:700;
+}
 .status-pill{
   display:inline-flex;
   align-items:center;
   gap:6px;
   font-size:12px;
-  font-weight:600;
-  padding:4px 12px;
-  border-radius:20px;
+  font-weight:700;
 }
-.status-active{background:rgba(158,206,106,0.1);color:var(--success)}
-.status-inactive{background:rgba(247,118,142,0.1);color:var(--error)}
-
-.tag{
-  padding:2px 8px;
-  border-radius:4px;
-  font-size:11px;
-  font-weight:600;
-  background:rgba(122,162,247,0.1);
-  color:var(--accent);
-  margin-right: 4px;
-}
-
+.status-active{color:var(--success)}
+.status-inactive{color:var(--text-muted)}
 /* Modal */
 .modal-overlay{
   position:fixed;
   inset:0;
   background:rgba(0,0,0,0.8);
   backdrop-filter:blur(8px);
-  display:none;
+  display:flex;
   align-items:center;
   justify-content:center;
-  z-index:1000;
+  opacity:0;
+  pointer-events:none;
+  transition:all 0.3s;
+  z-index:100;
 }
-.modal-overlay.active{display:flex}
+.modal-overlay.active{opacity:1;pointer-events:all}
 .modal{
   background:var(--bg-card);
+  width:500px;
+  border-radius:24px;
   border:1px solid var(--border);
-  width:640px;
-  max-width:95%;
-  border-radius:20px;
   padding:40px;
-  box-shadow:0 30px 60px rgba(0,0,0,0.6);
-  max-height: 90vh;
-  overflow-y: auto;
+  transform:translateY(20px);
+  transition:all 0.3s;
 }
-.modal h3{font-size:22px;color:var(--text-bright);font-weight:700;margin-bottom:8px}
-.modal p{font-size:14px;color:var(--text-muted);margin-bottom:24px}
-.form-group{margin-bottom:24px}
-.form-group label{display:block;font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px}
-input, select, textarea{
+.modal-overlay.active .modal{transform:translateY(0)}
+.modal-title{font-size:24px;font-weight:800;color:#fff;margin-bottom:8px}
+.modal-sub{color:var(--text-muted);font-size:14px;margin-bottom:32px}
+.form-group{margin-bottom:20px}
+.form-label{display:block;font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase}
+.form-input{
   width:100%;
   background:var(--bg-input);
   border:1px solid var(--border);
-  padding:14px 18px;
-  border-radius:var(--radius);
-  color:var(--text-bright);
-  font-size:15px;
-  outline:none;
+  border-radius:12px;
+  padding:14px 16px;
+  color:#fff;
+  font-size:14px;
   transition:all 0.2s;
 }
-input:focus, select:focus, textarea:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(122,162,247,0.15)}
-.modal-footer{
-  display:flex;
-  justify-content:flex-end;
-  gap:12px;
-  margin-top:40px;
-}
-/* Rule Builder UI */
-.rule-builder{
-  background:var(--bg-dark);
+.form-input:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 4px rgba(122,162,247,0.1)}
+/* Search */
+.search-box{
+  background:var(--bg-input);
   border:1px solid var(--border);
   border-radius:var(--radius);
-  padding:16px;
-  margin-top:10px;
-}
-.rule-item{
+  padding:8px 16px;
   display:flex;
-  gap:10px;
-  margin-bottom:10px;
-  align-items: center;
+  align-items:center;
+  gap:12px;
+  width:320px;
 }
-.rule-item input, .rule-item select{ padding: 10px; font-size: 13px; }
-
-/* Toast */
-.toast-container{position:fixed;top:20px;right:20px;z-index:2000}
-.toast{padding:12px 24px;border-radius:8px;background:var(--bg-card);color:#fff;border:1px solid var(--border);box-shadow:var(--shadow);margin-bottom:10px;transition:opacity 0.3s;}
+.search-input{
+  background:transparent;
+  border:none;
+  color:#fff;
+  font-size:14px;
+  width:100%;
+}
+.search-input:focus{outline:none}
 </style>
 </head>
 <body>
-
 <div class="sidebar">
-  <div class="sidebar-header">
-    <div class="logo-icon">S</div>
-    <div class="logo-text">SSO Admin</div>
+  <div class="logo">
+    <div class="logo-icon"></div>
+    <div class="logo-text">SSO ADMIN</div>
   </div>
-  <div class="nav-links">
-    <div class="nav-item active" id="nav-users" onclick="switchTab('users')"><span>👥</span> 用户管理</div>
-    <div class="nav-item" id="nav-roles" onclick="switchTab('roles')"><span>🔐</span> 角色管理</div>
-    <div class="nav-item" id="nav-groups" onclick="switchTab('groups')"><span>🏢</span> 组织架构</div>
-    <div class="nav-item" id="nav-policies" onclick="switchTab('policies')"><span>📜</span> 策略配置</div>
-    <div class="nav-item" id="nav-audit" onclick="switchTab('audit')"><span>🔍</span> 审计日志</div>
-    <div class="nav-item" id="nav-metrics" onclick="switchTab('metrics')"><span>📊</span> 系统指标</div>
-  </div>
-  <div class="sidebar-footer">
-    <div class="user-profile">
-      <div class="user-avatar" id="avatar">A</div>
-      <div class="user-meta">
-        <div class="user-name" id="adminName">Administrator</div>
-        <div class="user-role">Super Admin</div>
-      </div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <button class="btn btn-outline" style="width:100%;justify-content:center" onclick="showChangePass()">修改密码</button>
-      <button class="btn btn-outline" style="width:100%;justify-content:center" onclick="logout()">退出登录</button>
-    </div>
+  <div class="nav-item active" onclick="showTab('users', this)">用户管理</div>
+  <div class="nav-item" onclick="showTab('roles', this)">角色管理</div>
+  <div class="nav-item" onclick="showTab('groups', this)">组织架构</div>
+  <div class="nav-item" onclick="showTab('policies', this)">权限策略</div>
+  <div class="nav-item" onclick="showTab('audit', this)">审计日志</div>
+  <div class="nav-item" onclick="showTab('metrics', this)">系统指标</div>
+  <div style="margin-top:auto;padding:0 24px">
+    <button class="btn btn-outline" style="width:100%;justify-content:center" onclick="logout()">安全退出</button>
   </div>
 </div>
-
-<div class="main">
-  <div class="top-bar">
-    <div class="page-title" id="pageTitle">用户管理</div>
-    <div class="top-actions">
-      <button class="btn btn-primary" id="addBtn" onclick="handleAdd()">+ 新增用户</button>
+<div class="main-content">
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:32px">
+      <h1 id="pageTitle" style="font-size:24px;font-weight:800;color:#fff">用户管理</h1>
+      <div class="search-box">
+        <input type="text" class="search-input" placeholder="全局搜索..." id="searchInput" oninput="handleSearch(this.value)">
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:20px">
+      <div style="text-align:right">
+        <div id="adminName" style="color:#fff;font-weight:700;font-size:14px">管理员</div>
+        <div style="color:var(--text-muted);font-size:12px">超级管理员</div>
+      </div>
+      <div id="avatar" style="width:44px;height:44px;background:var(--accent-gradient);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800">A</div>
     </div>
   </div>
-
-  <div class="controls-bar">
-    <div class="search-box">
-      <input type="text" id="searchInput" placeholder="搜索关键词..." oninput="handleSearch()">
-    </div>
-    <div style="width:180px">
-      <select id="statusFilter" onchange="handleFilter()">
-        <option value="-1">所有状态</option>
-        <option value="1">正常/激活</option>
-        <option value="0">禁用/未激活</option>
-        <option value="2">已锁定</option>
-      </select>
-    </div>
-  </div>
-
   <div class="content-area">
-    <div class="grid">
+    <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-icon">👥</div>
-        <div class="stat-info"><div class="stat-label">总用户数</div><div class="stat-value" id="countUsers">0</div></div>
+        <div class="stat-label">总用户数</div>
+        <div class="stat-value" id="countUsers">0</div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">🛡️</div>
-        <div class="stat-info"><div class="stat-label">活跃策略</div><div class="stat-value" id="countPolicies">0</div></div>
+        <div class="stat-label">活跃会话</div>
+        <div class="stat-value" id="countSessions">0</div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">⚡</div>
-        <div class="stat-info"><div class="stat-label">鉴权次数</div><div class="stat-value" id="totalEvals">0</div></div>
+        <div class="stat-label">决策次数</div>
+        <div class="stat-value" id="totalEvals">0</div>
       </div>
     </div>
-
     <div class="card">
-      <div class="card-header"><div class="card-title">数据概览</div></div>
-      <div class="table-wrapper" id="tableContainer">
-        <div style="padding:60px;text-align:center;color:var(--text-muted)">正在同步 SSO 核心数据...</div>
+      <div class="card-header">
+        <div class="card-title">列表详情</div>
+        <button class="btn btn-primary" id="addBtn">+ 新增用户</button>
       </div>
-    </div>
-  </div>
-
-  <div class="pagination-bar">
-    <div id="pageInfo">第 1 页，共 0 条</div>
-    <div style="display:flex;gap:12px">
-      <button class="btn btn-outline btn-sm" id="prevBtn" onclick="changePage(-1)">上一页</button>
-      <button class="btn btn-outline btn-sm" id="nextBtn" onclick="changePage(1)">下一页</button>
+      <div class="table-wrapper" id="tableContainer">
+        <!-- Table injected here -->
+      </div>
+      <div id="pagination" style="padding:20px 32px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:13px;color:var(--text-muted)" id="pageInfo">第 1 页</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline btn-sm" onclick="prevPage()">上一页</button>
+          <button class="btn btn-outline btn-sm" onclick="nextPage()">下一页</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
-
-<div id="toastContainer" class="toast-container"></div>
 
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal">
-    <h3 id="modalTitle">标题</h3>
-    <p id="modalSub">描述文字</p>
-    <div id="modalContent"></div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal()">取消</button>
-      <button class="btn btn-primary" id="confirmBtn">确定提交</button>
+    <h2 class="modal-title" id="modalTitle">新增用户</h2>
+    <p class="modal-sub" id="modalSub">请填写以下信息以创建新实体</p>
+    <div id="formContainer"></div>
+    <div style="display:flex;gap:12px;margin-top:32px">
+      <button class="btn btn-outline" style="flex:1;justify-content:center" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" style="flex:1;justify-content:center" id="saveBtn">保存提交</button>
     </div>
   </div>
 </div>
 
 <script>
-let currentTab = 'users';
 const TOKEN_KEY = 'sso_token';
+const LIMIT = 10;
 let allData = { users:[], roles:[], groups:[], policies:[] };
-let policyRules = [];
-
 let state = {
   users: { page: 1, q: '', status: -1, total: 0 },
-  roles: { page: 1, q: '', status: -1, total: 0 },
-  groups: { page: 1, q: '', status: -1, total: 0 },
-  policies: { page: 1, q: '', status: -1, total: 0 },
-  audit: { page: 1, q: '', status: -1, total: 0 }
+  roles: { page: 1, q: '', total: 0 },
+  groups: { page: 1, q: '', total: 0 },
+  policies: { page: 1, q: '', total: 0 },
+  audit: { page: 1, q: '', total: 0 }
 };
-const LIMIT = 20;
-
-function handleSearch() {
-  const q = document.getElementById('searchInput').value;
-  state[currentTab].q = q;
-  state[currentTab].page = 1;
-  loadData();
-}
-
-function handleFilter() {
-  const s = parseInt(document.getElementById('statusFilter').value);
-  state[currentTab].status = s;
-  state[currentTab].page = 1;
-  loadData();
-}
-
-function changePage(delta) {
-  const s = state[currentTab];
-  const newPage = s.page + delta;
-  const totalPages = Math.max(1, Math.ceil(s.total / LIMIT));
-  if (newPage < 1 || newPage > totalPages) return;
-  s.page = newPage;
-  loadData();
-}
-
-function updatePaginationUI() {
-  const s = state[currentTab];
-  if (currentTab === 'metrics') {
-    document.querySelector('.pagination-bar').style.display = 'none';
-    return;
-  }
-  document.querySelector('.pagination-bar').style.display = 'flex';
-  const totalPages = Math.max(1, Math.ceil(s.total / LIMIT));
-  document.getElementById('pageInfo').textContent = `第 ${s.page} 页，共 ${s.total} 条 (共 ${totalPages} 页)`;
-  document.getElementById('prevBtn').disabled = s.page <= 1;
-  document.getElementById('nextBtn').disabled = s.page >= totalPages;
-}
+let currentTab = 'users';
 
 function toast(msg, type='success') {
-  const container = document.getElementById('toastContainer');
   const t = document.createElement('div');
-  t.className = 'toast';
-  t.style.borderLeft = `4px solid var(--${type === 'success' ? 'success' : 'error'})`;
-  t.textContent = msg;
-  container.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
-}
-
-function switchTab(tab) {
-  currentTab = tab;
-  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-  const el = document.getElementById('nav-' + tab);
-  if(el) el.classList.add('active');
-  
-  // Sync UI controls with state
-  const s = state[tab] || { q: '', status: -1 };
-  document.getElementById('searchInput').value = s.q || '';
-  document.getElementById('statusFilter').value = (s.status !== undefined && s.status !== null) ? s.status : -1;
-
-  const labels = { 'users': '用户管理', 'roles': '角色管理', 'groups': '组织架构', 'policies': '策略配置', 'audit': '审计日志', 'metrics': '系统指标' };
-  document.getElementById('pageTitle').textContent = labels[tab];
-  const addBtn = document.getElementById('addBtn');
-  addBtn.textContent = '+ 新增' + labels[tab].substring(0, 2);
-  addBtn.style.display = (tab === 'metrics' || tab === 'audit') ? 'none' : 'flex';
-  loadData();
+  t.style.cssText = `position:fixed;top:24px;right:24px;padding:16px 24px;background:var(--bg-card);border:1px solid ${type==='success'? 'var(--success)':'var(--danger)'};border-radius:12px;box-shadow:var(--shadow);z-index:200;color:#fff;font-weight:600;font-size:14px;display:flex;align-items:center;gap:10px;transform:translateX(100px);opacity:0;transition:all 0.3s`;
+  t.innerHTML = (type==='success'?'✅':'❌') + ' ' + msg;
+  document.body.appendChild(t);
+  setTimeout(()=> { t.style.transform='translateX(0)'; t.style.opacity='1'; }, 10);
+  setTimeout(()=> { t.style.transform='translateX(100px)'; t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 3000);
 }
 
 async function api(path, method='GET', body=null) {
@@ -580,6 +388,11 @@ async function api(path, method='GET', body=null) {
   try {
     const r = await fetch(path, {method, headers, body: body ? JSON.stringify(body) : null});
     if(r.status === 401) { logout(); return; }
+    
+    // Extract new tokens from headers if present
+    const accessToken = r.headers.get('X-SSO-Access-Token');
+    if(accessToken) localStorage.setItem(TOKEN_KEY, accessToken);
+    
     const data = await r.json();
     if(!r.ok) throw new Error(data.error || '请求失败');
     return data;
@@ -589,12 +402,12 @@ async function api(path, method='GET', body=null) {
 function loadData() {
   const container = document.getElementById('tableContainer');
   container.innerHTML = '<div style="padding:60px;text-align:center;color:var(--text-muted)">加载中...</div>';
-  
+
   const s = state[currentTab] || { page: 1, q: '', status: -1 };
   const query = `?page=${s.page}&limit=${LIMIT}&q=${encodeURIComponent(s.q)}&status=${s.status}`;
 
   if(currentTab === 'users') {
-    api('/api/v1/users' + query).then(res => {
+    api('api/v1/users' + query).then(res => {
       const data = res.items;
       state.users.total = res.total;
       allData.users = data;
@@ -606,79 +419,52 @@ function loadData() {
         html += `<tr><td>#${u.id}</td><td style="color:var(--text-bright);font-weight:600">${u.username}</td><td>${u.display_name||'-'}</td><td><span class="status-pill ${u.status === 1 ? 'status-active' : 'status-inactive'}">${u.status === 1 ? '● 正常' : '● 禁用'}</span></td><td>${roles||'-'}</td><td>
           <button class="btn btn-outline btn-sm" onclick="showEditUser(${u.id})">编辑</button>
           <button class="btn btn-outline btn-sm" onclick="showAssignments(${u.id})">角色/群组</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteItem('users', ${u.id})">删除</button>
-        </td></tr>`;
+          <button class="btn btn-danger btn-sm" onclick="deleteItem('users', ${u.id})">删除</button></td></tr>`;
       });
       container.innerHTML = html + '</tbody></table>';
     });
   } else if(currentTab === 'roles') {
-    api('/api/v1/roles' + query).then(res => {
+    api('api/v1/roles' + query).then(res => {
       const data = res.items;
       state.roles.total = res.total;
       allData.roles = data;
       updatePaginationUI();
-      let html = '<table><thead><tr><th>ID</th><th>角色名称</th><th>父角色</th><th>描述</th><th>操作</th></tr></thead><tbody>';
+      let html = '<table><thead><tr><th>ID</th><th>名称</th><th>描述</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
       data.forEach(r => {
-        html += `<tr><td>#${r.id}</td><td style="color:var(--text-bright);font-weight:600">${r.name}</td><td>${r.parent_name||'-'}</td><td>${r.description||'-'}</td><td>
+        html += `<tr><td>#${r.id}</td><td style="color:var(--text-bright);font-weight:600">${r.name}</td><td>${r.description}</td><td>${new Date(r.created_at*1000).toLocaleString()}</td><td>
           <button class="btn btn-outline btn-sm" onclick="showEditRole(${r.id})">编辑</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteItem('roles', ${r.id})">删除</button>
-        </td></tr>`;
-      });
-      container.innerHTML = html + '</tbody></table>';
-    });
-  } else if(currentTab === 'groups') {
-    api('/api/v1/groups' + query).then(res => {
-      const data = res.items;
-      state.groups.total = res.total;
-      allData.groups = data;
-      updatePaginationUI();
-      let html = '<table><thead><tr><th>ID</th><th>分组名称</th><th>父分组</th><th>描述</th><th>操作</th></tr></thead><tbody>';
-      data.forEach(g => {
-        html += `<tr><td>#${g.id}</td><td style="color:var(--text-bright);font-weight:600">${g.name}</td><td>${g.parent_name||'-'}</td><td>${g.description||'-'}</td><td>
-          <button class="btn btn-outline btn-sm" onclick="showEditGroup(${g.id})">编辑</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteItem('groups', ${g.id})">删除</button>
-        </td></tr>`;
+          <button class="btn btn-danger btn-sm" onclick="deleteItem('roles', ${r.id})">删除</button></td></tr>`;
       });
       container.innerHTML = html + '</tbody></table>';
     });
   } else if(currentTab === 'policies') {
-    api('/api/v1/policies' + query).then(res => {
+    api('api/v1/policies' + query).then(res => {
       const data = res.items;
       state.policies.total = res.total;
       allData.policies = data;
       updatePaginationUI();
-      document.getElementById('countPolicies').textContent = res.total;
-      let html = '<table><thead><tr><th>ID</th><th>名称</th><th>策略类型</th><th>效果</th><th>优先级</th><th>操作</th></tr></thead><tbody>';
+      let html = '<table><thead><tr><th>ID</th><th>名称</th><th>策略类型</th><th>生效</th><th>优先级</th><th>规则详情</th><th>操作</th></tr></thead><tbody>';
       data.forEach(p => {
-        html += `<tr><td>#${p.id}</td><td style="color:var(--text-bright);font-weight:600">${p.name}</td><td>${p.strategy_name}</td><td><span class="status-pill ${p.effect === 1 ? 'status-active' : 'status-inactive'}">${p.effect === 1 ? 'ALLOW' : 'DENY'}</span></td><td>${p.priority}</td><td>
+        html += `<tr><td>#${p.id}</td><td style="color:var(--text-bright);font-weight:600">${p.name}</td><td><span class="tag">${p.strategy_name}</span></td><td><span class="tag" style="background:rgba(158,206,106,0.1);color:var(--success)">ALLOW</span></td><td>${p.priority}</td><td style="font-family:monospace;font-size:12px">${p.rules}</td><td>
           <button class="btn btn-outline btn-sm" onclick="showEditPolicy(${p.id})">编辑</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteItem('policies', ${p.id})">删除</button>
-        </td></tr>`;
+          <button class="btn btn-danger btn-sm" onclick="deleteItem('policies', ${p.id})">删除</button></td></tr>`;
       });
       container.innerHTML = html + '</tbody></table>';
     });
   } else if(currentTab === 'audit') {
-    api('/api/v1/audit/logs').then(data => {
-      state.audit.total = data.length;
+    api('api/v1/audit' + query).then(res => {
+      const data = res.items;
+      state.audit.total = res.total;
       updatePaginationUI();
-      let html = '<table><thead><tr><th>时间</th><th>用户</th><th>决策</th><th>耗时</th><th>缓存</th><th>详情</th></tr></thead><tbody>';
-      data.reverse().slice(0, LIMIT).forEach(log => {
-        const date = new Date(log.timestamp_ms).toLocaleString();
-        const isAllow = log.decision === 'ALLOW';
-        html += `<tr>
-          <td style="font-size:12px">${date}</td>
-          <td>#${log.user_id}</td>
-          <td><span class="status-pill" style="background:${isAllow?'rgba(158,206,106,0.1)':'rgba(247,118,142,0.1)'};color:${isAllow?'var(--success)':'var(--error)'}">${log.decision}</span></td>
-          <td style="font-family:monospace">${log.duration_ms}ms</td>
-          <td>${log.cache_hit ? '⚡' : '-'}</td>
-          <td style="font-size:11px;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${log.trace}">${log.trace}</td>
-        </tr>`;
+      let html = '<table><thead><tr><th>时间</th><th>用户ID</th><th>决策</th><th>耗时</th><th>路径/追踪</th></tr></thead><tbody>';
+      data.forEach(log => {
+        html += `<tr><td style="font-size:12px">${new Date(log.timestamp_ms).toLocaleString()}</td><td>#${log.user_id}</td><td><span class="tag" style="background:${log.decision==='ALLOW'?'rgba(158,206,106,0.1)':'rgba(247,118,142,0.1)'};color:${log.decision==='ALLOW'?'var(--success)':'var(--danger)'}">${log.decision}</span></td><td>${log.duration_ms}ms</td><td style="font-family:monospace;font-size:12px">${log.trace}</td></tr>`;
       });
       container.innerHTML = html + '</tbody></table>';
     });
   } else if(currentTab === 'metrics') {
     updatePaginationUI();
-    fetch('/metrics').then(r => r.text()).then(m => {
+    fetch('metrics').then(r => r.text()).then(m => {
       container.innerHTML = `<pre style="padding:32px;background:var(--bg-dark);color:#79dac8;font-family:monospace;font-size:13px">${m}</pre>`;
       const match = m.match(/sso_perm_evals_total (\d+)/);
       if(match) document.getElementById('totalEvals').textContent = match[1];
@@ -686,269 +472,49 @@ function loadData() {
   }
 }
 
-async function deleteItem(type, id) {
-  if(!confirm('确定删除吗？')) return;
-  try {
-    await api(`/api/v1/${type}/${id}`, 'DELETE');
-    toast('删除成功'); loadData();
-  } catch(e) {}
+function showTab(tab, el) {
+  currentTab = tab;
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  const labels = { users:'用户管理', roles:'角色管理', groups:'组织架构', policies:'权限策略', audit:'审计日志', metrics:'系统指标' };
+  document.getElementById('pageTitle').textContent = labels[tab];
+  const addBtn = document.getElementById('addBtn');
+  addBtn.textContent = '+ 新增' + labels[tab].substring(0, 2);
+  addBtn.style.display = (tab === 'metrics' || tab === 'audit') ? 'none' : 'flex';
+  loadData();
 }
 
-async function showAssignments(userId) {
-  const u = allData.users.find(x => x.id === userId);
-  showModal(`管理 [${u.username}] 的角色与群组`, '设置该用户的权限边界与组织归属');
-  
-  const [roles, groups] = await Promise.all([api('/api/v1/roles'), api('/api/v1/groups')]);
-  
-  const userRoles = u.roles || [];
-  // For groups, we might need a separate API if not in user object. Assume u.groups exists for now or fetch.
-  // Assuming the backend returns groups in the user object like roles.
-  const userGroups = u.groups || [];
-
-  document.getElementById('modalContent').innerHTML = `
-    <div class="form-group">
-      <label>分配角色</label>
-      <div style="display:flex;gap:10px;margin-bottom:10px">
-        <select id="assignRoleSelect" style="flex:1">
-          ${roles.filter(r => !userRoles.some(ur => ur.id === r.id)).map(r => `<option value="${r.id}">${r.name}</option>`).join('')}
-        </select>
-        <button class="btn btn-primary btn-sm" onclick="doAssign(${userId}, 'role')">增加</button>
-      </div>
-      <div id="userRolesList" style="display:flex;flex-wrap:wrap;gap:8px">
-        ${userRoles.map(r => `<span class="tag">${r.name} <span style="cursor:pointer;margin-left:4px" onclick="doUnassign(${userId}, 'role', ${r.id})">×</span></span>`).join('')}
-      </div>
-    </div>
-    <div class="form-group">
-      <label>所属群组</label>
-      <div style="display:flex;gap:10px;margin-bottom:10px">
-        <select id="assignGroupSelect" style="flex:1">
-          ${groups.filter(g => !userGroups.some(ug => ug.id === g.id)).map(g => `<option value="${g.id}">${g.name}</option>`).join('')}
-        </select>
-        <button class="btn btn-primary btn-sm" onclick="doAssign(${userId}, 'group')">加入</button>
-      </div>
-      <div id="userGroupsList" style="display:flex;flex-wrap:wrap;gap:8px">
-        ${userGroups.map(g => `<span class="tag" style="background:rgba(187,154,247,0.1);color:var(--accent-light)">${g.name} <span style="cursor:pointer;margin-left:4px" onclick="doUnassign(${userId}, 'group', ${g.id})">×</span></span>`).join('')}
-      </div>
-    </div>
-  `;
-  document.getElementById('confirmBtn').textContent = '完成并关闭';
-  document.getElementById('confirmBtn').onclick = closeModal;
+function handleSearch(q) {
+  state[currentTab].q = q;
+  state[currentTab].page = 1;
+  loadData();
 }
 
-async function doAssign(userId, type) {
-  const selectId = type === 'role' ? 'assignRoleSelect' : 'assignGroupSelect';
-  const id = document.getElementById(selectId).value;
-  if(!id) return;
-  
-  const path = type === 'role' ? `/api/v1/roles/${id}/assign` : `/api/v1/groups/${id}/members`;
-  const body = type === 'role' ? {user_id: userId} : {user_id: userId};
-  
-  await api(path, 'POST', body);
-  toast('分配成功');
-  // Refresh users to get latest assignments in allData.users
-  await api('/api/v1/users').then(data => { allData.users = data; });
-  showAssignments(userId);
+function prevPage() { if(state[currentTab].page > 1) { state[currentTab].page--; loadData(); } }
+function nextPage() { if(state[currentTab].page * LIMIT < state[currentTab].total) { state[currentTab].page++; loadData(); } }
+
+function updatePaginationUI() {
+  const s = state[currentTab];
+  document.getElementById('pagination').style.display = (currentTab === 'metrics') ? 'none' : 'flex';
+  document.getElementById('pageInfo').textContent = `第 ${s.page} 页 / 共 ${Math.ceil(s.total/LIMIT)||1} 页 (${s.total} 条记录)`;
 }
 
-async function doUnassign(userId, type, id) {
-  if(!confirm('确定移除吗？')) return;
-  const path = type === 'role' ? `/api/v1/roles/${id}/unassign` : `/api/v1/groups/${id}/members/${userId}`;
-  await api(path, type === 'role' ? 'POST' : 'DELETE', type === 'role' ? {user_id: userId} : null);
-  toast('已移除');
-  await api('/api/v1/users').then(data => { allData.users = data; });
-  showAssignments(userId);
-}
-
-function showEditUser(id) {
-  const u = id ? allData.users.find(x => x.id === id) : {username:'', email:'', display_name:'', phone:'', status:1};
-  showModal(id ? '编辑用户' : '新增用户', '管理 SSO 账号');
-  document.getElementById('modalContent').innerHTML = `
-    <div class="form-group"><label>用户名</label><input id="f_user" value="${u.username}" ${id?'readonly':''}></div>
-    ${!id ? '<div class="form-group"><label>初始密码</label><input type="password" id="f_pass"></div>' : ''}
-    <div class="form-group"><label>显示名称</label><input id="f_display" value="${u.display_name||''}"></div>
-    <div class="form-group"><label>邮箱地址</label><input id="f_email" value="${u.email||''}"></div>
-    <div class="form-group"><label>手机号</label><input id="f_phone" value="${u.phone||''}"></div>
-    <div class="form-group"><label>状态</label>
-      <select id="f_status">
-        <option value="1" ${u.status==1?'selected':''}>正常</option>
-        <option value="0" ${u.status==0?'selected':''}>禁用</option>
-        <option value="2" ${u.status==2?'selected':''}>锁定</option>
-      </select>
-    </div>
-  `;
-  document.getElementById('confirmBtn').onclick = async () => {
-    const payload = {
-      username: document.getElementById('f_user').value,
-      email: document.getElementById('f_email').value,
-      display_name: document.getElementById('f_display').value,
-      phone: document.getElementById('f_phone').value,
-      status: parseInt(document.getElementById('f_status').value)
-    };
-    if(!id) {
-      if(!payload.username || !document.getElementById('f_pass').value) return toast('请填全信息', 'error');
-      payload.password = document.getElementById('f_pass').value;
-    }
-    await api(id ? `/api/v1/users/${id}` : '/api/v1/users', id ? 'PUT' : 'POST', payload);
-    toast('保存成功'); closeModal(); loadData();
-  };
-}
-
-function showEditRole(id) {
-  const r = id ? allData.roles.find(x => x.id === id) : {name:'', description:'', parent_role_id:0, status:1};
-  showModal(id ? '编辑角色' : '新增角色', '定义权限角色与层级');
-  document.getElementById('modalContent').innerHTML = `
-    <div class="form-group"><label>角色名称</label><input id="r_name" value="${r.name}"></div>
-    <div class="form-group"><label>描述</label><input id="r_desc" value="${r.description||''}"></div>
-    <div class="form-group"><label>状态</label>
-      <select id="r_status"><option value="1" ${r.status==1?'selected':''}>激活</option><option value="0" ${r.status==0?'selected':''}>禁用</option></select>
-    </div>
-  `;
-  document.getElementById('confirmBtn').onclick = async () => {
-    const payload = {
-      name: document.getElementById('r_name').value,
-      description: document.getElementById('r_desc').value,
-      status: parseInt(document.getElementById('r_status').value),
-      parent_role_id: r.parent_role_id || 0
-    };
-    await api(id ? `/api/v1/roles/${id}` : '/api/v1/roles', id ? 'PUT' : 'POST', payload);
-    toast('保存成功'); closeModal(); loadData();
-  };
-}
-
-function showEditGroup(id) {
-  const g = id ? allData.groups.find(x => x.id === id) : {name:'', description:'', parent_group_id:0, status:1};
-  showModal(id ? '编辑群组' : '新增群组', '管理组织架构单元');
-  document.getElementById('modalContent').innerHTML = `
-    <div class="form-group"><label>群组名称</label><input id="g_name" value="${g.name}"></div>
-    <div class="form-group"><label>描述</label><input id="g_desc" value="${g.description||''}"></div>
-    <div class="form-group"><label>状态</label>
-      <select id="g_status"><option value="1" ${g.status==1?'selected':''}>激活</option><option value="0" ${g.status==0?'selected':''}>禁用</option></select>
-    </div>
-  `;
-  document.getElementById('confirmBtn').onclick = async () => {
-    const payload = {
-      name: document.getElementById('g_name').value,
-      description: document.getElementById('g_desc').value,
-      status: parseInt(document.getElementById('g_status').value),
-      parent_group_id: g.parent_group_id || 0
-    };
-    await api(id ? `/api/v1/groups/${id}` : '/api/v1/groups', id ? 'PUT' : 'POST', payload);
-    toast('保存成功'); closeModal(); loadData();
-  };
-}
-
-function handleAdd() {
-  if(currentTab === 'users') showEditUser(0);
-  else if(currentTab === 'roles') showEditRole(0);
-  else if(currentTab === 'groups') showEditGroup(0);
-  else if(currentTab === 'policies') showEditPolicy(0);
-}
-
-function showEditPolicy(id) {
-  const p = id ? allData.policies.find(x => x.id === id) : {name:'', strategy_type:1, effect:1, priority:50, rules:'{}'};
-  showModal(id ? '配置策略' : '新增策略', '定义访问控制规则');
-  document.getElementById('modalContent').innerHTML = `
-    <div class="form-group"><label>策略名称</label><input id="p_name" value="${p.name}"></div>
-    <div style="display:flex;gap:10px">
-      <div class="form-group" style="flex:1"><label>策略引擎类型</label>
-        <select id="p_type" onchange="renderRuleBuilder(parseInt(this.value))">
-          <option value="1" ${p.strategy_type==1?'selected':''}>功能权限 (FUNC)</option>
-          <option value="2" ${p.strategy_type==2?'selected':''}>API 权限 (API)</option>
-          <option value="4" ${p.strategy_type==4?'selected':''}>角色权限 (RBAC)</option>
-          <option value="3" ${p.strategy_type==3?'selected':''}>数据权限 (DATA)</option>
-          <option value="6" ${p.strategy_type==6?'selected':''}>属性权限 (ABAC)</option>
-        </select>
-      </div>
-      <div class="form-group" style="width:120px"><label>效果</label>
-        <select id="p_effect"><option value="1" ${p.effect?'selected':''}>ALLOW</option><option value="0" ${!p.effect?'selected':''}>DENY</option></select>
-      </div>
-    </div>
-    <div id="ruleBuilder" class="rule-builder"></div>
-  `;
-  
-  try {
-    const r = JSON.parse(p.rules);
-    if(p.strategy_type==1) policyRules = (r.functions||[]).map(x=>({k:x.code, v:x.effect||'allow'}));
-    else if(p.strategy_type==2) policyRules = (r.endpoints||[]).map(x=>({k:x.path, v:x.method||'GET'}));
-    else if(p.strategy_type==4) policyRules = (r.roles||[]).map(x=>({k:x.name, v:x.effect||'allow'}));
-    else if(p.strategy_type==6) policyRules = (r.conditions||[]).map(x=>({k:x.attr, v:x.value, op:x.op, src:x.source}));
-    else policyRules = [];
-  } catch(e) { policyRules = []; }
-  
-  renderRuleBuilder(p.strategy_type);
-
-  document.getElementById('confirmBtn').onclick = async () => {
-    const type = parseInt(document.getElementById('p_type').value);
-    let rules = {};
-    if(type==1) rules = {functions: policyRules.map(x=>({code:x.k, effect:x.v}))};
-    else if(type==2) rules = {endpoints: policyRules.map(x=>({path:x.k, method:x.v}))};
-    else if(type==4) rules = {roles: policyRules.map(x=>({name:x.k, effect:x.v}))};
-    else if(type==6) rules = {conditions: policyRules.map(x=>({source:x.src, attr:x.k, op:x.op, value:x.v}))};
-    
-    const payload = { name:document.getElementById('p_name').value, strategy_type:type, effect:parseInt(document.getElementById('p_effect').value), priority:50, rules:JSON.stringify(rules), status:1 };
-    await api(id ? `/api/v1/policies/${id}` : '/api/v1/policies', id ? 'PUT' : 'POST', payload);
-    toast('保存成功'); closeModal(); loadData();
-  };
-}
-
-function renderRuleBuilder(type) {
-  const container = document.getElementById('ruleBuilder');
-  container.innerHTML = '<div id="rulesList"></div><button class="btn btn-outline btn-sm" onclick="addRuleItem('+type+')">+ 添加规则项</button>';
-  refreshRulesList(type);
-}
-
-function addRuleItem(t) {
-  if(t==6) policyRules.push({k:'', v:'', op:'eq', src:'subject'});
-  else policyRules.push({k:'', v:t==2?'GET':'allow'});
-  refreshRulesList(t);
-}
-
-function refreshRulesList(type) {
-  const container = document.getElementById('rulesList');
-  container.innerHTML = policyRules.map((r, i) => {
-    if(type == 6) { // ABAC
-      return `<div class="rule-item">
-        <select style="flex:1" onchange="policyRules[${i}].src=this.value"><option value="subject" ${r.src=='subject'?'selected':''}>主体</option><option value="resource" ${r.src=='resource'?'selected':''}>资源</option></select>
-        <input style="flex:1" placeholder="属性" value="${r.k}" oninput="policyRules[${i}].k=this.value">
-        <select style="flex:0.8" onchange="policyRules[${i}].op=this.value"><option value="eq" ${r.op=='eq'?'selected':''}>=</option><option value="gt" ${r.op=='gt'?'selected':''}>></option></select>
-        <input style="flex:1" placeholder="值" value="${r.v}" oninput="policyRules[${i}].v=this.value">
-        <button class="btn btn-danger btn-sm" onclick="policyRules.splice(${i},1);refreshRulesList(${type})">×</button>
-      </div>`;
-    }
-    return `<div class="rule-item">
-      <input style="flex:2" placeholder="${type==2?'API 路径':'标识'}" value="${r.k}" oninput="policyRules[${i}].k=this.value">
-      <input style="flex:1" placeholder="${type==2?'HTTP 方法':'效果'}" value="${r.v}" oninput="policyRules[${i}].v=this.value">
-      <button class="btn btn-danger btn-sm" onclick="policyRules.splice(${i},1);refreshRulesList(${type})">×</button>
-    </div>`;
-  }).join('');
-}
-
-function showChangePass() {
-  showModal('修改登录密码', '设置一个新的安全密码');
-  document.getElementById('modalContent').innerHTML = `
-    <div class="form-group"><label>新密码</label><input type="password" id="p_new" placeholder="最少6位字符"></div>
-    <div class="form-group"><label>确认密码</label><input type="password" id="p_conf" placeholder="再次输入新密码"></div>
-  `;
-  document.getElementById('confirmBtn').onclick = async () => {
-    const p1 = document.getElementById('p_new').value;
-    const p2 = document.getElementById('p_conf').value;
-    if(p1.length < 6) return toast('密码太短', 'error');
-    if(p1 !== p2) return toast('两次输入不一致', 'error');
-    await api('/api/v1/auth/password', 'POST', { password: p1 });
-    toast('密码修改成功'); closeModal();
-  };
-}
-
-function logout() { localStorage.removeItem(TOKEN_KEY); window.location.href = '/login'; }
+function logout() { localStorage.removeItem(TOKEN_KEY); window.location.href = './'; }
 function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
 function showModal(title, sub) { document.getElementById('modalTitle').textContent=title; document.getElementById('modalSub').textContent=sub; document.getElementById('modalOverlay').classList.add('active'); }
 
 // Init
-const token = localStorage.getItem(TOKEN_KEY);
+let token = localStorage.getItem(TOKEN_KEY);
+if(window.location.hash) {
+  token = decodeURIComponent(window.location.hash.substring(1));
+  localStorage.setItem(TOKEN_KEY, token);
+  window.location.hash = '';
+}
+
 if(token) {
-  api('/api/v1/auth/me').then(async d => {
+  api('api/v1/auth/me').then(async d => {
     // Robust check: fetch full user details to confirm roles
-    const u = await api(`/api/v1/users/${d.user_id}`);
+    const u = await api(`api/v1/users/${d.id}`);
     const isAdmin = (u.roles || []).some(r => r.name === 'admin');
     
     if(!isAdmin) {
@@ -956,13 +522,15 @@ if(token) {
       logout();
       return;
     }
-
     document.getElementById('adminName').textContent = d.display_name || d.username;
     document.getElementById('avatar').textContent = (d.display_name || d.username)[0].toUpperCase();
     document.body.style.display = 'flex'; // Unlock UI
     loadData();
+    api('api/v1/admin/status').then(s => {
+      document.getElementById('countSessions').textContent = s.active_sessions || 0;
+    });
   }).catch(() => { logout(); });
-} else { window.location.href = '/login'; }
+} else { window.location.href = './'; }
 </script>
 </body>
 </html>
