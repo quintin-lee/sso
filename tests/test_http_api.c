@@ -14,37 +14,6 @@
 int tests_run = 0;
 
 /* --- Test helpers --- */
-static http_request_t make_req(http_method_t method, const char *path, const char *body, const char *token) {
-    http_request_t req;
-    memset(&req, 0, sizeof(req));
-    req.method = method;
-    if (path) strncpy(req.path, path, sizeof(req.path) - 1);
-    if (body) { req.body = strdup(body); req.body_len = strlen(body); }
-    if (token) strncpy(req.auth_token, token, sizeof(req.auth_token) - 1);
-    return req;
-}
-
-static void free_req(http_request_t *req) {
-    free(req->body);
-    req->body = NULL;
-}
-
-static const char *json_str_value(const char *json, const char *key) {
-    /* Simple JSON string value extractor */
-    char pattern[256];
-    snprintf(pattern, sizeof(pattern), "\"%s\":\"", key);
-    const char *p = strstr(json, pattern);
-    if (!p) return NULL;
-    p += strlen(pattern);
-    const char *end = strchr(p, '"');
-    if (!end) return NULL;
-    size_t len = (size_t)(end - p);
-    char *val = (char *)malloc(len + 1);
-    memcpy(val, p, len);
-    val[len] = '\0';
-    return val;
-}
-
 static sso_error_t bootstrap_system(sso_context_t *ctx, storage_backend_t *storage) {
     storage_memory_create(&storage);
     sso_config_t cfg;

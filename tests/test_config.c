@@ -42,7 +42,7 @@ static const char *all_tests() {
     return 0;
 }
 
-int main(int argc, char **argv) {
+int main(void) {
     const char *result = all_tests();
     if (result != 0) {
         printf("FAILED\n");

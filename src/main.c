@@ -1978,10 +1978,10 @@ static sso_error_t handle_me(sso_context_t *ctx, const http_request_t *req,
 
     snprintf(resp->extra_headers, sizeof(resp->extra_headers), "X-SSO-User: %s\r\n", auth->user.username);
 
-    char buf[2048];
+    char buf[4096];
     snprintf(buf, sizeof(buf),
-        "{"
-        "\"user_id\":%llu,"
+        "%s{"
+        "\"id\":%llu,"
         "\"username\":\"%s\","
         "\"email\":\"%s\","
         "\"display_name\":\"%s\","
@@ -2751,7 +2751,7 @@ static sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *r
         }
         strcat(groups_json, "]");
 
-        char buf[2048];
+        char buf[4096];
         snprintf(buf, sizeof(buf),
             "%s{"
             "\"id\":%llu,"
@@ -2841,7 +2841,7 @@ static sso_error_t handle_get_user(sso_context_t *ctx, const http_request_t *req
     }
     strcat(groups_json, "]");
 
-    char json[2048];
+    char json[4096];
     snprintf(json, sizeof(json),
         "{"
         "\"id\":%llu,"
@@ -2982,7 +2982,7 @@ static sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *r
             }
         }
 
-        char buf[1024];
+        char buf[4096];
         snprintf(buf, sizeof(buf),
             "%s{"
             "\"id\":%llu,"
@@ -3046,7 +3046,7 @@ static sso_error_t handle_list_policies(sso_context_t *ctx, const http_request_t
         err = policy_get_by_id(pmgr, ids[i], &p);
         if (err != SSO_OK) continue;
 
-        char buf[9000];
+        char buf[4096];
         snprintf(buf, sizeof(buf),
             "%s{"
             "\"id\":%llu,"
@@ -3122,7 +3122,7 @@ static sso_error_t handle_list_groups(sso_context_t *ctx, const http_request_t *
             }
         }
 
-        char buf[1024];
+        char buf[4096];
         snprintf(buf, sizeof(buf),
             "%s{"
             "\"id\":%llu,"
