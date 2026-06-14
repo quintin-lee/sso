@@ -1502,18 +1502,19 @@ static sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
         return SSO_OK;
     }
 
+    snprintf(resp->extra_headers, sizeof(resp->extra_headers),
+             "X-SSO-Access-Token: %s\r\n"
+             "X-SSO-Refresh-Token: %s\r\n",
+             access_token.token_str, refresh_token.token_str);
+
     char buf[8192];
     snprintf(buf, sizeof(buf),
         "{"
-        "\"access_token\":\"%s\","
-        "\"refresh_token\":\"%s\","
         "\"expires_in\":%lld,"
         "\"user_id\":%llu,"
         "\"username\":\"%s\","
         "\"display_name\":\"%s\""
         "}",
-        access_token.token_str,
-        refresh_token.token_str,
         (long long)access_token.expires_at,
         (unsigned long long)user.id,
         user.username,
@@ -1874,14 +1875,16 @@ static sso_error_t handle_refresh(sso_context_t *ctx, const http_request_t *req,
         return SSO_OK;
     }
 
+    snprintf(resp->extra_headers, sizeof(resp->extra_headers),
+             "X-SSO-Access-Token: %s\r\n"
+             "X-SSO-Refresh-Token: %s\r\n",
+             access_token.token_str, refresh_token.token_str);
+
     char buf[8192];
     snprintf(buf, sizeof(buf),
         "{"
-        "\"access_token\":\"%s\","
-        "\"refresh_token\":\"%s\""
-        "}",
-        access_token.token_str,
-        refresh_token.token_str);
+        "\"status\":\"refreshed\""
+        "}");
     token_destroy(&access_token);
     token_destroy(&refresh_token);
     sso_response_ok(resp, buf);
