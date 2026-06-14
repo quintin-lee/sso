@@ -23,6 +23,7 @@ struct role {
     char              name[SSO_MAX_ROLE_NAME];
     char              description[SSO_MAX_DESCRIPTION];
     sso_id_t          parent_role_id;       /* 0 = top-level role */
+    role_status_t     status;
     sso_timestamp_t   created_at;
     sso_timestamp_t   updated_at;
 };
@@ -48,7 +49,9 @@ sso_error_t role_get_by_id(role_manager_t *mgr, sso_id_t id, role_t *out);
 sso_error_t role_get_by_name(role_manager_t *mgr, const char *name, role_t *out);
 sso_error_t role_update(role_manager_t *mgr, const role_t *role);
 sso_error_t role_delete(role_manager_t *mgr, sso_id_t id);
-sso_error_t role_list(role_manager_t *mgr, sso_id_t *ids, size_t *count, size_t max);
+sso_error_t role_list(role_manager_t *mgr, const char *q, int status,
+                      int offset, int limit,
+                      sso_id_t *ids, size_t *count, size_t *total_count);
 
 /* -----------------------------------------------------------------------
  * Hierarchy

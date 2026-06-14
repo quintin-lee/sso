@@ -58,6 +58,7 @@ extern "C" {
 #define SSO_MAX_CLAIMS_JSON   2048
 #define SSO_MAX_ATTRIBUTES    2048
 #define SSO_MAX_PATH          256
+#define SSO_MAX_QUERY         256
 
 /* ========================================================================
  * ID type — 64-bit unsigned, 0 is reserved meaning "none"
@@ -106,6 +107,18 @@ typedef enum {
     USER_STATUS_ACTIVE    = 1,
     USER_STATUS_LOCKED    = 2,
 } user_status_t;
+
+/* --- Role --- */
+typedef enum {
+    ROLE_STATUS_INACTIVE  = 0,
+    ROLE_STATUS_ACTIVE    = 1,
+} role_status_t;
+
+/* --- Group --- */
+typedef enum {
+    GROUP_STATUS_INACTIVE = 0,
+    GROUP_STATUS_ACTIVE   = 1,
+} group_status_t;
 
 /* --- Resource owner --- */
 typedef enum {

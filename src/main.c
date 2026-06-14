@@ -62,6 +62,46 @@ static void parse_args(int argc, char **argv, char *config_path) {
     }
 }
 
+/* Helper: parse query parameters from a path like /api/v1/users?q=abc&status=1 */
+static void parse_query_params(const char *path, char *q, int *status, int *page, int *limit) {
+    if (q) q[0] = '\0';
+    if (status) *status = -1;
+    if (page) *page = 1;
+    if (limit) *limit = 20;
+
+    const char *p = strchr(path, '?');
+    if (!p) return;
+    p++;
+
+    char buf[1024];
+    strncpy(buf, p, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+
+    char *token = strtok(buf, "&");
+    while (token) {
+        char *eq = strchr(token, '=');
+        if (eq) {
+            *eq = '\0';
+            char *key = token;
+            char *val = eq + 1;
+            if (strcmp(key, "q") == 0 && q) {
+                strncpy(q, val, SSO_MAX_QUERY - 1);
+                q[SSO_MAX_QUERY - 1] = '\0';
+            } else if (strcmp(key, "status") == 0 && status) {
+                *status = atoi(val);
+            } else if (strcmp(key, "page") == 0 && page) {
+                *page = atoi(val);
+                if (*page < 1) *page = 1;
+            } else if (strcmp(key, "limit") == 0 && limit) {
+                *limit = atoi(val);
+                if (*limit < 1) *limit = 1;
+                if (*limit > 100) *limit = 100;
+            }
+        }
+        token = strtok(NULL, "&");
+    }
+}
+
 /* Helper: extract numeric ID from a path like /api/v1/xxx/NNN */
 static sso_id_t extract_path_id(const char *path, const char *prefix) {
     const char *p = strstr(path, prefix);
@@ -965,7 +1005,8 @@ static void action_list_users(sso_context_t *ctx) {
 
     sso_id_t ids[256];
     size_t count = 0;
-    if (user_list(umgr, ids, &count, 256) != SSO_OK) {
+    size_t total = 0;
+    if (user_list(umgr, NULL, -1, 0, 256, ids, &count, &total) != SSO_OK) {
         printf("  Failed to list users.\n");
         return;
     }
@@ -1045,7 +1086,8 @@ static void action_list_roles(role_manager_t *rmgr) {
     printf("\n  ─── All Roles ───\n");
     sso_id_t ids[256];
     size_t count = 0;
-    if (role_list(rmgr, ids, &count, 256) != SSO_OK) {
+    size_t total = 0;
+    if (role_list(rmgr, NULL, -1, 0, 256, ids, &count, &total) != SSO_OK) {
         printf("  Failed to list roles.\n");
         return;
     }
@@ -1125,7 +1167,8 @@ static void action_list_groups(group_manager_t *gmgr) {
     printf("\n  ─── All Groups ───\n");
     sso_id_t ids[256];
     size_t count = 0;
-    if (group_list(gmgr, ids, &count, 256) != SSO_OK) {
+    size_t total = 0;
+    if (group_list(gmgr, NULL, -1, 0, 256, ids, &count, &total) != SSO_OK) {
         printf("  Failed to list groups.\n");
         return;
     }
@@ -2494,30 +2537,36 @@ static sso_error_t handle_assign_role(sso_context_t *ctx, const http_request_t *
 
 /* GET /api/v1/users */
 static sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *req,
-                                      http_response_t *resp) {
-    (void)req;
+                                     http_response_t *resp) {
+    char q[SSO_MAX_QUERY];
+    int status, page, limit;
+    parse_query_params(req->path, q, &status, &page, &limit);
+
+    int offset = (page - 1) * limit;
+
     user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
     role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
-    sso_id_t ids[256];
+    sso_id_t ids[100];
     size_t count = 0;
-    sso_error_t err = user_list(umgr, ids, &count, 256);
+    size_t total_count = 0;
+
+    sso_error_t err = user_list(umgr, q, status, offset, limit, ids, &count, &total_count);
     if (err != SSO_OK) {
         sso_response_error(resp, 500, "Failed to list users");
         return SSO_OK;
     }
 
-    size_t total = 2;
-    for (size_t i = 0; i < count; i++) {
-        total += 2048;
-    }
+    size_t total_json_len = 1024; /* Metadata + brackets */
+    for (size_t i = 0; i < count; i++) total_json_len += 3072;
 
-    char *json = (char *)calloc(1, total + 1);
+    char *json = (char *)calloc(1, total_json_len + 1);
     if (!json) {
         sso_response_error(resp, 500, "Out of memory");
         return SSO_OK;
     }
 
-    strcat(json, "[");
+    snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
+
     for (size_t i = 0; i < count; i++) {
         user_t u;
         err = user_get_by_id(umgr, ids[i], &u);
@@ -2589,7 +2638,7 @@ static sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *r
             (long long)u.created_at);
         strcat(json, buf);
     }
-    strcat(json, "]");
+    strcat(json, "]}");
 
     sso_response_ok(resp, json);
     free(json);
@@ -2737,27 +2786,35 @@ static sso_error_t handle_list_audit_logs(sso_context_t *ctx, const http_request
 
 /* GET /api/v1/roles */
 static sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *req,
-                                      http_response_t *resp) {
-    (void)req;
+                                       http_response_t *resp) {
+    char q[SSO_MAX_QUERY];
+    int status, page, limit;
+    parse_query_params(req->path, q, &status, &page, &limit);
+
+    int offset = (page - 1) * limit;
+
     role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
-    sso_id_t ids[256];
+    sso_id_t ids[100];
     size_t count = 0;
-    sso_error_t err = role_list(rmgr, ids, &count, 256);
+    size_t total_count = 0;
+
+    sso_error_t err = role_list(rmgr, q, status, offset, limit, ids, &count, &total_count);
     if (err != SSO_OK) {
         sso_response_error(resp, 500, "Failed to list roles");
         return SSO_OK;
     }
 
-    size_t total = 2;
-    for (size_t i = 0; i < count; i++) total += 2048;
+    size_t total_json_len = 1024;
+    for (size_t i = 0; i < count; i++) total_json_len += 2048;
 
-    char *json = (char *)calloc(1, total + 1);
+    char *json = (char *)calloc(1, total_json_len + 1);
     if (!json) {
         sso_response_error(resp, 500, "Out of memory");
         return SSO_OK;
     }
 
-    strcat(json, "[");
+    snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
+
     for (size_t i = 0; i < count; i++) {
         role_t r;
         err = role_get_by_id(rmgr, ids[i], &r);
@@ -2780,6 +2837,7 @@ static sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *r
             "\"description\":\"%s\","
             "\"parent_role_id\":%llu,"
             "\"parent_name\":\"%s\","
+            "\"status\":%d,"
             "\"created_at\":%lld"
             "}",
             i > 0 ? "," : "",
@@ -2788,10 +2846,11 @@ static sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *r
             r.description,
             (unsigned long long)r.parent_role_id,
             parent_name,
+            (int)r.status,
             (long long)r.created_at);
         strcat(json, buf);
     }
-    strcat(json, "]");
+    strcat(json, "]}");
 
     sso_response_ok(resp, json);
     free(json);
@@ -2800,33 +2859,41 @@ static sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *r
 
 /* GET /api/v1/policies */
 static sso_error_t handle_list_policies(sso_context_t *ctx, const http_request_t *req,
-                                         http_response_t *resp) {
-    (void)req;
+                                          http_response_t *resp) {
+    char q[SSO_MAX_QUERY];
+    int status, page, limit;
+    parse_query_params(req->path, q, &status, &page, &limit);
+
+    int offset = (page - 1) * limit;
+
     policy_manager_t *pmgr = (policy_manager_t *)ctx->policy_mgr;
-    sso_id_t ids[256];
+    sso_id_t ids[100];
     size_t count = 0;
-    sso_error_t err = policy_list(pmgr, ids, &count, 256);
+    size_t total_count = 0;
+
+    sso_error_t err = policy_list(pmgr, q, status, offset, limit, ids, &count, &total_count);
     if (err != SSO_OK) {
         sso_response_error(resp, 500, "Failed to list policies");
         return SSO_OK;
     }
 
-    size_t total = 2;
-    for (size_t i = 0; i < count; i++) total += 1024;
+    size_t total_json_len = 1024;
+    for (size_t i = 0; i < count; i++) total_json_len += 8192;
 
-    char *json = (char *)calloc(1, total + 1);
+    char *json = (char *)calloc(1, total_json_len + 1);
     if (!json) {
         sso_response_error(resp, 500, "Out of memory");
         return SSO_OK;
     }
 
-    strcat(json, "[");
+    snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
+
     for (size_t i = 0; i < count; i++) {
         policy_t p;
         err = policy_get_by_id(pmgr, ids[i], &p);
         if (err != SSO_OK) continue;
 
-        char buf[8192];
+        char buf[9000];
         snprintf(buf, sizeof(buf),
             "%s{"
             "\"id\":%llu,"
@@ -2836,7 +2903,7 @@ static sso_error_t handle_list_policies(sso_context_t *ctx, const http_request_t
             "\"effect\":%d,"
             "\"priority\":%d,"
             "\"status\":%d,"
-            "\"rules\":%.4000s,"
+            "\"rules\":%.8000s,"
             "\"created_at\":%lld"
             "}",
             i > 0 ? "," : "",
@@ -2851,7 +2918,7 @@ static sso_error_t handle_list_policies(sso_context_t *ctx, const http_request_t
             (long long)p.created_at);
         strcat(json, buf);
     }
-    strcat(json, "]");
+    strcat(json, "]}");
 
     sso_response_ok(resp, json);
     free(json);
@@ -2860,27 +2927,35 @@ static sso_error_t handle_list_policies(sso_context_t *ctx, const http_request_t
 
 /* GET /api/v1/groups */
 static sso_error_t handle_list_groups(sso_context_t *ctx, const http_request_t *req,
-                                       http_response_t *resp) {
-    (void)req;
+                                        http_response_t *resp) {
+    char q[SSO_MAX_QUERY];
+    int status, page, limit;
+    parse_query_params(req->path, q, &status, &page, &limit);
+
+    int offset = (page - 1) * limit;
+
     group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
-    sso_id_t ids[256];
+    sso_id_t ids[100];
     size_t count = 0;
-    sso_error_t err = group_list(gmgr, ids, &count, 256);
+    size_t total_count = 0;
+
+    sso_error_t err = group_list(gmgr, q, status, offset, limit, ids, &count, &total_count);
     if (err != SSO_OK) {
         sso_response_error(resp, 500, "Failed to list groups");
         return SSO_OK;
     }
 
-    size_t total = 2;
-    for (size_t i = 0; i < count; i++) total += 2048;
+    size_t total_json_len = 1024;
+    for (size_t i = 0; i < count; i++) total_json_len += 2048;
 
-    char *json = (char *)calloc(1, total + 1);
+    char *json = (char *)calloc(1, total_json_len + 1);
     if (!json) {
         sso_response_error(resp, 500, "Out of memory");
         return SSO_OK;
     }
 
-    strcat(json, "[");
+    snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
+
     for (size_t i = 0; i < count; i++) {
         group_t g;
         err = group_get_by_id(gmgr, ids[i], &g);
@@ -2902,6 +2977,7 @@ static sso_error_t handle_list_groups(sso_context_t *ctx, const http_request_t *
             "\"description\":\"%s\","
             "\"parent_group_id\":%llu,"
             "\"parent_name\":\"%s\","
+            "\"status\":%d,"
             "\"created_at\":%lld"
             "}",
             i > 0 ? "," : "",
@@ -2910,10 +2986,11 @@ static sso_error_t handle_list_groups(sso_context_t *ctx, const http_request_t *
             g.description,
             (unsigned long long)g.parent_group_id,
             parent_name,
+            (int)g.status,
             (long long)g.created_at);
         strcat(json, buf);
     }
-    strcat(json, "]");
+    strcat(json, "]}");
 
     sso_response_ok(resp, json);
     free(json);

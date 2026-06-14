@@ -73,6 +73,7 @@ static const char *SCHEMA_SQL =
     "  name TEXT UNIQUE NOT NULL,"
     "  description TEXT DEFAULT '',"
     "  parent_role_id INTEGER DEFAULT 0,"
+    "  status INTEGER DEFAULT 1,"
     "  created_at INTEGER DEFAULT 0,"
     "  updated_at INTEGER DEFAULT 0"
     ");"
@@ -82,6 +83,7 @@ static const char *SCHEMA_SQL =
     "  name TEXT UNIQUE NOT NULL,"
     "  description TEXT DEFAULT '',"
     "  parent_group_id INTEGER DEFAULT 0,"
+    "  status INTEGER DEFAULT 1,"
     "  created_at INTEGER DEFAULT 0,"
     "  updated_at INTEGER DEFAULT 0"
     ");"
@@ -174,8 +176,9 @@ static void bind_role(sqlite3_stmt *stmt, const role_t *r) {
     sqlite3_bind_text(stmt, 1, r->name, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, r->description, -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt, 3, r->parent_role_id);
-    sqlite3_bind_int64(stmt, 4, r->created_at);
-    sqlite3_bind_int64(stmt, 5, r->updated_at);
+    sqlite3_bind_int(stmt, 4, r->status);
+    sqlite3_bind_int64(stmt, 5, r->created_at);
+    sqlite3_bind_int64(stmt, 6, r->updated_at);
 }
 
 static void read_role(sqlite3_stmt *stmt, role_t *r) {
@@ -184,16 +187,18 @@ static void read_role(sqlite3_stmt *stmt, role_t *r) {
     strncpy(r->name, (const char *)sqlite3_column_text(stmt, 1), SSO_MAX_ROLE_NAME - 1);
     strncpy(r->description, (const char *)sqlite3_column_text(stmt, 2), SSO_MAX_DESCRIPTION - 1);
     r->parent_role_id = (sso_id_t)sqlite3_column_int64(stmt, 3);
-    r->created_at = sqlite3_column_int64(stmt, 4);
-    r->updated_at = sqlite3_column_int64(stmt, 5);
+    r->status = (role_status_t)sqlite3_column_int(stmt, 4);
+    r->created_at = sqlite3_column_int64(stmt, 5);
+    r->updated_at = sqlite3_column_int64(stmt, 6);
 }
 
 static void bind_group(sqlite3_stmt *stmt, const group_t *g) {
     sqlite3_bind_text(stmt, 1, g->name, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, g->description, -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt, 3, g->parent_group_id);
-    sqlite3_bind_int64(stmt, 4, g->created_at);
-    sqlite3_bind_int64(stmt, 5, g->updated_at);
+    sqlite3_bind_int(stmt, 4, g->status);
+    sqlite3_bind_int64(stmt, 5, g->created_at);
+    sqlite3_bind_int64(stmt, 6, g->updated_at);
 }
 
 static void read_group(sqlite3_stmt *stmt, group_t *g) {
@@ -202,8 +207,9 @@ static void read_group(sqlite3_stmt *stmt, group_t *g) {
     strncpy(g->name, (const char *)sqlite3_column_text(stmt, 1), SSO_MAX_GROUP_NAME - 1);
     strncpy(g->description, (const char *)sqlite3_column_text(stmt, 2), SSO_MAX_DESCRIPTION - 1);
     g->parent_group_id = (sso_id_t)sqlite3_column_int64(stmt, 3);
-    g->created_at = sqlite3_column_int64(stmt, 4);
-    g->updated_at = sqlite3_column_int64(stmt, 5);
+    g->status = (group_status_t)sqlite3_column_int(stmt, 4);
+    g->created_at = sqlite3_column_int64(stmt, 5);
+    g->updated_at = sqlite3_column_int64(stmt, 6);
 }
 
 static void bind_policy(sqlite3_stmt *stmt, const policy_t *p) {
@@ -458,29 +464,61 @@ MAKE_DELETE(roles)
 MAKE_DELETE(groups_t)
 MAKE_DELETE(policies)
 
-/* --- user_list --- */
-#define MAKE_LIST(table, reader) \
-static sso_error_t sqlite_##table##_list(storage_backend_t *self, sso_id_t *ids, size_t *count, size_t max) { \
+/* --- Paginated List helper --- */
+#define MAKE_LIST_PAGINATED(table, search_clause) \
+static sso_error_t sqlite_##table##_list(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count) { \
     sqlite_priv_t *priv = (sqlite_priv_t *)self->handle; \
     if (!priv || !priv->db) return SSO_ERR_STORAGE; \
-    char sql[128]; \
-    snprintf(sql, sizeof(sql), "SELECT id FROM %s ORDER BY id", #table); \
-    sqlite3_stmt *stmt = NULL; \
-    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) \
-        return SSO_ERR_STORAGE; \
-    size_t n = 0; \
-    while (sqlite3_step(stmt) == SQLITE_ROW && n < max) { \
-        ids[n++] = (sso_id_t)sqlite3_column_int64(stmt, 0); \
+    char where[512] = ""; \
+    if ((q && q[0] != '\0') || status != -1) { \
+        strcat(where, " WHERE "); \
+        if (status != -1) { \
+            strcat(where, "status = ? "); \
+        } \
+        if (q && q[0] != '\0') { \
+            if (status != -1) strcat(where, " AND "); \
+            strcat(where, "("); \
+            strcat(where, search_clause); \
+            strcat(where, ")"); \
+        } \
     } \
+    char sql[1024]; \
+    sqlite3_stmt *stmt = NULL; \
+    /* Total count query */ \
+    snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM %s %s", #table, where); \
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE; \
+    int p = 1; \
+    if (status != -1) sqlite3_bind_int(stmt, p++, status); \
+    if (q && q[0] != '\0') { \
+        char q_pattern[SSO_MAX_QUERY + 2]; snprintf(q_pattern, sizeof(q_pattern), "%%%s%%", q); \
+        int n_search = 0; const char *tmp = search_clause; while((tmp = strstr(tmp, "?"))) { n_search++; tmp++; } \
+        for(int i=0; i<n_search; i++) sqlite3_bind_text(stmt, p++, q_pattern, -1, SQLITE_TRANSIENT); \
+    } \
+    if (sqlite3_step(stmt) == SQLITE_ROW) *total_count = (size_t)sqlite3_column_int64(stmt, 0); \
+    sqlite3_finalize(stmt); \
+    /* Data query */ \
+    snprintf(sql, sizeof(sql), "SELECT id FROM %s %s ORDER BY id LIMIT ? OFFSET ?", #table, where); \
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE; \
+    p = 1; \
+    if (status != -1) sqlite3_bind_int(stmt, p++, status); \
+    if (q && q[0] != '\0') { \
+        char q_pattern[SSO_MAX_QUERY + 2]; snprintf(q_pattern, sizeof(q_pattern), "%%%s%%", q); \
+        int n_search = 0; const char *tmp = search_clause; while((tmp = strstr(tmp, "?"))) { n_search++; tmp++; } \
+        for(int i=0; i<n_search; i++) sqlite3_bind_text(stmt, p++, q_pattern, -1, SQLITE_TRANSIENT); \
+    } \
+    sqlite3_bind_int(stmt, p++, limit); \
+    sqlite3_bind_int(stmt, p++, offset); \
+    size_t n = 0; \
+    while (sqlite3_step(stmt) == SQLITE_ROW) ids[n++] = (sso_id_t)sqlite3_column_int64(stmt, 0); \
     *count = n; \
     sqlite3_finalize(stmt); \
     return SSO_OK; \
 }
 
-MAKE_LIST(users, read_user)
-MAKE_LIST(roles, read_role)
-MAKE_LIST(groups_t, read_group)
-MAKE_LIST(policies, read_policy)
+MAKE_LIST_PAGINATED(users, "username LIKE ? OR display_name LIKE ? OR email LIKE ? OR phone LIKE ?")
+MAKE_LIST_PAGINATED(roles, "name LIKE ? OR description LIKE ?")
+MAKE_LIST_PAGINATED(groups_t, "name LIKE ? OR description LIKE ?")
+MAKE_LIST_PAGINATED(policies, "name LIKE ?")
 
 /* --- role/group update --- */
 #define MAKE_UPDATE(table, set_clause, id_col) \
@@ -504,15 +542,16 @@ static sso_error_t sqlite_role_update(storage_backend_t *self, const role_t *rol
     if (!priv || !priv->db) return SSO_ERR_STORAGE;
 
     sqlite3_stmt *stmt = NULL;
-    const char *sql = "UPDATE roles SET name=?1, description=?2, parent_role_id=?3, updated_at=?4 WHERE id=?5";
+    const char *sql = "UPDATE roles SET name=?1, description=?2, parent_role_id=?3, status=?4, updated_at=?5 WHERE id=?6";
     if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK)
         return SSO_ERR_STORAGE;
 
     sqlite3_bind_text(stmt, 1, role->name, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, role->description, -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt, 3, (sqlite3_int64)role->parent_role_id);
-    sqlite3_bind_int64(stmt, 4, role->updated_at);
-    sqlite3_bind_int64(stmt, 5, (sqlite3_int64)role->id);
+    sqlite3_bind_int(stmt, 4, role->status);
+    sqlite3_bind_int64(stmt, 5, role->updated_at);
+    sqlite3_bind_int64(stmt, 6, (sqlite3_int64)role->id);
 
     int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
@@ -524,15 +563,16 @@ static sso_error_t sqlite_group_update(storage_backend_t *self, const group_t *g
     if (!priv || !priv->db) return SSO_ERR_STORAGE;
 
     sqlite3_stmt *stmt = NULL;
-    const char *sql = "UPDATE groups_t SET name=?1, description=?2, parent_group_id=?3, updated_at=?4 WHERE id=?5";
+    const char *sql = "UPDATE groups_t SET name=?1, description=?2, parent_group_id=?3, status=?4, updated_at=?5 WHERE id=?6";
     if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK)
         return SSO_ERR_STORAGE;
 
     sqlite3_bind_text(stmt, 1, group->name, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, group->description, -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt, 3, (sqlite3_int64)group->parent_group_id);
-    sqlite3_bind_int64(stmt, 4, group->updated_at);
-    sqlite3_bind_int64(stmt, 5, (sqlite3_int64)group->id);
+    sqlite3_bind_int(stmt, 4, group->status);
+    sqlite3_bind_int64(stmt, 5, group->updated_at);
+    sqlite3_bind_int64(stmt, 6, (sqlite3_int64)group->id);
 
     int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
@@ -570,7 +610,7 @@ static sso_error_t sqlite_role_create(storage_backend_t *self, role_t *role) {
 
     sqlite3_stmt *stmt = NULL;
     if (sqlite3_prepare_v2(priv->db,
-            "INSERT INTO roles (name, description, parent_role_id, created_at, updated_at) VALUES (?1,?2,?3,?4,?5)",
+            "INSERT INTO roles (name, description, parent_role_id, status, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6)",
             -1, &stmt, NULL) != SQLITE_OK)
         return SSO_ERR_STORAGE;
     bind_role(stmt, role);
@@ -588,7 +628,7 @@ static sso_error_t sqlite_group_create(storage_backend_t *self, group_t *group) 
 
     sqlite3_stmt *stmt = NULL;
     if (sqlite3_prepare_v2(priv->db,
-            "INSERT INTO groups_t (name, description, parent_group_id, created_at, updated_at) VALUES (?1,?2,?3,?4,?5)",
+            "INSERT INTO groups_t (name, description, parent_group_id, status, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6)",
             -1, &stmt, NULL) != SQLITE_OK)
         return SSO_ERR_STORAGE;
     bind_group(stmt, group);

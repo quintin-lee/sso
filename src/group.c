@@ -95,11 +95,14 @@ sso_error_t group_delete(group_manager_t *mgr, sso_id_t id) {
     return err;
 }
 
-sso_error_t group_list(group_manager_t *mgr, sso_id_t *ids, size_t *count, size_t max) {
-    if (!mgr || !ids || !count) return SSO_ERR_INVALID_PARAM;
+sso_error_t group_list(group_manager_t *mgr, const char *q, int status,
+                       int offset, int limit,
+                       sso_id_t *ids, size_t *count, size_t *total_count) {
+    if (!mgr || !ids || !count || !total_count) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->group_list) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->group_list(sb, ids, count, max);
+
+    return sb->group_list(sb, q, status, offset, limit, ids, count, total_count);
 }
 
 /* -----------------------------------------------------------------------
@@ -129,7 +132,8 @@ sso_error_t group_get_children(group_manager_t *mgr, sso_id_t group_id,
     if (!mgr || !child_ids || !count) return SSO_ERR_INVALID_PARAM;
     sso_id_t all[256];
     size_t all_count = 0;
-    sso_error_t err = group_list(mgr, all, &all_count, 256);
+    size_t total = 0;
+    sso_error_t err = group_list(mgr, NULL, -1, 0, 256, all, &all_count, &total);
     if (err != SSO_OK) return err;
 
     size_t n = 0;

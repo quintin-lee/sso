@@ -107,11 +107,14 @@ sso_error_t policy_delete(policy_manager_t *mgr, sso_id_t id) {
     return err;
 }
 
-sso_error_t policy_list(policy_manager_t *mgr, sso_id_t *ids, size_t *count, size_t max) {
-    if (!mgr || !ids || !count) return SSO_ERR_INVALID_PARAM;
+sso_error_t policy_list(policy_manager_t *mgr, const char *q, int status,
+                        int offset, int limit,
+                        sso_id_t *ids, size_t *count, size_t *total_count) {
+    if (!mgr || !ids || !count || !total_count) return SSO_ERR_INVALID_PARAM;
     storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
     if (!sb || !sb->policy_list) return SSO_ERR_NOT_IMPLEMENTED;
-    return sb->policy_list(sb, ids, count, max);
+
+    return sb->policy_list(sb, q, status, offset, limit, ids, count, total_count);
 }
 
 /* -----------------------------------------------------------------------

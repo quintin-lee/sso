@@ -23,6 +23,7 @@ struct group {
     char              name[SSO_MAX_GROUP_NAME];
     char              description[SSO_MAX_DESCRIPTION];
     sso_id_t          parent_group_id;      /* 0 = top-level group */
+    group_status_t    status;
     sso_timestamp_t   created_at;
     sso_timestamp_t   updated_at;
 };
@@ -48,7 +49,9 @@ sso_error_t group_get_by_id(group_manager_t *mgr, sso_id_t id, group_t *out);
 sso_error_t group_get_by_name(group_manager_t *mgr, const char *name, group_t *out);
 sso_error_t group_update(group_manager_t *mgr, const group_t *group);
 sso_error_t group_delete(group_manager_t *mgr, sso_id_t id);
-sso_error_t group_list(group_manager_t *mgr, sso_id_t *ids, size_t *count, size_t max);
+sso_error_t group_list(group_manager_t *mgr, const char *q, int status,
+                       int offset, int limit,
+                       sso_id_t *ids, size_t *count, size_t *total_count);
 
 /* -----------------------------------------------------------------------
  * Hierarchy

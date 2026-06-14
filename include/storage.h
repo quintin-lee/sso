@@ -32,7 +32,7 @@ typedef sso_error_t (*storage_user_get_by_name_fn)(storage_backend_t *self, cons
 typedef sso_error_t (*storage_user_get_by_phone_fn)(storage_backend_t *self, const char *phone, user_t *user);
 typedef sso_error_t (*storage_user_update_fn)(storage_backend_t *self, const user_t *user);
 typedef sso_error_t (*storage_user_delete_fn)(storage_backend_t *self, sso_id_t id);
-typedef sso_error_t (*storage_user_list_fn)(storage_backend_t *self, sso_id_t *ids, size_t *count, size_t max);
+typedef sso_error_t (*storage_user_list_fn)(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count);
 
 /* SMS */
 typedef sso_error_t (*storage_save_sms_code_fn)(storage_backend_t *self, const char *phone, const char *code, sso_timestamp_t expires_at);
@@ -45,7 +45,7 @@ typedef sso_error_t (*storage_role_get_by_id_fn)(storage_backend_t *self, sso_id
 typedef sso_error_t (*storage_role_get_by_name_fn)(storage_backend_t *self, const char *name, role_t *role);
 typedef sso_error_t (*storage_role_update_fn)(storage_backend_t *self, const role_t *role);
 typedef sso_error_t (*storage_role_delete_fn)(storage_backend_t *self, sso_id_t id);
-typedef sso_error_t (*storage_role_list_fn)(storage_backend_t *self, sso_id_t *ids, size_t *count, size_t max);
+typedef sso_error_t (*storage_role_list_fn)(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count);
 
 /* Group CRUD */
 typedef sso_error_t (*storage_group_create_fn)(storage_backend_t *self, group_t *group);
@@ -53,7 +53,7 @@ typedef sso_error_t (*storage_group_get_by_id_fn)(storage_backend_t *self, sso_i
 typedef sso_error_t (*storage_group_get_by_name_fn)(storage_backend_t *self, const char *name, group_t *group);
 typedef sso_error_t (*storage_group_update_fn)(storage_backend_t *self, const group_t *group);
 typedef sso_error_t (*storage_group_delete_fn)(storage_backend_t *self, sso_id_t id);
-typedef sso_error_t (*storage_group_list_fn)(storage_backend_t *self, sso_id_t *ids, size_t *count, size_t max);
+typedef sso_error_t (*storage_group_list_fn)(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count);
 
 /* Policy CRUD */
 typedef sso_error_t (*storage_policy_create_fn)(storage_backend_t *self, policy_t *policy);
@@ -61,7 +61,7 @@ typedef sso_error_t (*storage_policy_get_by_id_fn)(storage_backend_t *self, sso_
 typedef sso_error_t (*storage_policy_get_by_name_fn)(storage_backend_t *self, const char *name, policy_t *policy);
 typedef sso_error_t (*storage_policy_update_fn)(storage_backend_t *self, const policy_t *policy);
 typedef sso_error_t (*storage_policy_delete_fn)(storage_backend_t *self, sso_id_t id);
-typedef sso_error_t (*storage_policy_list_fn)(storage_backend_t *self, sso_id_t *ids, size_t *count, size_t max);
+typedef sso_error_t (*storage_policy_list_fn)(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count);
 
 /* Assignment tables */
 typedef sso_error_t (*storage_assign_role_user_fn)(storage_backend_t *self, sso_id_t role_id, sso_id_t user_id);

@@ -64,8 +64,15 @@ sso_error_t user_update(user_manager_t *mgr, const user_t *user);
 /* Delete user (also removes role/group assignments). */
 sso_error_t user_delete(user_manager_t *mgr, sso_id_t id);
 
-/* List all user IDs (up to max entries).  Returns actual count in *count. */
-sso_error_t user_list(user_manager_t *mgr, sso_id_t *ids, size_t *count, size_t max);
+/* List user IDs with searching and pagination.
+ * q: optional search string (matches username, display_name, email, phone)
+ * status: optional status filter (-1 for all)
+ * offset/limit: for pagination
+ * total_count: out parameter for total matches in database
+ */
+sso_error_t user_list(user_manager_t *mgr, const char *q, int status,
+                      int offset, int limit,
+                      sso_id_t *ids, size_t *count, size_t *total_count);
 
 /* -----------------------------------------------------------------------
  * Authentication

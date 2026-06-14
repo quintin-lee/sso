@@ -128,7 +128,14 @@ static sso_error_t mem_user_create(storage_backend_t *self, user_t *u) {
 #define MK_GETNM(typ,arr,fld) static sso_error_t mem_##typ##_get_by_name(storage_backend_t *self, const char *n, typ##_t *o) {     ssize_t i=da_find_str(&P->arr,offsetof(typ##_t,fld),n);     if (i<0) return SSO_ERR_NOT_FOUND;     memcpy(o,(const typ##_t*)P->arr.items+i,sizeof(typ##_t)); return SSO_OK; }
 #define MK_UPD(typ,arr) static sso_error_t mem_##typ##_update(storage_backend_t *self, const typ##_t *o) {     ssize_t i=da_find_id(&P->arr,offsetof(typ##_t,id),o->id);     if (i<0) return SSO_ERR_NOT_FOUND;     memcpy((typ##_t*)P->arr.items+i,o,sizeof(typ##_t)); return SSO_OK; }
 #define MK_DEL(typ,arr) static sso_error_t mem_##typ##_delete(storage_backend_t *self, sso_id_t id) {     ssize_t i=da_find_id(&P->arr,offsetof(typ##_t,id),id);     if (i<0) return SSO_ERR_NOT_FOUND;     da_rm(&P->arr,(size_t)i); return SSO_OK; }
-#define MK_LIST(typ,arr) static sso_error_t mem_##typ##_list(storage_backend_t *self, sso_id_t *ids, size_t *c, size_t max) {     size_t n=P->arr.count<max?P->arr.count:max;     for (size_t i=0;i<n;i++) ids[i]=((const typ##_t*)P->arr.items+i)->id;     *c=n; return n?SSO_OK:SSO_ERR_NOT_FOUND; }
+#define MK_LIST(typ,arr) static sso_error_t mem_##typ##_list(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count) { \
+    (void)q; (void)status; \
+    size_t total = P->arr.count; \
+    *total_count = total; \
+    size_t n = 0; \
+    for (size_t i = (size_t)offset; i < total && n < (size_t)limit; i++) ids[n++] = ((const typ##_t*)P->arr.items + i)->id; \
+    *count = n; return SSO_OK; \
+}
 
 MK_GETID(user,users)
 MK_GETID(role,roles) MK_GETID(group,groups) MK_GETID(policy,policies)
@@ -164,10 +171,13 @@ static sso_error_t mem_user_delete(storage_backend_t *self, sso_id_t id) {
     return SSO_OK;
 }
 
-static sso_error_t mem_user_list(storage_backend_t *self, sso_id_t *ids, size_t *c, size_t max) {
-    size_t n=P->users.count<max?P->users.count:max;
-    for (size_t i=0;i<n;i++) ids[i]=((const user_t*)P->users.items+i)->id;
-    *c=n; return n?SSO_OK:SSO_ERR_NOT_FOUND;
+static sso_error_t mem_user_list(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count) {
+    (void)q; (void)status;
+    size_t total = P->users.count;
+    *total_count = total;
+    size_t n = 0;
+    for (size_t i = (size_t)offset; i < total && n < (size_t)limit; i++) ids[n++] = ((const user_t*)P->users.items+i)->id;
+    *count = n; return SSO_OK;
 }
 
 /* ===== Role/Group/Policy Create ===== */

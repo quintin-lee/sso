@@ -59,7 +59,9 @@ sso_error_t policy_get_by_id(policy_manager_t *mgr, sso_id_t id, policy_t *out);
 sso_error_t policy_get_by_name(policy_manager_t *mgr, const char *name, policy_t *out);
 sso_error_t policy_update(policy_manager_t *mgr, const policy_t *policy);
 sso_error_t policy_delete(policy_manager_t *mgr, sso_id_t id);
-sso_error_t policy_list(policy_manager_t *mgr, sso_id_t *ids, size_t *count, size_t max);
+sso_error_t policy_list(policy_manager_t *mgr, const char *q, int status,
+                        int offset, int limit,
+                        sso_id_t *ids, size_t *count, size_t *total_count);
 
 /* -----------------------------------------------------------------------
  * Assignment (policy ↔ role / group / user)
