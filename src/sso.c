@@ -19,6 +19,7 @@
 #include "token.h"
 #include "storage.h"
 #include "ratelimit.h"
+#include "config.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -170,25 +171,31 @@ static sso_error_t load_token_secret(unsigned char *out, size_t out_len) {
 }
 
 sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
-                     const char *config_json) {
+                     void *config_ptr) {
     if (!ctx) return SSO_ERR_INVALID_PARAM;
     memset(ctx, 0, sizeof(*ctx));
+    sso_config_t *config = (sso_config_t *)config_ptr;
+    ctx->config = config;
 
     sso_error_t err;
     if (sodium_init() < 0) { fprintf(stderr, "[sso] Failed to init libsodium\n"); return SSO_ERR_GENERAL; }
 
     /* 1. Storage backend */
     if (storage) {
+        const char *db_path = config ? config->path : "sso_server.db";
+        if (config && config->use_memory) db_path = ":memory:";
+
         if (storage->open) {
-            err = storage->open(storage, config_json ? config_json : ":memory:");
+            err = storage->open(storage, db_path);
             if (err != SSO_OK) return err;
         }
         ctx->storage_backend = storage;
     }
 
-    /* 2. Rate Limiter (e.g. 10000 IPs) */
+    /* 2. Rate Limiter */
     rate_limiter_t *rl = NULL;
-    err = rate_limiter_create(&rl, 10000);
+    int max_ips = (config && config->max_ips > 0) ? config->max_ips : 10000;
+    err = rate_limiter_create(&rl, max_ips);
     if (err != SSO_OK) goto fail;
     ctx->rate_limiter = rl;
 
@@ -196,29 +203,39 @@ sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
     token_manager_t *tmgr = (token_manager_t *)calloc(1, sizeof(token_manager_t));
     if (!tmgr) return SSO_ERR_OUT_OF_MEMORY;
 
-    const char *env_priv = getenv("SSO_PRIVATE_KEY");
-    const char *env_pub  = getenv("SSO_PUBLIC_KEY");
+    long ttl = (config && config->token_ttl_ms > 0) ? config->token_ttl_ms : 3600000LL;
 
-    if (env_priv) {
+    if (config && config->private_key_pem[0] != '\0') {
         /* RS256 mode */
-        err = token_manager_init_rs256(tmgr, env_priv, env_pub, 3600000LL);
+        err = token_manager_init_rs256(tmgr, config->private_key_pem,
+                                      config->public_key_pem[0] ? config->public_key_pem : NULL,
+                                      ttl);
         if (err == SSO_OK) {
             printf("[sso] Asymmetric signing (RS256) enabled.\n");
         } else {
             fprintf(stderr, "[sso] Failed to init RS256: %s. Falling back to HS256.\n", sso_strerror(err));
-            env_priv = NULL; /* trigger fallback */
+            config->private_key_pem[0] = '\0'; /* trigger fallback */
         }
     }
 
-    if (!env_priv) {
+    if (!config || config->private_key_pem[0] == '\0') {
         /* HS256 mode */
         unsigned char secret[SSO_SECRET_BYTES];
-        err = load_token_secret(secret, SSO_SECRET_BYTES);
+        if (config && config->token_secret[0] != '\0') {
+            size_t slen = strlen(config->token_secret);
+            size_t copy_len = slen < SSO_SECRET_BYTES ? slen : SSO_SECRET_BYTES;
+            memcpy(secret, config->token_secret, copy_len);
+            if (copy_len < SSO_SECRET_BYTES) memset(secret + copy_len, 0, SSO_SECRET_BYTES - copy_len);
+            err = SSO_OK;
+        } else {
+            err = load_token_secret(secret, SSO_SECRET_BYTES);
+        }
+
         if (err != SSO_OK) {
             free(tmgr);
             return err;
         }
-        token_manager_init(tmgr, secret, SSO_SECRET_BYTES, 3600000LL);
+        token_manager_init(tmgr, secret, SSO_SECRET_BYTES, ttl);
         /* Securely wipe the stack copy of the key after use. */
         sodium_memzero(secret, SSO_SECRET_BYTES);
     }

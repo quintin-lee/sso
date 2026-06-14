@@ -32,6 +32,7 @@
 #include "server.h"
 #include "ratelimit.h"
 #include "cJSON.h"
+#include "config.h"
 #include "login_page.h"
 #include "admin_page.h"
 
@@ -46,6 +47,19 @@ static uint64_t get_time_ms() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
+}
+
+static sso_config_t g_config;
+
+/* -----------------------------------------------------------------------
+ * Command Line Argument Parsing
+ * ----------------------------------------------------------------------- */
+static void parse_args(int argc, char **argv, char *config_path) {
+    for (int i = 1; i < argc; i++) {
+        if ((strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--config") == 0) && i + 1 < argc) {
+            strncpy(config_path, argv[++i], SSO_MAX_PATH - 1);
+        }
+    }
 }
 
 /* Helper: extract numeric ID from a path like /api/v1/xxx/NNN */
@@ -129,7 +143,7 @@ static sso_error_t handle_login_page(sso_context_t *ctx,
 /* ========================================================================
  * Demo — comprehensive walkthrough
  * ======================================================================== */
-static int run_demo(void) {
+static int run_demo(sso_config_t *cfg) {
     sso_error_t err;
     printf("=== SSO System Demo ===\n\n");
 
@@ -143,7 +157,7 @@ static int run_demo(void) {
     }
 
     sso_context_t ctx;
-    err = sso_init(&ctx, storage, "sso_demo.db");
+    err = sso_init(&ctx, storage, cfg);
     if (err != SSO_OK) {
         fprintf(stderr, "  Failed to init SSO: %s\n", sso_strerror(err));
         return 1;
@@ -1158,7 +1172,7 @@ static void action_remove_user_from_group(group_manager_t *gmgr) {
 /* ========================================================================
  * Interactive configuration shell entry point
  * ======================================================================== */
-static int interactive_config(void) {
+static int interactive_config(sso_config_t *cfg) {
     sso_error_t err;
 
     printf("=== SSO Interactive Configuration ===\n\n");
@@ -1172,7 +1186,7 @@ static int interactive_config(void) {
     }
 
     sso_context_t ctx;
-    err = sso_init(&ctx, storage, "sso_config.db");
+    err = sso_init(&ctx, storage, cfg);
     if (err != SSO_OK) {
         fprintf(stderr, "Failed to init SSO: %s\n", sso_strerror(err));
         return 1;
@@ -3514,7 +3528,7 @@ static sso_error_t bootstrap_data(sso_context_t *ctx) {
 /* ========================================================================
  * Server mode
  * ======================================================================== */
-static int run_server(void) {
+static int run_server(sso_config_t *cfg) {
     sso_error_t err;
 
     /* Init SSO */
@@ -3522,7 +3536,7 @@ static int run_server(void) {
     storage_sqlite_create(&storage);
 
     sso_context_t ctx;
-    err = sso_init(&ctx, storage, "sso_server.db");
+    err = sso_init(&ctx, storage, cfg);
     if (err != SSO_OK) {
         fprintf(stderr, "Failed to init SSO: %s\n", sso_strerror(err));
         return 1;
@@ -3598,10 +3612,10 @@ static int run_server(void) {
     size_t route_count = sizeof(routes) / sizeof(routes[0]);
 
     sso_server_t server;
-    sso_server_init(&server, &ctx, "0.0.0.0", 8080, routes, route_count);
+    sso_server_init(&server, &ctx, cfg->host, cfg->port, routes, route_count);
 
-    printf("  Login: http://localhost:%d/\n", 8080);
-    printf("  API: http://localhost:%d/api/v1/health\n", 8080);
+    printf("  Login: http://%s:%d/\n", cfg->host, cfg->port);
+    printf("  API: http://%s:%d/api/v1/health\n", cfg->host, cfg->port);
     printf("  Auth: POST /api/v1/auth/login\n");
     printf("  Auth: POST /api/v1/auth/verify\n");
     printf("  Auth: POST /api/v1/auth/register\n");
@@ -3633,11 +3647,29 @@ static int run_server(void) {
  * Entry point
  * ======================================================================== */
 int main(int argc, char *argv[]) {
-    if (argc > 1 && strcmp(argv[1], "--server") == 0) {
-        return run_server();
+    char config_path[SSO_MAX_PATH] = "sso.toml";
+    parse_args(argc, argv, config_path);
+
+    /* Load Configuration */
+    sso_config_default(&g_config);
+    if (sso_config_load(config_path, &g_config) == SSO_OK) {
+        printf("[sso] Loaded configuration from %s\n", config_path);
+    } else {
+        /* If user specified a config but it failed, exit */
+        for (int i = 1; i < argc; i++) {
+            if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--config") == 0) {
+                fprintf(stderr, "[sso] Error: Could not load config file: %s\n", config_path);
+                return 1;
+            }
+        }
     }
-    if (argc > 1 && strcmp(argv[1], "--interactive") == 0) {
-        return interactive_config();
+    sso_config_apply_env(&g_config);
+
+    if (argc > 1 && strcmp(argv[argc-1], "--server") == 0) {
+        return run_server(&g_config);
     }
-    return run_demo();
+    if (argc > 1 && strcmp(argv[argc-1], "--interactive") == 0) {
+        return interactive_config(&g_config);
+    }
+    return run_demo(&g_config);
 }

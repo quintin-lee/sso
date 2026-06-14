@@ -186,7 +186,7 @@ struct sso_context {
 
 /* Initialise a new SSO context with the given storage backend and config.
  * Returns SSO_OK on success, or an error code on failure. */
-sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage, const char *config_json);
+sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage, void *config);
 
 /* Tear down the context and free all owned resources. */
 void sso_destroy(sso_context_t *ctx);

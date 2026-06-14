@@ -1,0 +1,41 @@
+# SSO System Configuration Example
+
+[server]
+host = "0.0.0.0"
+port = 8080
+thread_pool_size = 8
+queue_size = 1024
+
+[database]
+# Path to SQLite database file
+path = "sso_server.db"
+# If true, uses an in-memory database (data lost on restart)
+use_memory = false
+
+[security]
+# HS256 Symmetric Secret (minimum 32 characters recommended)
+token_secret = "your-super-secret-hmac-key-here-32chars"
+
+# RS256 Asymmetric Keys (PEM format)
+# If private_key is provided, the system switches to RS256 mode.
+# private_key = """
+# -----BEGIN RSA PRIVATE KEY-----
+# ...
+# -----END RSA PRIVATE KEY-----
+# """
+
+# Default token lifetime in milliseconds (3600000 = 1 hour)
+token_ttl_ms = 3600000
+
+# Initial admin password (only used on first run to bootstrap admin user)
+admin_password = "admin_password_123"
+
+[sms]
+# SMS Gateway API URL
+gateway_url = "https://api.sms-provider.com/send"
+# API Key for the SMS provider
+api_key = "your-api-key"
+
+[ratelimit]
+# Maximum number of unique IPs to track in the rate limiter
+max_ips = 10000

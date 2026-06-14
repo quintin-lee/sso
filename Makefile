@@ -37,6 +37,8 @@ SRCS = $(SRCDIR)/sso.c           \
        $(SRCDIR)/server.c        \
        $(SRCDIR)/ratelimit.c     \
        $(SRCDIR)/cJSON.c         \
+       $(SRCDIR)/toml.c          \
+       $(SRCDIR)/config.c        \
        $(SRCDIR)/main.c
 
 STRAT_SRCS = $(STRATEGIES)/func_perm.c \
