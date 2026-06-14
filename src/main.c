@@ -1479,7 +1479,7 @@ static sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
         return SSO_OK;
     }
 
-    char buf[4096];
+    char buf[8192];
     snprintf(buf, sizeof(buf),
         "{"
         "\"access_token\":\"%s\","
@@ -1626,7 +1626,7 @@ static sso_error_t handle_login_by_sms(sso_context_t *ctx, const http_request_t 
     }
 
     /* 4. 返回标准 Token */
-    char buf[2048];
+    char buf[8192];
     snprintf(buf, sizeof(buf),
         "{"
         "\"token\":\"%s\","
@@ -1774,7 +1774,7 @@ static sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
 
     snprintf(resp->extra_headers, sizeof(resp->extra_headers), "X-SSO-User: %s\r\n", user.username);
 
-    char buf[2048];
+    char buf[8192];
     snprintf(buf, sizeof(buf),
         "{"
         "\"valid\":true,"
@@ -1851,7 +1851,7 @@ static sso_error_t handle_refresh(sso_context_t *ctx, const http_request_t *req,
         return SSO_OK;
     }
 
-    char buf[4096];
+    char buf[8192];
     snprintf(buf, sizeof(buf),
         "{"
         "\"access_token\":\"%s\","
