@@ -82,6 +82,28 @@ static void json_error_response(http_response_t *resp, int status, const char *e
     strcpy(resp->content_type, "application/json");
 }
 
+/* Add above handle_oauth_authorize */
+static bool is_redirect_uri_allowed(const char *allowed_uris, const char *redirect_uri) {
+    if (!allowed_uris || !allowed_uris[0]) return false;
+    char uris_copy[512];
+    strncpy(uris_copy, allowed_uris, sizeof(uris_copy) - 1);
+    uris_copy[sizeof(uris_copy) - 1] = '\0';
+    
+    char *saveptr = NULL;
+    char *tok = strtok_r(uris_copy, ",", &saveptr);
+    while (tok) {
+        while (*tok == ' ') tok++; /* Trim leading spaces */
+        size_t len = strlen(tok);
+        while (len > 0 && tok[len - 1] == ' ') {
+            tok[len - 1] = '\0';
+            len--;
+        }
+        if (strcmp(tok, redirect_uri) == 0) return true;
+        tok = strtok_r(NULL, ",", &saveptr);
+    }
+    return false;
+}
+
 /* ========================================================================
  * GET /api/v1/oauth/authorize
  *
@@ -138,28 +160,41 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
         return SSO_OK;
     }
 
-    if (strcmp(client_id, cfg->oauth_client_id) != 0) {
-        json_error_response(resp, 400, "unauthorized_client");
-        return SSO_OK;
+    // Check config first
+    bool is_config_client = false;
+    oauth_client_t db_client;
+    memset(&db_client, 0, sizeof(db_client));
+    
+    if (cfg && cfg->oauth_client_id[0] && strcmp(client_id, cfg->oauth_client_id) == 0) {
+        is_config_client = true;
+    } else {
+        // Fallback to database
+        storage_backend_t *sb = get_storage(ctx);
+        if (sb && sb->oauth_client_get) {
+            if (sb->oauth_client_get(sb, client_id, &db_client) != SSO_OK || db_client.status != 1) {
+                json_error_response(resp, 400, "unauthorized_client");
+                return SSO_OK;
+            }
+        } else {
+            json_error_response(resp, 400, "unauthorized_client");
+            return SSO_OK;
+        }
     }
 
-    /* Check redirect_uri against configured allowed URIs */
-    if (cfg->oauth_redirect_uris[0]) {
-        char uris_copy[512];
-        strncpy(uris_copy, cfg->oauth_redirect_uris, sizeof(uris_copy) - 1);
-        uris_copy[sizeof(uris_copy) - 1] = '\0';
-        bool uri_ok = false;
-        char *tok = strtok(uris_copy, ",");
-        while (tok) {
-            while (*tok == ' ') memmove(tok, tok + 1, strlen(tok));
-            if (strcmp(tok, redirect_uri) == 0) { uri_ok = true; break; }
-            tok = strtok(NULL, ",");
+    /* Check redirect_uri against allowed URIs */
+    if (is_config_client) {
+        if (!is_redirect_uri_allowed(cfg->oauth_redirect_uris, redirect_uri)) {
+            json_error_response(resp, 400, "invalid_redirect_uri");
+            return SSO_OK;
         }
-        if (!uri_ok) {
+    } else {
+        if (!is_redirect_uri_allowed(db_client.redirect_uris, redirect_uri)) {
             json_error_response(resp, 400, "invalid_redirect_uri");
             return SSO_OK;
         }
     }
+    
+    /* Store requested scope. We can skip deep scope validation for now or check against DB later */
 
     if (strcmp(response_type, "code") != 0) {
         json_error_response(resp, 400, "unsupported_response_type");
