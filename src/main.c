@@ -3792,7 +3792,7 @@ static int run_server(sso_config_t *cfg) {
         {"/admin",                  HTTP_GET,  handle_admin_page,       false},
 
         /* Public — API */
-        {"/metrics",                HTTP_GET,  handle_metrics,          true},
+        {"/metrics",                HTTP_GET,  handle_metrics,          false},
         {"/api/v1/health",          HTTP_GET,  handle_health,          false},
         {"/api/v1/admin/status",    HTTP_GET,  handle_admin_status,     true},
         {"/api/v1/auth/login",      HTTP_POST, handle_login,           false},
@@ -3894,6 +3894,32 @@ static int run_server(sso_config_t *cfg) {
  * Entry point
  * ======================================================================== */
 int main(int argc, char *argv[]) {
+    /* Handle help / version before any initialization */
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            printf("SSO System v%d.%d.%d — Single Sign-On service\n"
+                   "\n"
+                   "Usage: sso_system [OPTIONS] [MODE]\n"
+                   "\n"
+                   "Options:\n"
+                   "  -c, --config FILE    Configuration file (default: sso.toml)\n"
+                   "  -h, --help           Show this help message\n"
+                   "  -v, --version        Show version\n"
+                   "\n"
+                   "Modes:\n"
+                   "  (none)               Run demo\n"
+                   "  --server             Start HTTP API server\n"
+                   "  --interactive        Interactive policy configuration\n",
+                   SSO_VERSION_MAJOR, SSO_VERSION_MINOR, SSO_VERSION_PATCH);
+            return 0;
+        }
+        if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--version") == 0) {
+            printf("sso_system v%d.%d.%d\n",
+                   SSO_VERSION_MAJOR, SSO_VERSION_MINOR, SSO_VERSION_PATCH);
+            return 0;
+        }
+    }
+
     char config_path[SSO_MAX_PATH] = "sso.toml";
     parse_args(argc, argv, config_path);
 
