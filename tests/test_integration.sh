@@ -380,12 +380,12 @@ test_metrics() {
     echo ""
     echo "--- Metrics Endpoint ---"
 
-    local resp
-    resp=$(curl -sf "${BASE}/metrics" -H "Authorization: Bearer test" 2>&1) || true
-    # Metrics endpoint requires auth, just check it returns something
-    local http_code
-    http_code=$(curl -s -o /dev/null -w "%{http_code}" "${BASE}/metrics" -H "Authorization: Bearer test" 2>&1) || true
-    # With invalid token we get 401, test with valid token
+    # Metrics is public (no auth required for Prometheus scraping)
+    local public_code
+    public_code=$(curl -s -o /dev/null -w "%{http_code}" "${BASE}/metrics" 2>&1) || true
+    if [ "$public_code" = "200" ]; then pass "metrics endpoint public (HTTP 200 without auth)"; else fail "metrics public access expected 200 got $public_code"; fi
+
+    # Hit with valid admin token to verify content
     local headers
     headers=$(mktemp)
     curl -sf -X POST "${BASE}/api/v1/auth/login" \
@@ -397,7 +397,7 @@ test_metrics() {
     rm -f "$headers"
 
     local metrics_resp
-    metrics_resp=$(curl -sf "${BASE}/metrics" -H "Authorization: Bearer ${ADMIN_TOKEN}" 2>&1) || { fail "metrics endpoint"; }
+    metrics_resp=$(curl -sf "${BASE}/metrics" 2>&1) || { fail "metrics endpoint"; }
     if echo "$metrics_resp" | grep -q "perm_"; then pass "metrics endpoint (contains perm_ metrics)"; else fail "metrics - unexpected: $(echo "$metrics_resp" | head -c 100)"; fi
 }
 
