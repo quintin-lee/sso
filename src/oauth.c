@@ -258,6 +258,11 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
     return SSO_OK;
 }
 
+static bool verify_client_secret(const char *input_secret, const char *stored_hash) {
+    if (!input_secret || !stored_hash) return false;
+    return crypto_pwhash_str_verify(stored_hash, input_secret, strlen(input_secret)) == 0;
+}
+
 /* ========================================================================
  * POST /api/v1/oauth/token
  *
@@ -363,8 +368,19 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
 
         /* Set OAuth fields on token */
         /* We issue via token_issue directly, then patch scope/nonce after */
+        long ttl = 3600000;
+        // Check if the client belongs to DB and has a custom TTL
+        if (!cfg || strcmp(ac.client_id, cfg->oauth_client_id) != 0) {
+            oauth_client_t ac_client;
+            if (sb && sb->oauth_client_get && sb->oauth_client_get(sb, ac.client_id, &ac_client) == SSO_OK) {
+                if (ac_client.token_ttl_ms > 0) {
+                    ttl = ac_client.token_ttl_ms;
+                }
+            }
+        }
+
         sso_error_t terr = token_issue(tmgr, &user, roles, rc, groups, gc,
-                                       3600000, &access_token);
+                                       ttl, &access_token);
         if (terr != SSO_OK) {
             json_error_response(resp, 500, "server_error");
             goto cleanup;
@@ -392,15 +408,36 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
             json_error_response(resp, 400, "invalid_request");
             goto cleanup;
         }
-        if (strcmp(client_id, cfg->oauth_client_id) != 0) {
-            json_error_response(resp, 401, "invalid_client");
-            goto cleanup;
-        }
-        /* For simplicity: plaintext comparison for now.
-         * Production: hash with argon2id. */
-        if (strcmp(client_secret, cfg->oauth_client_secret) != 0) {
-            json_error_response(resp, 401, "invalid_client");
-            goto cleanup;
+
+        bool is_config_client = false;
+        oauth_client_t db_client;
+        memset(&db_client, 0, sizeof(db_client));
+
+        if (cfg && cfg->oauth_client_id[0] && strcmp(client_id, cfg->oauth_client_id) == 0) {
+            is_config_client = true;
+            if (strcmp(client_secret, cfg->oauth_client_secret) != 0) {
+                json_error_response(resp, 401, "invalid_client");
+                goto cleanup;
+            }
+        } else {
+            if (sb && sb->oauth_client_get) {
+                if (sb->oauth_client_get(sb, client_id, &db_client) != SSO_OK || db_client.status != 1) {
+                    json_error_response(resp, 401, "invalid_client");
+                    goto cleanup;
+                }
+                if (!verify_client_secret(client_secret, db_client.client_secret_hash)) {
+                    json_error_response(resp, 401, "invalid_client");
+                    goto cleanup;
+                }
+                // Check allowed grant types
+                if (db_client.allowed_grant_types[0] != '\0' && !strstr(db_client.allowed_grant_types, "client_credentials")) {
+                    json_error_response(resp, 400, "unauthorized_client");
+                    goto cleanup;
+                }
+            } else {
+                json_error_response(resp, 401, "invalid_client");
+                goto cleanup;
+            }
         }
 
         /* Create a minimal token for a "client" (user_id=0) */
@@ -411,8 +448,13 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
         client_user.username[sizeof(client_user.username) - 1] = '\0';
         client_user.status = USER_STATUS_ACTIVE;
 
+        long ttl = 3600000;
+        if (!is_config_client && db_client.token_ttl_ms > 0) {
+            ttl = db_client.token_ttl_ms;
+        }
+
         sso_error_t terr = token_issue(tmgr, &client_user, NULL, 0, NULL, 0,
-                                       3600000, &access_token);
+                                       ttl, &access_token);
         if (terr != SSO_OK) {
             json_error_response(resp, 500, "server_error");
             goto cleanup;
