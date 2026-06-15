@@ -82,7 +82,7 @@ DEBUG_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O0 -DDEBUG -Wno-overlength-
 ASAN_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O1 -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP $(MHD_CFLAGS)
 ASAN_LDFLAGS = -fsanitize=address -fsanitize=undefined -lsodium -lsqlite3 -lssl -lcrypto -lcurl $(MHD_LIBS)
 
-.PHONY: all clean run server debug dirs test integration-test asan
+.PHONY: all clean run server debug dirs test integration-test asan check size
 
 all: dirs $(TARGET)
 
@@ -123,6 +123,12 @@ clean:
 integration-test: all
 	@echo "Running HTTP API integration tests..."
 	@SSO_TEST_PORT=18080 tests/test_integration.sh
+
+# Run everything: demo + unit tests + integration tests
+check: all $(TEST_BINS)
+	@echo "=== Smoke test (demo) ===" && ./$(TARGET) < /dev/null 2>&1 | grep -E '^=== Demo complete' || (echo "FAIL: demo" && false)
+	@echo "=== Unit tests ===" && for bin in $(TEST_BINS); do echo "  $$bin" && ./$$bin || exit 1; done
+	@echo "=== Integration tests ===" && $(MAKE) integration-test
 
 # ASan build (AddressSanitizer + UndefinedBehaviorSanitizer)
 asan: CFLAGS = $(ASAN_CFLAGS)
