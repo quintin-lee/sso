@@ -14,7 +14,7 @@ void sso_config_default(sso_config_t *cfg) {
     memset(cfg, 0, sizeof(*cfg));
 
     /* [server] defaults */
-    strcpy(cfg->host, "0.0.0.0");
+    memcpy(cfg->host, "0.0.0.0", 8);
     cfg->port = 8080;
     cfg->thread_pool_size = 8;
     cfg->queue_size = 1024;
@@ -22,7 +22,7 @@ void sso_config_default(sso_config_t *cfg) {
     cfg->max_body_size = 1048576;
 
     /* [database] defaults */
-    strcpy(cfg->path, "sso_server.db");
+    memcpy(cfg->path, "sso_server.db", 14);
     cfg->use_memory = false;
 
     /* [security] defaults */
