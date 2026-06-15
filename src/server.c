@@ -365,10 +365,12 @@ static void send_response(conn_t *c, const http_response_t *resp) {
         resp->status_code,
         resp->status_code == 200 ? "OK" :
         resp->status_code == 201 ? "Created" :
+        resp->status_code == 302 ? "Found" :
         resp->status_code == 400 ? "Bad Request" :
         resp->status_code == 401 ? "Unauthorized" :
         resp->status_code == 403 ? "Forbidden" :
-        resp->status_code == 404 ? "Not Found" : "Internal Server Error",
+        resp->status_code == 404 ? "Not Found" :
+        resp->status_code == 500 ? "Internal Server Error" : "Unknown",
         resp->content_type,
         resp->body_len,
         cors_origin,
