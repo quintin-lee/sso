@@ -122,6 +122,24 @@ sso_error_t sso_config_load(const char *filename, sso_config_t *cfg) {
         get_string(sms, "api_key", cfg->sms_api_key, sizeof(cfg->sms_api_key));
     }
 
+    /* [oauth] */
+    toml_table_t *oauth = toml_table_in(root, "oauth");
+    if (oauth) {
+        get_string(oauth, "client_id", cfg->oauth_client_id, sizeof(cfg->oauth_client_id));
+        get_string(oauth, "client_secret", cfg->oauth_client_secret, sizeof(cfg->oauth_client_secret));
+        get_string(oauth, "redirect_uris", cfg->oauth_redirect_uris, sizeof(cfg->oauth_redirect_uris));
+        get_string(oauth, "issuer", cfg->oauth_issuer, sizeof(cfg->oauth_issuer));
+        get_long(oauth, "auth_code_ttl_ms", &cfg->oauth_auth_code_ttl_ms);
+    }
+
+    /* [logging] */
+    toml_table_t *logging = toml_table_in(root, "logging");
+    if (logging) {
+        get_int(logging, "level", &cfg->log_level);
+        if (cfg->log_level < LOG_DEBUG) cfg->log_level = LOG_DEBUG;
+        if (cfg->log_level > LOG_ERROR) cfg->log_level = LOG_ERROR;
+    }
+
     /* [ratelimit] */
     toml_table_t *rl = toml_table_in(root, "ratelimit");
     if (rl) {
@@ -146,9 +164,15 @@ void sso_config_apply_env(sso_config_t *cfg) {
     if ((val = getenv("SSO_SMS_API_KEY"))) strncpy(cfg->sms_api_key, val, sizeof(cfg->sms_api_key)-1);
     { char *ev = getenv("SSO_PASSWORD_OPSLIMIT"); if (ev) cfg->password_opslimit = (unsigned long)atol(ev); }
     { char *ev = getenv("SSO_PASSWORD_MEMLIMIT"); if (ev) cfg->password_memlimit = (unsigned long)atol(ev); }
+    { char *ev = getenv("SSO_LOG_LEVEL"); if (ev) { cfg->log_level = atoi(ev); if (cfg->log_level < LOG_DEBUG) cfg->log_level = LOG_DEBUG; if (cfg->log_level > LOG_ERROR) cfg->log_level = LOG_ERROR; } }
     if ((val = getenv("SSO_REQUEST_TIMEOUT_MS"))) cfg->request_timeout_ms = atoi(val);
     if ((val = getenv("SSO_MAX_BODY_SIZE"))) cfg->max_body_size = atol(val);
     if ((val = getenv("SSO_TLS_ENABLED"))) cfg->tls_enabled = (strcmp(val, "1") == 0 || strcasecmp(val, "true") == 0);
     if ((val = getenv("SSO_TLS_CERT_FILE"))) strncpy(cfg->tls_cert_file, val, sizeof(cfg->tls_cert_file)-1);
     if ((val = getenv("SSO_TLS_KEY_FILE"))) strncpy(cfg->tls_key_file, val, sizeof(cfg->tls_key_file)-1);
+    if ((val = getenv("SSO_OAUTH_CLIENT_ID"))) strncpy(cfg->oauth_client_id, val, sizeof(cfg->oauth_client_id)-1);
+    if ((val = getenv("SSO_OAUTH_CLIENT_SECRET"))) strncpy(cfg->oauth_client_secret, val, sizeof(cfg->oauth_client_secret)-1);
+    if ((val = getenv("SSO_OAUTH_REDIRECT_URIS"))) strncpy(cfg->oauth_redirect_uris, val, sizeof(cfg->oauth_redirect_uris)-1);
+    if ((val = getenv("SSO_OAUTH_ISSUER"))) strncpy(cfg->oauth_issuer, val, sizeof(cfg->oauth_issuer)-1);
+    { char *ev = getenv("SSO_OAUTH_AUTH_CODE_TTL_MS"); if (ev) cfg->oauth_auth_code_ttl_ms = atol(ev); }
 }

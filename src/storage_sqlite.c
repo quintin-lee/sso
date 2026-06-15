@@ -119,10 +119,23 @@ static const char *SCHEMA_SQL =
     ");"
 
     "CREATE TABLE IF NOT EXISTS policy_assignments ("
-    "  policy_id INTEGER NOT NULL,"
-    "  target_type INTEGER NOT NULL,"
-    "  target_id INTEGER NOT NULL,"
-    "  PRIMARY KEY (policy_id, target_type, target_id)"
+    "  policy_id INTEGER,"
+    "  target_type INTEGER,"
+    "  target_id INTEGER,"
+    "  PRIMARY KEY(policy_id, target_type, target_id)"
+    ");"
+
+    "CREATE TABLE IF NOT EXISTS oauth_auth_codes ("
+    "  code TEXT PRIMARY KEY,"
+    "  client_id TEXT NOT NULL,"
+    "  user_id INTEGER NOT NULL,"
+    "  redirect_uri TEXT NOT NULL,"
+    "  scope TEXT DEFAULT '',"
+    "  nonce TEXT DEFAULT '',"
+    "  code_challenge TEXT DEFAULT '',"
+    "  code_challenge_method TEXT DEFAULT '',"
+    "  expires_at INTEGER NOT NULL,"
+    "  used INTEGER DEFAULT 0"
     ");";
 
 /* ========================================================================
@@ -1133,6 +1146,81 @@ static sso_error_t sqlite_delete_sms_code(storage_backend_t *self, const char *p
 }
 
 /* ========================================================================
+ * OAuth authorization codes
+ * ======================================================================== */
+static sso_error_t sqlite_oauth_code_create(storage_backend_t *self, const oauth_auth_code_t *code) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db || !code) return SSO_ERR_STORAGE;
+    sqlite3_stmt *stmt = NULL;
+    const char *sql = "INSERT INTO oauth_auth_codes "
+        "(code,client_id,user_id,redirect_uri,scope,nonce,code_challenge,code_challenge_method,expires_at,used) "
+        "VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,0)";
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE;
+    sqlite3_bind_text(stmt, 1, code->code, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, code->client_id, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)code->user_id);
+    sqlite3_bind_text(stmt, 4, code->redirect_uri, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, code->scope, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 6, code->nonce, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 7, code->code_challenge, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 8, code->code_challenge_method, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 9, (sqlite3_int64)code->expires_at);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+}
+
+static sso_error_t sqlite_oauth_code_get(storage_backend_t *self, const char *code, oauth_auth_code_t *out) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db || !code || !out) return SSO_ERR_STORAGE;
+    sqlite3_stmt *stmt = NULL;
+    const char *sql = "SELECT code,client_id,user_id,redirect_uri,scope,nonce,"
+        "code_challenge,code_challenge_method,expires_at,used "
+        "FROM oauth_auth_codes WHERE code=?1";
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE;
+    sqlite3_bind_text(stmt, 1, code, -1, SQLITE_STATIC);
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) { sqlite3_finalize(stmt); return SSO_ERR_NOT_FOUND; }
+    memset(out, 0, sizeof(*out));
+    strncpy(out->code, (const char*)sqlite3_column_text(stmt, 0), sizeof(out->code)-1);
+    strncpy(out->client_id, (const char*)sqlite3_column_text(stmt, 1), sizeof(out->client_id)-1);
+    out->user_id = (sso_id_t)sqlite3_column_int64(stmt, 2);
+    strncpy(out->redirect_uri, (const char*)sqlite3_column_text(stmt, 3), sizeof(out->redirect_uri)-1);
+    strncpy(out->scope, (const char*)sqlite3_column_text(stmt, 4), sizeof(out->scope)-1);
+    strncpy(out->nonce, (const char*)sqlite3_column_text(stmt, 5), sizeof(out->nonce)-1);
+    strncpy(out->code_challenge, (const char*)sqlite3_column_text(stmt, 6), sizeof(out->code_challenge)-1);
+    strncpy(out->code_challenge_method, (const char*)sqlite3_column_text(stmt, 7), sizeof(out->code_challenge_method)-1);
+    out->expires_at = (sso_timestamp_t)sqlite3_column_int64(stmt, 8);
+    out->used = sqlite3_column_int(stmt, 9);
+    sqlite3_finalize(stmt);
+    return SSO_OK;
+}
+
+static sso_error_t sqlite_oauth_code_mark_used(storage_backend_t *self, const char *code) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db || !code) return SSO_ERR_STORAGE;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(priv->db, "UPDATE oauth_auth_codes SET used=1 WHERE code=?1", -1, &stmt, NULL) != SQLITE_OK)
+        return SSO_ERR_STORAGE;
+    sqlite3_bind_text(stmt, 1, code, -1, SQLITE_STATIC);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+}
+
+static sso_error_t sqlite_oauth_code_cleanup(storage_backend_t *self) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv || !priv->db) return SSO_ERR_STORAGE;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(priv->db, "DELETE FROM oauth_auth_codes WHERE expires_at < ?1 OR used=1", -1, &stmt, NULL) != SQLITE_OK)
+        return SSO_ERR_STORAGE;
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)sso_timestamp_now());
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return SSO_OK;
+}
+
+/* ========================================================================
  * Backend constructor
  * ======================================================================== */
 sso_error_t storage_sqlite_create(storage_backend_t **backend) {
@@ -1216,6 +1304,12 @@ sso_error_t storage_sqlite_create(storage_backend_t **backend) {
     (*backend)->role_get_parent                 = sqlite_role_get_parent;
     (*backend)->group_get_parent                = sqlite_group_get_parent;
     (*backend)->get_user_roles_with_ancestors   = sqlite_get_user_roles_with_ancestors;
+
+    /* OAuth */
+    (*backend)->oauth_code_create   = sqlite_oauth_code_create;
+    (*backend)->oauth_code_get      = sqlite_oauth_code_get;
+    (*backend)->oauth_code_mark_used = sqlite_oauth_code_mark_used;
+    (*backend)->oauth_code_cleanup  = sqlite_oauth_code_cleanup;
 
     (*backend)->handle = priv;
     return SSO_OK;

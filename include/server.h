@@ -71,6 +71,7 @@ typedef struct {
     size_t           body_len;
     char             **query_params;    /* "key=value" strings, NULL-terminated */
     char             auth_token[SSO_MAX_TOKEN_STR];
+    char             origin[256];       /* Origin header from request (CORS)   */
     void             *userdata;         /* connection-specific data */
 } http_request_t;
 
@@ -80,6 +81,7 @@ typedef struct {
     size_t           body_len;
     char             content_type[64];  /* e.g. "application/json"              */
     char             extra_headers[16384]; /* Custom headers: "Key: Value\r\n..." */
+    char             cors_origin[256];  /* Echo-back origin for CORS (per spec) */
 } http_response_t;
 
 /* ========================================================================

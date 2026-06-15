@@ -87,6 +87,69 @@ static size_t base64_decode(const char *input, unsigned char *output, size_t out
     return o;
 }
 
+/* ---- Base64url (RFC 4648 §5): URL-safe, no padding ---- */
+static const char b64url_table[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+size_t base64url_encode(const unsigned char *input, size_t len,
+                        char *output, size_t output_len) {
+    size_t i = 0, o = 0;
+    while (i < len && o + 4 < output_len) {
+        unsigned char a = input[i];
+        unsigned char b = (i + 1 < len) ? input[i + 1] : 0;
+        unsigned char c = (i + 2 < len) ? input[i + 2] : 0;
+
+        output[o++] = b64url_table[a >> 2];
+        output[o++] = b64url_table[((a & 0x03) << 4) | (b >> 4)];
+        if (o < output_len && (i + 1) < len)
+            output[o++] = b64url_table[((b & 0x0f) << 2) | (c >> 6)];
+        if (o < output_len && (i + 2) < len)
+            output[o++] = b64url_table[c & 0x3f];
+        i += 3;
+    }
+    output[o] = '\0';
+    return o;
+}
+
+static int b64url_rev(char c) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '-' || c == '+') return 62;
+    if (c == '_' || c == '/') return 63;
+    return -1;
+}
+
+size_t base64url_decode(const char *input, unsigned char *output, size_t output_len) {
+    size_t i = 0, o = 0;
+    size_t len = strlen(input);
+    while (i < len && o < output_len) {
+        int a = b64url_rev(input[i]);      if (a < 0) break;
+        int b = b64url_rev(input[i + 1]);  if (b < 0) break;
+        int c = (i + 2 < len) ? b64url_rev(input[i + 2]) : -1;
+        int d = (i + 3 < len) ? b64url_rev(input[i + 3]) : -1;
+
+        output[o++] = (unsigned char)((a << 2) | (b >> 4));
+        if (c >= 0 && o < output_len)
+            output[o++] = (unsigned char)(((b & 0x0f) << 4) | (c >> 2));
+        if (d >= 0 && o < output_len)
+            output[o++] = (unsigned char)(((c & 0x03) << 6) | d);
+        i += 4;
+    }
+    return o;
+}
+
+/* Check if a string looks like hex (all [0-9a-fA-F]). */
+static bool is_hex_str(const char *s) {
+    if (!s || !*s) return false;
+    while (*s) {
+        if (!((*s >= '0' && *s <= '9') || (*s >= 'a' && *s <= 'f') || (*s >= 'A' && *s <= 'F')))
+            return false;
+        s++;
+    }
+    return true;
+}
+
 /* ========================================================================
  * Lifecycle
  * ======================================================================== */
@@ -260,6 +323,11 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     cJSON_AddStringToObject(root, "iss", "sso-server");
     cJSON_AddStringToObject(root, "aud", "sso-api");
 
+    if (out->scope[0])
+        cJSON_AddStringToObject(root, "scope", out->scope);
+    if (out->oauth_nonce[0])
+        cJSON_AddStringToObject(root, "nonce", out->oauth_nonce);
+
     cJSON *roles_arr = cJSON_CreateArray();
     for (size_t i = 0; i < role_count; i++) {
         cJSON_AddItemToArray(roles_arr, cJSON_CreateNumber((double)role_ids[i]));
@@ -291,9 +359,9 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
              (unsigned char *)signing_input, strlen(signing_input),
              hmac_result, &hmac_len);
 
-        char hmac_hex[EVP_MAX_MD_SIZE * 2 + 1];
-        to_hex(hmac_result, hmac_len, hmac_hex, sizeof(hmac_hex));
-        snprintf(out->token_str, sizeof(out->token_str), "%s.%s", signing_input, hmac_hex);
+        char sig_b64[EVP_MAX_MD_SIZE * 2 + 1];
+        base64url_encode(hmac_result, hmac_len, sig_b64, sizeof(sig_b64));
+        snprintf(out->token_str, sizeof(out->token_str), "%s.%s", signing_input, sig_b64);
     } else {
         EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
         EVP_PKEY_CTX *pk_ctx = NULL;
@@ -307,12 +375,12 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
         sig = (unsigned char *)malloc(sig_len);
         if (EVP_DigestSignFinal(md_ctx, sig, &sig_len) <= 0) { free(sig); goto rs_fail; }
 
-        char *sig_hex = (char *)malloc(sig_len * 2 + 1);
-        to_hex(sig, sig_len, sig_hex, sig_len * 2 + 1);
-        snprintf(out->token_str, sizeof(out->token_str), "%s.%s", signing_input, sig_hex);
+        char *sig_b64 = (char *)malloc(sig_len * 2 + 2);
+        base64url_encode(sig, sig_len, sig_b64, sig_len * 2 + 2);
+        snprintf(out->token_str, sizeof(out->token_str), "%s.%s", signing_input, sig_b64);
         
         free(sig);
-        free(sig_hex);
+        free(sig_b64);
         EVP_MD_CTX_free(md_ctx);
         return SSO_OK;
 
@@ -351,11 +419,14 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
     strncpy(b64_payload, dot1 + 1, b64_len);
     b64_payload[b64_len] = '\0';
 
-    const char *sig_hex = dot2 + 1;
+    const char *sig_part = dot2 + 1;
 
     /* signing_input = header.payload */
     char signing_input[2560];
     snprintf(signing_input, sizeof(signing_input), "%s.%s", b64_header, b64_payload);
+
+    /* Backward compat: detect hex-encoded signature (old format) */
+    bool legacy_hex = is_hex_str(sig_part);
 
     /* Verify signature */
     if (mgr->mode == SSO_TOKEN_MODE_HS256) {
@@ -365,19 +436,33 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
              (unsigned char *)signing_input, strlen(signing_input),
              hmac_result, &hmac_len);
 
-        char expected_sig[EVP_MAX_MD_SIZE * 2 + 1];
-        to_hex(hmac_result, hmac_len, expected_sig, sizeof(expected_sig));
-
-        if (strcmp(sig_hex, expected_sig) != 0) {
-            return SSO_ERR_TOKEN_INVALID;
+        if (legacy_hex) {
+            char expected_hex[EVP_MAX_MD_SIZE * 2 + 1];
+            to_hex(hmac_result, hmac_len, expected_hex, sizeof(expected_hex));
+            if (strcmp(sig_part, expected_hex) != 0)
+                return SSO_ERR_TOKEN_INVALID;
+        } else {
+            char expected_b64[EVP_MAX_MD_SIZE * 2 + 1];
+            base64url_encode(hmac_result, hmac_len, expected_b64, sizeof(expected_b64));
+            if (strcmp(sig_part, expected_b64) != 0)
+                return SSO_ERR_TOKEN_INVALID;
         }
     } else {
-        size_t sig_len = strlen(sig_hex) / 2;
-        unsigned char *sig = (unsigned char *)malloc(sig_len);
-        for (size_t i = 0; i < sig_len; i++) {
-            unsigned int val;
-            sscanf(sig_hex + i*2, "%02x", &val);
-            sig[i] = (unsigned char)val;
+        unsigned char *sig = NULL;
+        size_t sig_len = 0;
+
+        if (legacy_hex) {
+            sig_len = strlen(sig_part) / 2;
+            sig = (unsigned char *)malloc(sig_len);
+            for (size_t i = 0; i < sig_len; i++) {
+                unsigned int val;
+                sscanf(sig_part + i*2, "%02x", &val);
+                sig[i] = (unsigned char)val;
+            }
+        } else {
+            sig_len = strlen(sig_part) / 4 * 3 + 4;
+            sig = (unsigned char *)malloc(sig_len);
+            sig_len = base64url_decode(sig_part, sig, sig_len);
         }
 
         EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
@@ -393,9 +478,11 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         if (v_err != SSO_OK) return v_err;
     }
 
-    /* Decode payload */
+    /* Decode payload (accept both base64 and base64url) */
     unsigned char decoded[4096];
     size_t decoded_len = base64_decode(b64_payload, decoded, sizeof(decoded) - 1);
+    if (decoded_len == 0)
+        decoded_len = base64url_decode(b64_payload, decoded, sizeof(decoded) - 1);
     if (decoded_len == 0) return SSO_ERR_TOKEN_INVALID;
     decoded[decoded_len] = '\0';
 
@@ -425,6 +512,16 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
     cJSON *tnc_item = cJSON_GetObjectItem(root, "tnc");
     if (cJSON_IsNumber(tnc_item)) {
         out->nonce = (uint64_t)tnc_item->valuedouble;
+    }
+
+    cJSON *scope_item = cJSON_GetObjectItem(root, "scope");
+    if (cJSON_IsString(scope_item)) {
+        strncpy(out->scope, scope_item->valuestring, sizeof(out->scope) - 1);
+    }
+
+    cJSON *nonce_item = cJSON_GetObjectItem(root, "nonce");
+    if (cJSON_IsString(nonce_item)) {
+        strncpy(out->oauth_nonce, nonce_item->valuestring, sizeof(out->oauth_nonce) - 1);
     }
 
     cJSON *roles_arr = cJSON_GetObjectItem(root, "roles");

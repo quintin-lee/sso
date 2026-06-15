@@ -9,6 +9,7 @@
 #include "role.h"
 #include "group.h"
 #include "policy.h"
+#include "token.h"  /* for base64url_encode */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -111,6 +112,8 @@ typedef struct {
     pl_t user_roles, user_groups, role_groups;
     al_t policy_assignments;
     sms_t *sms; size_t sms_n, sms_cap;
+    oauth_auth_code_t *oauth_codes;
+    size_t oauth_n, oauth_cap;
     sso_id_t next_uid, next_rid, next_gid, next_pid;
 } mem_priv_t;
 
@@ -123,7 +126,56 @@ static sso_error_t mem_open(storage_backend_t *self, const char *dsn) {
     pl_init(&p->user_roles); pl_init(&p->user_groups); pl_init(&p->role_groups);
     al_init(&p->policy_assignments);
     p->sms=NULL; p->sms_n=0; p->sms_cap=0;
+    p->oauth_codes=NULL; p->oauth_n=0; p->oauth_cap=0;
     p->next_uid=1; p->next_rid=1; p->next_gid=1; p->next_pid=1;
+    return SSO_OK;
+}
+
+static sso_error_t mem_oauth_code_create(storage_backend_t *self, const oauth_auth_code_t *code) {
+    mem_priv_t *p = P; if (!p || !code) return SSO_ERR_STORAGE;
+    if (p->oauth_n >= p->oauth_cap) {
+        size_t nc = p->oauth_cap ? p->oauth_cap * 2 : 16;
+        oauth_auth_code_t *n = realloc(p->oauth_codes, nc * sizeof(oauth_auth_code_t));
+        if (!n) return SSO_ERR_OUT_OF_MEMORY;
+        p->oauth_codes = n; p->oauth_cap = nc;
+    }
+    p->oauth_codes[p->oauth_n++] = *code;
+    return SSO_OK;
+}
+
+static sso_error_t mem_oauth_code_get(storage_backend_t *self, const char *code, oauth_auth_code_t *out) {
+    mem_priv_t *p = P; if (!p || !code || !out) return SSO_ERR_STORAGE;
+    for (size_t i = 0; i < p->oauth_n; i++) {
+        if (strcmp(p->oauth_codes[i].code, code) == 0) {
+            *out = p->oauth_codes[i];
+            return SSO_OK;
+        }
+    }
+    return SSO_ERR_NOT_FOUND;
+}
+
+static sso_error_t mem_oauth_code_mark_used(storage_backend_t *self, const char *code) {
+    mem_priv_t *p = P; if (!p || !code) return SSO_ERR_STORAGE;
+    for (size_t i = 0; i < p->oauth_n; i++) {
+        if (strcmp(p->oauth_codes[i].code, code) == 0) {
+            p->oauth_codes[i].used = 1;
+            return SSO_OK;
+        }
+    }
+    return SSO_ERR_NOT_FOUND;
+}
+
+static sso_error_t mem_oauth_code_cleanup(storage_backend_t *self) {
+    mem_priv_t *p = P; if (!p) return SSO_ERR_STORAGE;
+    sso_timestamp_t now = sso_timestamp_now();
+    size_t w = 0;
+    for (size_t i = 0; i < p->oauth_n; i++) {
+        if (p->oauth_codes[i].used == 0 && p->oauth_codes[i].expires_at > now) {
+            if (w != i) p->oauth_codes[w] = p->oauth_codes[i];
+            w++;
+        }
+    }
+    p->oauth_n = w;
     return SSO_OK;
 }
 
@@ -446,6 +498,12 @@ sso_error_t storage_memory_create(storage_backend_t **backend) {
     (*backend)->role_get_parent=mem_role_get_parent;
     (*backend)->group_get_parent=mem_group_get_parent;
     (*backend)->get_user_roles_with_ancestors=mem_get_user_roles_with_ancestors;
+
+    /* OAuth */
+    (*backend)->oauth_code_create=mem_oauth_code_create;
+    (*backend)->oauth_code_get=mem_oauth_code_get;
+    (*backend)->oauth_code_mark_used=mem_oauth_code_mark_used;
+    (*backend)->oauth_code_cleanup=mem_oauth_code_cleanup;
 
     (*backend)->handle = priv;
     return SSO_OK;

@@ -91,6 +91,10 @@ typedef enum {
     SSO_ERR_LISTEN           = -18,
     SSO_ERR_INIT             = -19,
     SSO_ERR_CURL             = -20,
+    SSO_ERR_OAUTH_INVALID_CLIENT = -21,
+    SSO_ERR_OAUTH_INVALID_GRANT  = -22,
+    SSO_ERR_OAUTH_INVALID_SCOPE  = -23,
+    SSO_ERR_OAUTH_UNSUPPORTED_GRANT_TYPE = -24,
 } sso_error_t;
 
 /* Return a human-readable string for an error code. */

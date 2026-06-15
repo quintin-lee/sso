@@ -42,6 +42,8 @@ struct token {
     sso_id_t         *group_ids;                    /* cached on issue    */
     size_t            group_count;
     uint64_t          nonce;                        /* user token version */
+    char              oauth_nonce[128];              /* OIDC nonce (per-request) */
+    char              scope[256];                    /* OAuth scope string       */
     char              claims[SSO_MAX_CLAIMS_JSON];  /* extra claims JSON  */
 };
 
@@ -126,6 +128,18 @@ sso_error_t token_bump_nonce(token_manager_t *mgr, sso_id_t user_id);
 /* Refresh a token (issue a new one with extended TTL). */
 sso_error_t token_refresh(token_manager_t *mgr, const token_t *old_token,
                           sso_timestamp_t ttl_ms, token_t *out);
+
+/* -----------------------------------------------------------------------
+ * Base64url encoding (RFC 4648 §5 — URL-safe, no padding)
+ * ----------------------------------------------------------------------- */
+
+/* Encode binary data to base64url (no padding). Returns length written. */
+size_t base64url_encode(const unsigned char *input, size_t len,
+                        char *output, size_t output_len);
+
+/* Decode a base64url string (handles missing padding, tolerates +/ vs -_). */
+size_t base64url_decode(const char *input, unsigned char *output,
+                        size_t output_len);
 
 /* Revoke a token (add its jti to the blocklist). */
 sso_error_t token_revoke(token_manager_t *mgr, const char *jti);

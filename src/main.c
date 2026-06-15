@@ -36,6 +36,7 @@
 #include "config.h"
 #include "login_page.h"
 #include "admin_page.h"
+#include "oauth.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -3808,6 +3809,8 @@ static int run_server(sso_config_t *cfg) {
         {"/api/v1/auth/password",   HTTP_POST, handle_change_password,  true},
         {"/api/v1/auth/me",         HTTP_GET,  handle_me,               true},
         {"/api/v1/auth/certs",      HTTP_GET,  handle_certs,            false},
+        {"/api/v1/auth/userinfo",   HTTP_GET,  handle_userinfo,          true},
+        {"/api/v1/auth/jwks",       HTTP_GET,  handle_jwks,             false},
         {"/api/v1/audit/logs",      HTTP_GET,  handle_list_audit_logs,  true},
 
         /* Permission checks */
@@ -3844,6 +3847,13 @@ static int run_server(sso_config_t *cfg) {
         {"/api/v1/groups/:id",      HTTP_DELETE, handle_delete_group,    true},
         {"/api/v1/groups/*/members", HTTP_POST, handle_add_group_member,  true},
         {"/api/v1/groups/*/members/*", HTTP_DELETE, handle_remove_group_member, true},
+
+        /* OAuth 2.0 / OIDC */
+        {"/.well-known/openid-configuration", HTTP_GET, handle_well_known_openid_config, false},
+        {"/api/v1/oauth/authorize", HTTP_GET, handle_oauth_authorize, true},
+        {"/api/v1/oauth/token",     HTTP_POST, handle_oauth_token,    false},
+        {"/api/v1/oauth/introspect", HTTP_POST, handle_oauth_introspect, true},
+        {"/api/v1/oauth/revoke",    HTTP_POST, handle_oauth_revoke,   true},
     };
 
     size_t route_count = sizeof(routes) / sizeof(routes[0]);
@@ -3900,6 +3910,7 @@ int main(int argc, char *argv[]) {
         }
     }
     sso_config_apply_env(&g_config);
+    log_set_level((log_level_t)g_config.log_level);
 
     if (argc > 1 && strcmp(argv[argc-1], "--server") == 0) {
         return run_server(&g_config);

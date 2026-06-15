@@ -41,6 +41,16 @@ typedef struct {
     char     sms_gateway_url[256];
     char     sms_api_key[128];
 
+    /* [logging] */
+    int      log_level;     /* 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR */
+
+    /* [oauth] */
+    char     oauth_client_id[64];
+    char     oauth_client_secret[128];
+    char     oauth_redirect_uris[512];
+    char     oauth_issuer[256];
+    long     oauth_auth_code_ttl_ms;
+
     /* [ratelimit] */
     int      max_ips;
 } sso_config_t;

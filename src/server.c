@@ -106,10 +106,8 @@ static ssize_t br_read(buf_reader_t *br, void *buf, size_t n) {
 }
 
 /* ========================================================================
- * Thread Pool for HTTP Server
+ * Thread Pool for HTTP Server (dynamically sized from config)
  * ======================================================================== */
-#define THREAD_POOL_SIZE 8
-#define QUEUE_SIZE 1024
 
 typedef struct {
     conn_t conn;
@@ -117,14 +115,16 @@ typedef struct {
 } task_t;
 
 typedef struct {
-    pthread_t threads[THREAD_POOL_SIZE];
-    task_t queue[QUEUE_SIZE];
-    int head;
-    int tail;
-    int count;
+    pthread_t *threads;
+    task_t    *queue;
+    int        pool_size;
+    int        queue_size;
+    int        head;
+    int        tail;
+    int        count;
     pthread_mutex_t lock;
-    pthread_cond_t notify;
-    bool stop;
+    pthread_cond_t  notify;
+    bool       stop;
     sso_server_t *server;
 } thread_pool_t;
 
@@ -145,7 +145,7 @@ static void *worker_thread(void *arg) {
         }
 
         task_t task = g_pool.queue[g_pool.head];
-        g_pool.head = (g_pool.head + 1) % QUEUE_SIZE;
+        g_pool.head = (g_pool.head + 1) % g_pool.queue_size;
         g_pool.count--;
         pthread_mutex_unlock(&g_pool.lock);
 
@@ -155,26 +155,39 @@ static void *worker_thread(void *arg) {
 }
 
 static void pool_init(sso_server_t *server) {
+    sso_config_t *cfg = (sso_config_t *)server->sso_ctx->config;
+    int pool_size = cfg ? cfg->thread_pool_size : 8;
+    int queue_size = cfg ? cfg->queue_size : 1024;
+    if (pool_size < 1) pool_size = 1;
+    if (pool_size > 256) pool_size = 256;
+    if (queue_size < 1) queue_size = 1;
+
+    g_pool.pool_size = pool_size;
+    g_pool.queue_size = queue_size;
     g_pool.head = 0;
     g_pool.tail = 0;
     g_pool.count = 0;
     g_pool.stop = false;
     g_pool.server = server;
+
+    g_pool.threads = (pthread_t *)calloc((size_t)pool_size, sizeof(pthread_t));
+    g_pool.queue = (task_t *)calloc((size_t)queue_size, sizeof(task_t));
+
     pthread_mutex_init(&g_pool.lock, NULL);
     pthread_cond_init(&g_pool.notify, NULL);
 
-    for (int i = 0; i < THREAD_POOL_SIZE; i++) {
+    for (int i = 0; i < pool_size; i++) {
         pthread_create(&g_pool.threads[i], NULL, worker_thread, NULL);
     }
 }
 
 static void pool_submit(conn_t *conn, const char *client_ip) {
     pthread_mutex_lock(&g_pool.lock);
-    if (g_pool.count < QUEUE_SIZE) {
+    if (g_pool.count < g_pool.queue_size) {
         g_pool.queue[g_pool.tail].conn = *conn;
         snprintf(g_pool.queue[g_pool.tail].client_ip,
                  sizeof(g_pool.queue[g_pool.tail].client_ip), "%s", client_ip);
-        g_pool.tail = (g_pool.tail + 1) % QUEUE_SIZE;
+        g_pool.tail = (g_pool.tail + 1) % g_pool.queue_size;
         g_pool.count++;
         pthread_cond_signal(&g_pool.notify);
     } else {
@@ -189,9 +202,14 @@ static void pool_shutdown() {
     pthread_cond_broadcast(&g_pool.notify);
     pthread_mutex_unlock(&g_pool.lock);
 
-    for (int i = 0; i < THREAD_POOL_SIZE; i++) {
+    for (int i = 0; i < g_pool.pool_size; i++) {
         pthread_join(g_pool.threads[i], NULL);
     }
+
+    free(g_pool.threads);
+    free(g_pool.queue);
+    g_pool.threads = NULL;
+    g_pool.queue = NULL;
 
     pthread_mutex_destroy(&g_pool.lock);
     pthread_cond_destroy(&g_pool.notify);
@@ -249,13 +267,21 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
             char *end = NULL;
             long val = strtol(line + 15, &end, 10);
             if (end != line + 15 && val >= 0) content_length = val;
-        }
-        if (strncasecmp(line, "Authorization:", 14) == 0) {
+        } else if (strncasecmp(line, "Authorization:", 14) == 0) {
             const char *token = line + 14;
             while (*token == ' ') token++;
             if (strncasecmp(token, "Bearer ", 7) == 0) {
                 strncpy(req->auth_token, token + 7, SSO_MAX_TOKEN_STR - 1);
             }
+        } else if (strncasecmp(line, "Origin:", 7) == 0) {
+            const char *origin = line + 7;
+            while (*origin == ' ') origin++;
+            strncpy(req->origin, origin, sizeof(req->origin) - 1);
+            req->origin[sizeof(req->origin) - 1] = '\0';
+            /* Strip trailing whitespace/CR */
+            size_t olen = strlen(req->origin);
+            while (olen > 0 && (req->origin[olen-1] == ' ' ||
+                   req->origin[olen-1] == '\r')) req->origin[--olen] = '\0';
         }
     }
 
@@ -310,13 +336,20 @@ static void send_response(conn_t *c, const http_response_t *resp) {
     if (g_server && g_server->ssl_ctx) {
         snprintf(hsts, sizeof(hsts), "Strict-Transport-Security: max-age=31536000; includeSubDomains\r\n");
     }
+    /* CORS: echo back the request Origin when provided, fallback to *.
+     * Never combine '*' with 'Credentials: true' (per Fetch spec). */
+    const char *cors_origin = resp->cors_origin[0] ? resp->cors_origin : "*";
+    char vary[64] = "";
+    if (resp->cors_origin[0]) {
+        snprintf(vary, sizeof(vary), "Vary: Origin\r\n");
+    }
     char header[16384];
     int n = snprintf(header, sizeof(header),
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: %s\r\n"
         "Content-Length: %zu\r\n"
         "Connection: close\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
+        "Access-Control-Allow-Origin: %s\r\n"
         "Access-Control-Allow-Credentials: true\r\n"
         "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
         "Access-Control-Expose-Headers: X-SSO-User, X-SSO-Access-Token, X-SSO-Refresh-Token\r\n"
@@ -325,6 +358,7 @@ static void send_response(conn_t *c, const http_response_t *resp) {
         "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';\r\n"
         "Cache-Control: no-cache, no-store, must-revalidate\r\n"
         "Pragma: no-cache\r\n"
+        "%s"
         "%s"
         "%s"
         "\r\n",
@@ -337,7 +371,9 @@ static void send_response(conn_t *c, const http_response_t *resp) {
         resp->status_code == 404 ? "Not Found" : "Internal Server Error",
         resp->content_type,
         resp->body_len,
+        cors_origin,
         hsts,
+        vary,
         resp->extra_headers);
 
     conn_write_all(c, header, (size_t)n);
@@ -436,6 +472,8 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
     resp.body = NULL;
     resp.body_len = 0;
     strcpy(resp.content_type, "application/json");
+    /* Propagate CORS origin from request to response */
+    snprintf(resp.cors_origin, sizeof(resp.cors_origin), "%s", req.origin);
 
     /* CORS preflight */
     if (req.method == HTTP_OPTIONS) {

@@ -102,6 +102,25 @@ typedef sso_error_t (*storage_get_user_roles_with_ancestors_fn)(storage_backend_
                                                                  sso_id_t *role_ids,
                                                                  size_t *count, size_t max);
 
+/* OAuth authorization code */
+typedef struct {
+    char              code[128];
+    char              client_id[64];
+    sso_id_t          user_id;
+    char              redirect_uri[512];
+    char              scope[256];
+    char              nonce[128];
+    char              code_challenge[256];
+    char              code_challenge_method[16];
+    sso_timestamp_t   expires_at;
+    int               used;      /* 0 = unused, 1 = consumed */
+} oauth_auth_code_t;
+
+typedef sso_error_t (*storage_oauth_code_create_fn)(storage_backend_t *self, const oauth_auth_code_t *code);
+typedef sso_error_t (*storage_oauth_code_get_fn)(storage_backend_t *self, const char *code, oauth_auth_code_t *out);
+typedef sso_error_t (*storage_oauth_code_mark_used_fn)(storage_backend_t *self, const char *code);
+typedef sso_error_t (*storage_oauth_code_cleanup_fn)(storage_backend_t *self);
+
 /* ========================================================================
  * Storage backend struct — concrete implementations fill these pointers.
  * ======================================================================== */
@@ -177,6 +196,12 @@ struct storage_backend {
     storage_role_get_parent_fn                  role_get_parent;
     storage_group_get_parent_fn                 group_get_parent;
     storage_get_user_roles_with_ancestors_fn    get_user_roles_with_ancestors;
+
+    /* OAuth authorization codes */
+    storage_oauth_code_create_fn      oauth_code_create;
+    storage_oauth_code_get_fn         oauth_code_get;
+    storage_oauth_code_mark_used_fn   oauth_code_mark_used;
+    storage_oauth_code_cleanup_fn     oauth_code_cleanup;
 
     /* Opaque backend-private data (e.g. sqlite3*, FILE*, hashtable*) */
     void *handle;

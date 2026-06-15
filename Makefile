@@ -40,8 +40,9 @@ SRCS = $(SRCDIR)/logger.c        \
        $(SRCDIR)/ratelimit.c     \
        $(SRCDIR)/cJSON.c         \
        $(SRCDIR)/toml.c          \
-       $(SRCDIR)/config.c        \
-       $(SRCDIR)/main.c
+        $(SRCDIR)/config.c        \
+        $(SRCDIR)/oauth.c          \
+        $(SRCDIR)/main.c
 
 # Tests
 TEST_SRCS = $(wildcard $(TESTDIR)/test_*.c)
@@ -66,7 +67,7 @@ DEBUG_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O0 -DDEBUG -Wno-overlength-
 ASAN_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O1 -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP
 ASAN_LDFLAGS = -fsanitize=address -fsanitize=undefined -lsodium -lsqlite3 -lssl -lcrypto -lcurl
 
-.PHONY: all clean run server debug dirs test asan
+.PHONY: all clean run server debug dirs test integration-test asan
 
 all: dirs $(TARGET)
 
@@ -103,6 +104,10 @@ server: all
 clean:
 	rm -rf $(BUILDDIR) $(TARGET) *.db
 	find . -name '*.d' -delete 2>/dev/null || true
+
+integration-test: all
+	@echo "Running HTTP API integration tests..."
+	@SSO_TEST_PORT=18080 tests/test_integration.sh
 
 # ASan build (AddressSanitizer + UndefinedBehaviorSanitizer)
 asan: CFLAGS = $(ASAN_CFLAGS)
