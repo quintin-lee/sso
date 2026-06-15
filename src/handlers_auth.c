@@ -232,7 +232,7 @@ sso_error_t handle_login_by_sms(sso_context_t *ctx, const http_request_t *req,
         user.username,
         user.phone);
     sso_response_ok(resp, buf);
-
+    token_destroy(&token);
     return SSO_OK;
 }
 
@@ -330,6 +330,7 @@ sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
     if (token_is_revoked(tmgr, tok.jti)) {
         LOG_WARN("[verify] Token %s is revoked", tok.jti);
         sso_response_error(resp, 401, "Token revoked");
+        token_destroy(&tok);
         return SSO_OK;
     }
 
@@ -339,6 +340,7 @@ sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
     if (err != SSO_OK) {
         LOG_WARN("[verify] User not found for ID %llu", (unsigned long long)tok.user_id);
         sso_response_error(resp, 401, "User not found");
+        token_destroy(&tok);
         return SSO_OK;
     }
 
@@ -364,6 +366,7 @@ sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
         user.display_name,
         (long long)tok.expires_at);
     sso_response_ok(resp, buf);
+    token_destroy(&tok);
     return SSO_OK;
 }
 

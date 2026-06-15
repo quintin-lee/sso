@@ -58,6 +58,7 @@ static sso_error_t bootstrap_data(sso_context_t *ctx) {
     if (!admin_password || admin_password[0] == '\0') {
         /* Generate a random password if none provided */
         unsigned char rand_bytes[12];
+        memset(rand_bytes, 0, sizeof(rand_bytes));
         FILE *f = fopen("/dev/urandom", "r");
         if (f) {
             (void)fread(rand_bytes, 1, sizeof(rand_bytes), f);

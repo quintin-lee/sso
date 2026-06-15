@@ -294,8 +294,8 @@ int run_demo(sso_config_t *cfg) {
         perm_check_function(&ctx, admin_user.id, "user:create", &allowed);
     }
     uint64_t duration = get_time_ms() - start_time;
-    printf("  1000 functional checks: %lums (%.3fms per check)\n", 
-           (long)duration, (double)duration / 1000.0);
+    printf("  1000 functional checks: %lums (%.3fms per check)\n",
+           (unsigned long)duration, (double)duration / 1000.0);
     printf("  OK (Check stderr for telemetry)\n");
 
     /* ---- 17. RBAC permission check ---- */

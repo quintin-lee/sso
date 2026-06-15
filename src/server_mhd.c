@@ -440,7 +440,10 @@ mhd_completed_cb(void *cls, struct MHD_Connection *connection,
     }
 
     /* Free auth context (if any) */
-    free(state->userdata);
+    if (state->userdata) {
+        token_destroy(&((auth_context_t *)state->userdata)->token);
+        free(state->userdata);
+    }
 
     free(state);
     *req_cls = NULL;

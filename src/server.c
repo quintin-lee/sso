@@ -547,6 +547,7 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
             const char *msg = "Authentication failed";
             if (aerr == SSO_ERR_TOKEN_EXPIRED) msg = "Token expired";
             sso_response_error(&resp, 401, msg);
+            token_destroy(&auth->token);
             free(auth);
             send_response(conn, &resp);
             free(resp.body);
@@ -564,6 +565,7 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
     sso_error_t err = matched->handler(server->sso_ctx, &req, &resp);
 
     if (req.userdata) {
+        token_destroy(&((auth_context_t *)req.userdata)->token);
         free(req.userdata);
         req.userdata = NULL;
     }
