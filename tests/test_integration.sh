@@ -47,7 +47,7 @@ max_ips = 100
 [oauth]
 client_id = "test-client"
 client_secret = "test-secret"
-redirect_uris = "http://localhost:3000/callback"
+redirect_uris = ["http://localhost:3000/callback"]
 issuer = "http://localhost:${PORT}"
 auth_code_ttl_ms = 30000
 EOF

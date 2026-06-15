@@ -46,6 +46,42 @@ static void get_string(toml_table_t *table, const char *key, char *dest, size_t 
     }
 }
 
+/* Read a value that may be a TOML string OR an array of strings.
+ * Array elements are joined with single spaces.  Used for fields like
+ * [oauth].redirect_uris where both forms are valid:
+ *   redirect_uris = "http://a.com"           (string, single URI)
+ *   redirect_uris = ["http://a.com", ...]     (array, multiple URIs) */
+static void get_string_array(toml_table_t *table, const char *key,
+                             char *dest, size_t dest_size) {
+    toml_datum_t d = toml_string_in(table, key);
+    if (d.ok) {
+        strncpy(dest, d.u.s, dest_size - 1);
+        dest[dest_size - 1] = '\0';
+        free(d.u.s);
+        return;
+    }
+
+    toml_array_t *arr = toml_array_in(table, key);
+    if (!arr) return;
+
+    size_t pos = 0;
+    int nelem = toml_array_nelem(arr);
+    for (int i = 0; i < nelem; i++) {
+        toml_datum_t elem = toml_string_at(arr, i);
+        if (!elem.ok) { free(elem.u.s); continue; }
+        if (pos > 0 && pos < dest_size - 1) {
+            dest[pos++] = ' ';
+        }
+        size_t remaining = dest_size - pos;
+        size_t slen = strlen(elem.u.s);
+        if (slen >= remaining) slen = remaining - 1;
+        memcpy(dest + pos, elem.u.s, slen);
+        pos += slen;
+        free(elem.u.s);
+    }
+    dest[pos] = '\0';
+}
+
 static void get_int(toml_table_t *table, const char *key, int *dest) {
     toml_datum_t d = toml_int_in(table, key);
     if (d.ok) {
@@ -127,7 +163,7 @@ sso_error_t sso_config_load(const char *filename, sso_config_t *cfg) {
     if (oauth) {
         get_string(oauth, "client_id", cfg->oauth_client_id, sizeof(cfg->oauth_client_id));
         get_string(oauth, "client_secret", cfg->oauth_client_secret, sizeof(cfg->oauth_client_secret));
-        get_string(oauth, "redirect_uris", cfg->oauth_redirect_uris, sizeof(cfg->oauth_redirect_uris));
+        get_string_array(oauth, "redirect_uris", cfg->oauth_redirect_uris, sizeof(cfg->oauth_redirect_uris));
         get_string(oauth, "issuer", cfg->oauth_issuer, sizeof(cfg->oauth_issuer));
         get_long(oauth, "auth_code_ttl_ms", &cfg->oauth_auth_code_ttl_ms);
     }
