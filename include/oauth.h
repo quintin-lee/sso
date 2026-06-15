@@ -9,6 +9,9 @@
 extern "C" {
 #endif
 
+/* 30 days default TTL for refresh tokens */
+#define SSO_REFRESH_TOKEN_TTL 2592000000LL
+
 /* All OAuth 2.0 / OIDC endpoint handlers.
  * These follow the route_handler_fn signature from server.h.
  * The sso_context_t->config must be castable to sso_config_t*. */

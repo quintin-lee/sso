@@ -104,6 +104,43 @@ static bool is_redirect_uri_allowed(const char *allowed_uris, const char *redire
     return false;
 }
 
+static void store_refresh_token(storage_backend_t *sb, sso_id_t user_id, const char *client_id, const char *raw_refresh_token) {
+    if (!sb || !sb->refresh_token_create || !raw_refresh_token) return;
+
+    refresh_token_t rt;
+    memset(&rt, 0, sizeof(rt));
+
+    unsigned char rt_hash_bytes[32];
+    crypto_hash_sha256(rt_hash_bytes, (const unsigned char *)raw_refresh_token, strlen(raw_refresh_token));
+    for (size_t i = 0; i < 32; i++) {
+        sprintf(&rt.token_hash[i*2], "%02x", rt_hash_bytes[i]);
+    }
+    rt.user_id = user_id;
+    if (client_id) {
+        strncpy(rt.client_id, client_id, sizeof(rt.client_id) - 1);
+        rt.client_id[sizeof(rt.client_id) - 1] = '\0';
+    }
+    rt.issued_at = sso_timestamp_now();
+    rt.expires_at = rt.issued_at + SSO_REFRESH_TOKEN_TTL;
+    rt.revoked = 0;
+    sb->refresh_token_create(sb, &rt);
+}
+
+static long get_client_token_ttl(const sso_config_t *cfg, storage_backend_t *sb, const char *client_id) {
+    long ttl = 3600000; // Default 1 hour
+    if (cfg && cfg->oauth_client_id[0] && strcmp(client_id, cfg->oauth_client_id) == 0) {
+        if (cfg->token_ttl_ms > 0) ttl = cfg->token_ttl_ms;
+    } else {
+        oauth_client_t client;
+        if (sb && sb->oauth_client_get && sb->oauth_client_get(sb, client_id, &client) == SSO_OK) {
+            if (client.token_ttl_ms > 0) {
+                ttl = client.token_ttl_ms;
+            }
+        }
+    }
+    return ttl;
+}
+
 /* ========================================================================
  * GET /api/v1/oauth/authorize
  *
@@ -367,17 +404,7 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
         user_get_groups(umgr, user.id, groups, &gc, 16);
 
         /* Set OAuth fields on token */
-        /* We issue via token_issue directly, then patch scope/nonce after */
-        long ttl = 3600000;
-        // Check if the client belongs to DB and has a custom TTL
-        if (!cfg || strcmp(ac.client_id, cfg->oauth_client_id) != 0) {
-            oauth_client_t ac_client;
-            if (sb && sb->oauth_client_get && sb->oauth_client_get(sb, ac.client_id, &ac_client) == SSO_OK) {
-                if (ac_client.token_ttl_ms > 0) {
-                    ttl = ac_client.token_ttl_ms;
-                }
-            }
-        }
+        long ttl = get_client_token_ttl(cfg, sb, ac.client_id);
 
         sso_error_t terr = token_issue(tmgr, &user, roles, rc, groups, gc,
                                        ttl, &access_token);
@@ -388,6 +415,9 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
         if (ac.scope[0]) snprintf(access_token.scope, sizeof(access_token.scope), "%s", ac.scope);
         if (ac.nonce[0]) snprintf(access_token.oauth_nonce, sizeof(access_token.oauth_nonce), "%s", ac.nonce);
 
+        /* Store generated Refresh Token on issue */
+        store_refresh_token(sb, user.id, ac.client_id, access_token.raw_refresh_token);
+
         /* Build JSON response */
         char buf[8192];
         snprintf(buf, sizeof(buf),
@@ -395,10 +425,12 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
             "\"access_token\":\"%s\","
             "\"token_type\":\"Bearer\","
             "\"expires_in\":%lld,"
+            "\"refresh_token\":\"%s\","
             "\"user_id\":%llu"
             "}",
             access_token.token_str,
             (long long)(access_token.expires_at - access_token.issued_at) / 1000,
+            access_token.raw_refresh_token,
             (unsigned long long)user.id);
         sso_response_ok(resp, buf);
 
@@ -409,12 +441,10 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
             goto cleanup;
         }
 
-        bool is_config_client = false;
         oauth_client_t db_client;
         memset(&db_client, 0, sizeof(db_client));
 
         if (cfg && cfg->oauth_client_id[0] && strcmp(client_id, cfg->oauth_client_id) == 0) {
-            is_config_client = true;
             if (strcmp(client_secret, cfg->oauth_client_secret) != 0) {
                 json_error_response(resp, 401, "invalid_client");
                 goto cleanup;
@@ -448,10 +478,7 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
         client_user.username[sizeof(client_user.username) - 1] = '\0';
         client_user.status = USER_STATUS_ACTIVE;
 
-        long ttl = 3600000;
-        if (!is_config_client && db_client.token_ttl_ms > 0) {
-            ttl = db_client.token_ttl_ms;
-        }
+        long ttl = get_client_token_ttl(cfg, sb, client_id);
 
         sso_error_t terr = token_issue(tmgr, &client_user, NULL, 0, NULL, 0,
                                        ttl, &access_token);
@@ -479,29 +506,60 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
             goto cleanup;
         }
 
-        token_t old_token;
-        sso_error_t verr = token_verify(tmgr, refresh_token, &old_token);
-        if (verr != SSO_OK) {
+        unsigned char rt_hash_bytes[32];
+        crypto_hash_sha256(rt_hash_bytes, (const unsigned char *)refresh_token, strlen(refresh_token));
+        char rt_hash_hex[65];
+        for (size_t i = 0; i < 32; i++) {
+            sprintf(&rt_hash_hex[i*2], "%02x", rt_hash_bytes[i]);
+        }
+
+        refresh_token_t rt_record;
+        if (!sb || !sb->refresh_token_get || sb->refresh_token_get(sb, rt_hash_hex, &rt_record) != SSO_OK) {
             json_error_response(resp, 400, "invalid_grant");
             goto cleanup;
         }
 
-        sso_error_t rerr = token_refresh(tmgr, &old_token, 3600000, &access_token);
-        token_destroy(&old_token);
-        if (rerr != SSO_OK) {
+        if (rt_record.revoked || sso_timestamp_now() > rt_record.expires_at) {
+            json_error_response(resp, 400, "invalid_grant");
+            goto cleanup;
+        }
+
+        /* Issue new access token */
+        user_t user;
+        if (user_get_by_id(umgr, rt_record.user_id, &user) != SSO_OK || user.status != USER_STATUS_ACTIVE) {
+            json_error_response(resp, 403, "user_inactive");
+            goto cleanup;
+        }
+
+        sso_id_t roles[16], groups[16];
+        size_t rc = 0, gc = 0;
+        user_get_roles(umgr, user.id, roles, &rc, 16);
+        user_get_groups(umgr, user.id, groups, &gc, 16);
+
+        long ttl = get_client_token_ttl(cfg, sb, rt_record.client_id);
+        sso_error_t terr = token_issue(tmgr, &user, roles, rc, groups, gc, ttl, &access_token);
+        if (terr != SSO_OK) {
             json_error_response(resp, 500, "server_error");
             goto cleanup;
         }
 
-        char buf[2048];
+        /* Revoke old refresh token (one-time use) */
+        sb->refresh_token_revoke(sb, rt_hash_hex);
+
+        /* Store new refresh token */
+        store_refresh_token(sb, user.id, rt_record.client_id, access_token.raw_refresh_token);
+
+        char buf[8192];
         snprintf(buf, sizeof(buf),
             "{"
             "\"access_token\":\"%s\","
             "\"token_type\":\"Bearer\","
-            "\"expires_in\":%lld"
+            "\"expires_in\":%lld,"
+            "\"refresh_token\":\"%s\""
             "}",
             access_token.token_str,
-            (long long)(access_token.expires_at - access_token.issued_at) / 1000);
+            (long long)(access_token.expires_at - access_token.issued_at) / 1000,
+            access_token.raw_refresh_token);
         sso_response_ok(resp, buf);
     } else {
         json_error_response(resp, 400, "unsupported_grant_type");
