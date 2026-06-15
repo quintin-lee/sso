@@ -58,7 +58,9 @@ static const char *SCHEMA_SQL =
     "  status INTEGER DEFAULT 1,"
     "  created_at INTEGER DEFAULT 0,"
     "  updated_at INTEGER DEFAULT 0,"
-    "  attributes TEXT DEFAULT '{}'"
+    "  attributes TEXT DEFAULT '{}',"
+    "  mfa_enabled INTEGER DEFAULT 0,"
+    "  mfa_secret TEXT DEFAULT ''"
     ");"
 
     "CREATE TABLE IF NOT EXISTS sms_codes ("
@@ -186,6 +188,8 @@ static void bind_user(sqlite3_stmt *stmt, const user_t *u) {
     sqlite3_bind_int64(stmt, 7, u->created_at);
     sqlite3_bind_int64(stmt, 8, u->updated_at);
     sqlite3_bind_text(stmt, 9, u->attributes, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 10, u->mfa_enabled);
+    sqlite3_bind_text(stmt, 11, u->mfa_secret, -1, SQLITE_STATIC);
 }
 
 /* Read columns into a user_t (indices 0-9). */
@@ -207,6 +211,9 @@ static void read_user(sqlite3_stmt *stmt, user_t *u) {
     u->updated_at = sqlite3_column_int64(stmt, 8);
     const char *attrs = (const char *)sqlite3_column_text(stmt, 9);
     if (attrs) strncpy(u->attributes, attrs, SSO_MAX_ATTRIBUTES - 1);
+    u->mfa_enabled = sqlite3_column_int(stmt, 10);
+    const char *sec = (const char *)sqlite3_column_text(stmt, 11);
+    if (sec) strncpy(u->mfa_secret, sec, sizeof(u->mfa_secret) - 1);
 }
 
 /* Similar for role, group, policy — in production, factor out with macros. */
@@ -317,14 +324,16 @@ static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
         return SSO_ERR_STORAGE;
     }
 
-    /* Schema migration */
+    /* Schema migration metadata */
     sqlite3_exec(priv->db,
         "CREATE TABLE IF NOT EXISTS _migrations ("
         "  version INTEGER PRIMARY KEY,"
         "  applied_at INTEGER NOT NULL"
         ")", NULL, NULL, NULL);
 
-    /* Determine current migration version */
+    /* Determine if we just created the tables. 
+     * If the database was just created (Schema SQL just ran and _migrations is empty),
+     * we initialize _migrations to the latest version to avoid running redundant migrations. */
     int current_version = 0;
     sqlite3_stmt *s = NULL;
     if (sqlite3_prepare_v2(priv->db, "SELECT COALESCE(MAX(version),0) FROM _migrations", -1, &s, NULL) == SQLITE_OK) {
@@ -332,7 +341,16 @@ static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
         sqlite3_finalize(s);
     }
 
-    /* Run pending migrations */
+    if (current_version == 0) {
+        /* New database: set current version to latest (v2) to skip existing migrations */
+        sqlite3_prepare_v2(priv->db, "INSERT INTO _migrations (version, applied_at) VALUES (2, ?1)", -1, &s, NULL);
+        sqlite3_bind_int64(s, 1, (sqlite3_int64)sso_timestamp_now());
+        sqlite3_step(s);
+        sqlite3_finalize(s);
+        current_version = 2;
+    }
+
+    /* Run pending migrations (if any) */
     for (int v = current_version + 1; ; v++) {
         const char *migration = NULL;
         if (v == 1) {
@@ -343,6 +361,9 @@ static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
                         "CREATE INDEX IF NOT EXISTS idx_role_groups_role ON role_groups(role_id);"
                         "CREATE INDEX IF NOT EXISTS idx_role_groups_group ON role_groups(group_id);"
                         "CREATE INDEX IF NOT EXISTS idx_policy_assignments_target ON policy_assignments(target_type, target_id);";
+        } else if (v == 2) {
+            migration = "ALTER TABLE users ADD COLUMN mfa_enabled INTEGER DEFAULT 0;"
+                        "ALTER TABLE users ADD COLUMN mfa_secret TEXT DEFAULT '';";
         } else {
             break;
         }
@@ -415,8 +436,8 @@ static sso_error_t sqlite_user_create(storage_backend_t *self, user_t *user) {
     if (!priv || !priv->db) return SSO_ERR_STORAGE;
 
     const char *sql = "INSERT INTO users (username, phone, password_hash, email, display_name, "
-                      "status, created_at, updated_at, attributes) "
-                      "VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)";
+                      "status, created_at, updated_at, attributes, mfa_enabled, mfa_secret) "
+                      "VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)";
     sqlite3_stmt *stmt = NULL;
     if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) {
         return SSO_ERR_STORAGE;
@@ -539,7 +560,8 @@ static sso_error_t sqlite_user_update(storage_backend_t *self, const user_t *use
 
     sqlite3_stmt *stmt = NULL;
     const char *sql = "UPDATE users SET phone=?1, password_hash=?2, email=?3, display_name=?4, "
-                      "status=?5, updated_at=?6, attributes=?7 WHERE id=?8";
+                      "status=?5, updated_at=?6, attributes=?7, mfa_enabled=?8, mfa_secret=?9 "
+                      "WHERE id=?10";
     if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK)
         return SSO_ERR_STORAGE;
 
@@ -550,7 +572,9 @@ static sso_error_t sqlite_user_update(storage_backend_t *self, const user_t *use
     sqlite3_bind_int(stmt, 5, user->status);
     sqlite3_bind_int64(stmt, 6, user->updated_at);
     sqlite3_bind_text(stmt, 7, user->attributes, -1, SQLITE_STATIC);
-    sqlite3_bind_int64(stmt, 8, (sqlite3_int64)user->id);
+    sqlite3_bind_int(stmt, 8, user->mfa_enabled);
+    sqlite3_bind_text(stmt, 9, user->mfa_secret, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 10, (sqlite3_int64)user->id);
 
     int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);

@@ -28,6 +28,8 @@ struct user {
     sso_timestamp_t   created_at;
     sso_timestamp_t   updated_at;
     char              attributes[SSO_MAX_ATTRIBUTES]; /* extensible JSON */
+    int               mfa_enabled;
+    char              mfa_secret[SSO_MAX_MFA_SECRET];
 };
 
 /* ========================================================================
