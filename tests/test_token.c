@@ -46,6 +46,30 @@ static const char *test_token_hs256_lifecycle() {
     return 0;
 }
 
+static const char *test_refresh_token_generation() {
+    printf("  Running test_refresh_token_generation...\n");
+    token_manager_t *tmgr = setup();
+
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    user.id = 123;
+    strcpy(user.username, "testuser");
+
+    token_t issued;
+    sso_error_t err = token_issue(tmgr, &user, NULL, 0, NULL, 0, 3600000LL, &issued);
+    ASSERT_INT_EQUAL(err, SSO_OK);
+    
+    /* Verify refresh token is generated and not empty */
+    ASSERT_TRUE(strlen(issued.raw_refresh_token) > 0);
+    
+    /* It should be a base64url string, so roughly 43 chars for 32 bytes */
+    ASSERT_TRUE(strlen(issued.raw_refresh_token) >= 42);
+
+    token_destroy(&issued);
+    token_manager_destroy(tmgr);
+    return 0;
+}
+
 static const char *test_token_expired() {
     printf("  Running test_token_expired...\n");
     token_manager_t *tmgr = setup();
@@ -141,6 +165,7 @@ static const char *test_token_empty_payload() {
 
 static const char *all_tests() {
     mu_run_test(test_token_hs256_lifecycle);
+    mu_run_test(test_refresh_token_generation);
     mu_run_test(test_token_expired);
     mu_run_test(test_token_tampered);
     mu_run_test(test_token_revoked);

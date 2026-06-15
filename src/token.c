@@ -352,6 +352,13 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     char signing_input[2560];
     snprintf(signing_input, sizeof(signing_input), "%s.%s", b64_header, b64_payload);
 
+    /* Generate 32 bytes of random data for refresh token */
+    unsigned char rt_bytes[32];
+    randombytes_buf(rt_bytes, sizeof(rt_bytes));
+    
+    /* Base64url encode it */
+    base64url_encode(rt_bytes, sizeof(rt_bytes), out->raw_refresh_token, sizeof(out->raw_refresh_token));
+
     if (mgr->mode == SSO_TOKEN_MODE_HS256) {
         unsigned char hmac_result[EVP_MAX_MD_SIZE];
         unsigned int hmac_len = 0;
