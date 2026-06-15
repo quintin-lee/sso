@@ -354,6 +354,7 @@ mhd_access_handler(void *cls,
 
 send_response:
     /* Build MHD response from http_response_t */
+    { /* block isolates local decl after label */
     struct MHD_Response *mhd_resp;
 
     if (resp.body && resp.body_len > 0) {
@@ -361,8 +362,7 @@ send_response:
             resp.body_len, resp.body, MHD_RESPMEM_MUST_FREE);
     } else {
         /* Body may be "" (empty string) or NULL */
-        const char *empty = "";
-        mhd_resp = MHD_create_response_from_buffer(0, empty, MHD_RESPMEM_PERSISTENT);
+        mhd_resp = MHD_create_response_from_buffer(0, (void *)"", MHD_RESPMEM_PERSISTENT);
     }
 
     if (!mhd_resp) {
@@ -412,6 +412,7 @@ send_response:
      * req.body is freed via state->body in mhd_completed_cb. */
 
     return ret;
+    }
 }
 
 /* ========================================================================
@@ -490,7 +491,7 @@ sso_error_t sso_server_start(sso_server_t *server) {
      * We start with known options + thread pool + completion callback,
      * then append TLS options if enabled. */
 #define MHD_MAX_OPTIONS 16
-    enum MHD_OptionItem opts[MHD_MAX_OPTIONS];
+    struct MHD_OptionItem opts[MHD_MAX_OPTIONS];
     int opt_idx = 0;
 
     opts[opt_idx].option = MHD_OPTION_THREAD_POOL_SIZE;
@@ -499,7 +500,12 @@ sso_error_t sso_server_start(sso_server_t *server) {
     opt_idx++;
 
     opts[opt_idx].option = MHD_OPTION_NOTIFY_COMPLETED;
-    opts[opt_idx].value  = (intptr_t)(void *)&mhd_completed_cb;
+    {   /* C-compliant: function pointer stored via intptr_t */
+        void (*fn)(void *, struct MHD_Connection *, void **, enum MHD_RequestTerminationCode) = mhd_completed_cb;
+        intptr_t tmp;
+        memcpy(&tmp, &fn, sizeof(tmp));
+        opts[opt_idx].value  = tmp;
+    }
     opts[opt_idx].ptr_value = NULL;
     opt_idx++;
 

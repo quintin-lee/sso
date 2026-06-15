@@ -60,7 +60,7 @@ static sso_error_t bootstrap_data(sso_context_t *ctx) {
         unsigned char rand_bytes[12];
         FILE *f = fopen("/dev/urandom", "r");
         if (f) {
-            fread(rand_bytes, 1, sizeof(rand_bytes), f);
+            (void)fread(rand_bytes, 1, sizeof(rand_bytes), f);
             fclose(f);
         }
         snprintf(random_pass, sizeof(random_pass), "admin-%02x%02x%02x%02x",
