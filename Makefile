@@ -41,6 +41,7 @@ SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/toml.c          \
        $(SRCDIR)/config.c        \
        $(SRCDIR)/oauth.c         \
+       $(SRCDIR)/mfa.c           \
        $(SRCDIR)/handlers_common.c \
        $(SRCDIR)/handlers_pages.c \
        $(SRCDIR)/handlers_auth.c \
