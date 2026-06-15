@@ -293,7 +293,7 @@ test_oauth_endpoints() {
         "${BASE}/api/v1/oauth/authorize?response_type=code&client_id=test-client&redirect_uri=http://localhost:3000/callback&scope=openid+profile" \
         -H "$AUTH" 2>&1) || true
     local location_header
-    location_header=$(grep -i '^Location:' "$authz_headers" | sed 's/.*: //' | tr -d '\r\n')
+    location_header=$(grep -i '^Location:' "$authz_headers" || echo "")
     local authz_code
     authz_code=$(echo "$location_header" | sed 's/.*code=\([a-f0-9]*\).*/\1/')
     rm -f "$authz_headers"
