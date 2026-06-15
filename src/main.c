@@ -176,6 +176,9 @@ static int run_server(sso_config_t *cfg) {
         {"/api/v1/auth/send_sms",   HTTP_POST, handle_send_sms,        false},
         {"/api/v1/auth/login_by_sms",HTTP_POST, handle_login_by_sms,   false},
         {"/api/v1/auth/register",   HTTP_POST, handle_register,        false},
+        {"/api/v1/auth/mfa/setup",  HTTP_POST, handle_mfa_setup,       true},
+        {"/api/v1/auth/mfa/enable", HTTP_POST, handle_mfa_enable,      true},
+        {"/api/v1/auth/mfa/verify", HTTP_POST, handle_mfa_verify,      false},
 
         /* Auth required */
         {"/api/v1/auth/verify",     HTTP_GET,  handle_verify,           false},

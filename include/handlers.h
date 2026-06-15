@@ -38,6 +38,9 @@ sso_error_t handle_list_audit_logs(sso_context_t *ctx, const http_request_t *req
  * Auth handlers
  * ----------------------------------------------------------------------- */
 sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
+sso_error_t handle_mfa_setup(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
+sso_error_t handle_mfa_enable(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
+sso_error_t handle_mfa_verify(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
 sso_error_t handle_send_sms(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
 sso_error_t handle_login_by_sms(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
 sso_error_t handle_register(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);

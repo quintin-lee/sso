@@ -9,6 +9,7 @@
 #include "cJSON.h"
 #include "storage.h"
 #include "role.h"
+#include "mfa.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,6 +61,26 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
     user_get_groups(umgr, user.id, groups, &gc, 16);
 
     token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
+
+    if (user.mfa_enabled) {
+        token_t mfa_token;
+        /* Issue a short-lived token with "mfa" scope */
+        token_issue(tmgr, &user, NULL, 0, NULL, 0, 300000, &mfa_token);
+        strncpy(mfa_token.scope, "mfa", sizeof(mfa_token.scope) - 1);
+        
+        /* Re-issue to embed scope (a bit hacky but works given how token_issue is implemented) */
+        char buf[8192];
+        snprintf(buf, sizeof(buf),
+            "{"
+            "\"mfa_required\":true,"
+            "\"mfa_token\":\"%s\""
+            "}",
+            mfa_token.token_str);
+        token_destroy(&mfa_token);
+        sso_response_ok(resp, buf);
+        return SSO_OK;
+    }
+
     token_t access_token, refresh_token;
     err = token_issue(tmgr, &user, roles, rc, groups, gc, 900000, &access_token);
     if (err != SSO_OK) {
@@ -70,6 +91,155 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
     if (err != SSO_OK) {
         token_destroy(&access_token);
         sso_response_error(resp, 500, "Failed to issue refresh token");
+        return SSO_OK;
+    }
+
+    snprintf(resp->extra_headers, sizeof(resp->extra_headers),
+             "X-SSO-Access-Token: %s\r\n"
+             "X-SSO-Refresh-Token: %s\r\n",
+             access_token.token_str, refresh_token.token_str);
+
+    char buf[8192];
+    snprintf(buf, sizeof(buf),
+        "{"
+        "\"expires_in\":%lld,"
+        "\"user_id\":%llu,"
+        "\"username\":\"%s\","
+        "\"display_name\":\"%s\""
+        "}",
+        (long long)access_token.expires_at,
+        (unsigned long long)user.id,
+        user.username,
+        user.display_name);
+    token_destroy(&access_token);
+    token_destroy(&refresh_token);
+    sso_response_ok(resp, buf);
+    return SSO_OK;
+}
+
+sso_error_t handle_mfa_setup(sso_context_t *ctx, const http_request_t *req,
+                             http_response_t *resp) {
+    (void)ctx;
+    const auth_context_t *auth = (const auth_context_t *)req->userdata;
+    if (!auth) {
+        sso_response_error(resp, 401, "Authentication required");
+        return SSO_OK;
+    }
+
+    char secret[64];
+    mfa_generate_secret(secret, sizeof(secret));
+
+    char buf[128];
+    snprintf(buf, sizeof(buf), "{\"secret\":\"%s\"}", secret);
+    sso_response_ok(resp, buf);
+    return SSO_OK;
+}
+
+sso_error_t handle_mfa_enable(sso_context_t *ctx, const http_request_t *req,
+                              http_response_t *resp) {
+    const auth_context_t *auth = (const auth_context_t *)req->userdata;
+    if (!auth) {
+        sso_response_error(resp, 401, "Authentication required");
+        return SSO_OK;
+    }
+
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *secret = json_str_value(req->body, "secret");
+    char *code = json_str_value(req->body, "code");
+
+    if (!secret || !code) {
+        free(secret); free(code);
+        sso_response_error(resp, 400, "secret and code required");
+        return SSO_OK;
+    }
+
+    if (!mfa_verify_totp(secret, code)) {
+        free(secret); free(code);
+        sso_response_error(resp, 400, "Invalid TOTP code");
+        return SSO_OK;
+    }
+
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    user_t user = auth->user;
+    user.mfa_enabled = 1;
+    strncpy(user.mfa_secret, secret, sizeof(user.mfa_secret) - 1);
+    
+    sso_error_t err = user_update(umgr, &user);
+    free(secret); free(code);
+
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to update user");
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"enabled\":true}");
+    return SSO_OK;
+}
+
+sso_error_t handle_mfa_verify(sso_context_t *ctx, const http_request_t *req,
+                              http_response_t *resp) {
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *mfa_token_str = json_str_value(req->body, "mfa_token");
+    char *code = json_str_value(req->body, "code");
+
+    if (!mfa_token_str || !code) {
+        free(mfa_token_str); free(code);
+        sso_response_error(resp, 400, "mfa_token and code required");
+        return SSO_OK;
+    }
+
+    token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
+    token_t mfa_token;
+    sso_error_t err = token_verify(tmgr, mfa_token_str, &mfa_token);
+    free(mfa_token_str);
+
+    if (err != SSO_OK) {
+        free(code);
+        sso_response_error(resp, 401, "Invalid or expired MFA token");
+        return SSO_OK;
+    }
+
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    user_t user;
+    err = user_get_by_id(umgr, mfa_token.user_id, &user);
+    token_destroy(&mfa_token);
+
+    if (err != SSO_OK) {
+        free(code);
+        sso_response_error(resp, 401, "User not found");
+        return SSO_OK;
+    }
+
+    if (!mfa_verify_totp(user.mfa_secret, code)) {
+        free(code);
+        sso_response_error(resp, 401, "Invalid TOTP code");
+        return SSO_OK;
+    }
+    free(code);
+
+    /* MFA verified: issue final tokens */
+    sso_id_t roles[16], groups[16];
+    size_t rc = 0, gc = 0;
+    user_get_roles(umgr, user.id, roles, &rc, 16);
+    user_get_groups(umgr, user.id, groups, &gc, 16);
+
+    token_t access_token, refresh_token;
+    err = token_issue(tmgr, &user, roles, rc, groups, gc, 900000, &access_token);
+    if (err == SSO_OK) {
+        err = token_issue(tmgr, &user, roles, rc, groups, gc, 604800000, &refresh_token);
+    }
+
+    if (err != SSO_OK) {
+        token_destroy(&access_token);
+        sso_response_error(resp, 500, "Failed to issue final tokens");
         return SSO_OK;
     }
 
