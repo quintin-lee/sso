@@ -65,9 +65,9 @@ int run_demo(sso_config_t *cfg) {
     printf("[3] Creating roles...\n");
     role_t admin_role, editor_role, viewer_role;
 
-    err = role_create(rmgr, "admin",  "Full system access",     SSO_ID_NONE, &admin_role);
-    err = role_create(rmgr, "editor", "Can edit content",       admin_role.id, &editor_role);
-    err = role_create(rmgr, "viewer", "Read-only access",       editor_role.id, &viewer_role);
+    role_create(rmgr, "admin",  "Full system access",     SSO_ID_NONE, &admin_role);
+    role_create(rmgr, "editor", "Can edit content",       admin_role.id, &editor_role);
+    role_create(rmgr, "viewer", "Read-only access",       editor_role.id, &viewer_role);
     printf("  admin=%lu  editor=%lu  viewer=%lu\n",
            (unsigned long)admin_role.id,
            (unsigned long)editor_role.id,
@@ -77,8 +77,8 @@ int run_demo(sso_config_t *cfg) {
     printf("[4] Creating groups...\n");
     group_t engineering, finance;
 
-    err = group_create(gmgr, "engineering", "Engineering Department", SSO_ID_NONE, &engineering);
-    err = group_create(gmgr, "finance",     "Finance Department",     SSO_ID_NONE, &finance);
+    group_create(gmgr, "engineering", "Engineering Department", SSO_ID_NONE, &engineering);
+    group_create(gmgr, "finance",     "Finance Department",     SSO_ID_NONE, &finance);
     printf("  engineering=%lu  finance=%lu\n",
            (unsigned long)engineering.id,
            (unsigned long)finance.id);
