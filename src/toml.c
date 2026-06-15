@@ -1175,16 +1175,6 @@ static int parse_keyval(context_t *ctx, toml_table_t *tab) {
   return 0;
 }
 
-typedef struct tabpath_t tabpath_t;
-struct tabpath_t {
-  int cnt;
-  token_t key[10];
-};
-
-/* at [x.y.z] or [[x.y.z]]
- * Scan forward and fill tabpath until it enters ] or ]]
- * There will be at least one entry on return.
- */
 static int fill_tabpath(context_t *ctx) {
   int lineno = ctx->tok.lineno;
   int i;
