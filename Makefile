@@ -16,8 +16,8 @@
 #   sudo apt-get install libsqlite3-dev libssl-dev
 
 CC       = gcc
-CFLAGS   = -Wall -Wextra -Wpedantic -std=c11 -O2 -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP
-LDFLAGS  = -lsodium -lsqlite3 -lssl -lcrypto -lcurl
+CFLAGS   = -Wall -Wextra -Wpedantic -std=c11 -O2 -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP $(MHD_CFLAGS)
+LDFLAGS  = -lsodium -lsqlite3 -lssl -lcrypto -lcurl $(MHD_LIBS)
 INCLUDES = -Iinclude
 
 SRCDIR   = src
@@ -25,8 +25,8 @@ STRATEGIES = strategies
 TESTDIR  = tests
 BUILDDIR = build
 
-# Sources
-SRCS = $(SRCDIR)/logger.c        \
+# Common sources (always compiled)
+SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/sso.c           \
        $(SRCDIR)/permission.c    \
        $(SRCDIR)/user.c          \
@@ -36,13 +36,28 @@ SRCS = $(SRCDIR)/logger.c        \
        $(SRCDIR)/token.c         \
        $(SRCDIR)/storage_sqlite.c \
        $(SRCDIR)/storage_memory.c \
-       $(SRCDIR)/server.c        \
        $(SRCDIR)/ratelimit.c     \
        $(SRCDIR)/cJSON.c         \
        $(SRCDIR)/toml.c          \
         $(SRCDIR)/config.c        \
         $(SRCDIR)/oauth.c          \
         $(SRCDIR)/main.c
+
+# Detect libmicrohttpd availability (prefer pkg-config, fallback to header check)
+MHD_AVAIL := $(shell pkg-config --exists libmicrohttpd 2>/dev/null && echo yes)
+ifneq ($(MHD_AVAIL),yes)
+    MHD_AVAIL := $(shell test -f /usr/include/microhttpd.h && echo yes)
+endif
+
+ifeq ($(MHD_AVAIL),yes)
+    MHD_LIBS   := $(shell pkg-config --libs libmicrohttpd 2>/dev/null || echo "-lmicrohttpd")
+    MHD_CFLAGS := -DUSE_LIBMICROHTTPD
+    SRCS       = $(SRCS_BASE) $(SRCDIR)/server_mhd.c
+else
+    MHD_LIBS   :=
+    MHD_CFLAGS :=
+    SRCS       = $(SRCS_BASE) $(SRCDIR)/server.c
+endif
 
 # Tests
 TEST_SRCS = $(wildcard $(TESTDIR)/test_*.c)
@@ -61,11 +76,11 @@ OBJS     = $(ALL_SRCS:%=$(BUILDDIR)/%.o)
 TARGET   = sso_system
 
 # Debug target
-DEBUG_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O0 -DDEBUG -Wno-overlength-strings -MD -MP
+DEBUG_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O0 -DDEBUG -Wno-overlength-strings -MD -MP $(MHD_CFLAGS)
 
 # ASan target
-ASAN_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O1 -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP
-ASAN_LDFLAGS = -fsanitize=address -fsanitize=undefined -lsodium -lsqlite3 -lssl -lcrypto -lcurl
+ASAN_CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g -O1 -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP $(MHD_CFLAGS)
+ASAN_LDFLAGS = -fsanitize=address -fsanitize=undefined -lsodium -lsqlite3 -lssl -lcrypto -lcurl $(MHD_LIBS)
 
 .PHONY: all clean run server debug dirs test integration-test asan
 
