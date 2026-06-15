@@ -57,8 +57,8 @@ extern "C" {
 #define SSO_MAX_TOKEN_STR     4096
 #define SSO_MAX_CLAIMS_JSON   2048
 #define SSO_MAX_ATTRIBUTES    2048
-#define SSO_MAX_PATH          256
-#define SSO_MAX_QUERY         256
+#define SSO_MAX_PATH          1024
+#define SSO_MAX_QUERY         1024
 
 /* ========================================================================
  * ID type — 64-bit unsigned, 0 is reserved meaning "none"
