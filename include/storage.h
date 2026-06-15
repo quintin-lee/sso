@@ -121,6 +121,28 @@ typedef sso_error_t (*storage_oauth_code_get_fn)(storage_backend_t *self, const 
 typedef sso_error_t (*storage_oauth_code_mark_used_fn)(storage_backend_t *self, const char *code);
 typedef sso_error_t (*storage_oauth_code_cleanup_fn)(storage_backend_t *self);
 
+typedef struct {
+    sso_id_t id;
+    char client_id[64];
+    char client_secret_hash[128];
+    char redirect_uris[512];
+    char app_name[128];
+    char app_description[256];
+    char app_logo_url[256];
+    char allowed_scopes[256];
+    char allowed_grant_types[128];
+    long token_ttl_ms;
+    int status;
+    sso_timestamp_t created_at;
+    sso_timestamp_t updated_at;
+} oauth_client_t;
+
+typedef sso_error_t (*storage_oauth_client_create_fn)(storage_backend_t *self, oauth_client_t *client);
+typedef sso_error_t (*storage_oauth_client_get_fn)(storage_backend_t *self, const char *client_id, oauth_client_t *client);
+typedef sso_error_t (*storage_oauth_client_update_fn)(storage_backend_t *self, const oauth_client_t *client);
+typedef sso_error_t (*storage_oauth_client_delete_fn)(storage_backend_t *self, const char *client_id);
+typedef sso_error_t (*storage_oauth_client_list_fn)(storage_backend_t *self, int offset, int limit, oauth_client_t *clients, size_t *count, size_t max);
+
 /* ========================================================================
  * Storage backend struct — concrete implementations fill these pointers.
  * ======================================================================== */
@@ -202,6 +224,12 @@ struct storage_backend {
     storage_oauth_code_get_fn         oauth_code_get;
     storage_oauth_code_mark_used_fn   oauth_code_mark_used;
     storage_oauth_code_cleanup_fn     oauth_code_cleanup;
+
+    storage_oauth_client_create_fn    oauth_client_create;
+    storage_oauth_client_get_fn       oauth_client_get;
+    storage_oauth_client_update_fn    oauth_client_update;
+    storage_oauth_client_delete_fn    oauth_client_delete;
+    storage_oauth_client_list_fn      oauth_client_list;
 
     /* Opaque backend-private data (e.g. sqlite3*, FILE*, hashtable*) */
     void *handle;
