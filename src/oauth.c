@@ -4,6 +4,7 @@
 #include "storage.h"
 #include "config.h"
 #include "user.h"
+#include "logger.h"
 #include "cJSON.h"
 #include <sodium.h>
 #include <string.h>
@@ -129,6 +130,10 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
     }
 
     if (!client_id || !redirect_uri || !response_type) {
+        LOG_WARN("[oauth] authorize: missing required params (client_id=%s redirect_uri=%s response_type=%s)",
+                 client_id ? client_id : "(null)",
+                 redirect_uri ? redirect_uri : "(null)",
+                 response_type ? response_type : "(null)");
         json_error_response(resp, 400, "invalid_request");
         return SSO_OK;
     }

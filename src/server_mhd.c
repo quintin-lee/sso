@@ -142,34 +142,6 @@ static http_method_t parse_method(const char *method) {
     return HTTP_GET;
 }
 
-/* Parse query string from URL into req->query_params (NULL-terminated). */
-static void parse_url_query(const char *url, http_request_t *req) {
-    /* Copy URL and split on '?' */
-    strncpy(req->path, url, sizeof(req->path) - 1);
-    req->path[sizeof(req->path) - 1] = '\0';
-
-    char *qmark = strchr(req->path, '?');
-    if (!qmark) return;
-
-    *qmark++ = '\0';
-    int count = 1;
-    for (const char *p = qmark; *p; p++) {
-        if (*p == '&') count++;
-    }
-
-    req->query_params = (char **)calloc((size_t)(count + 1), sizeof(char *));
-    if (!req->query_params) return;
-
-    size_t idx = 0;
-    char *save;
-    char *token = strtok_r(qmark, "&", &save);
-    while (token) {
-        req->query_params[idx++] = strdup(token);
-        token = strtok_r(NULL, "&", &save);
-    }
-    req->query_params[idx] = NULL;
-}
-
 static void get_client_ip(struct MHD_Connection *connection, char *ip, size_t ip_size) {
     const union MHD_ConnectionInfo *ci =
         MHD_get_connection_info(connection, MHD_CONNECTION_INFO_CLIENT_ADDRESS);
@@ -224,6 +196,31 @@ static void apply_extra_headers(struct MHD_Response *resp, const char *extra) {
     free(copy);
 }
 
+static enum MHD_Result
+query_param_iterator(void *cls, enum MHD_ValueKind kind, const char *key, const char *value) {
+    (void)kind;
+    mhd_conn_state_t *state = (mhd_conn_state_t *)cls;
+    size_t count = 0;
+    if (state->query_params) {
+        while (state->query_params[count]) count++;
+    }
+    char **new_params = (char **)realloc(state->query_params, (count + 2) * sizeof(char *));
+    if (!new_params) return MHD_NO;
+    state->query_params = new_params;
+
+    if (value) {
+        size_t len = strlen(key) + strlen(value) + 2;
+        state->query_params[count] = (char *)malloc(len);
+        if (!state->query_params[count]) return MHD_NO;
+        snprintf(state->query_params[count], len, "%s=%s", key, value);
+    } else {
+        state->query_params[count] = strdup(key);
+        if (!state->query_params[count]) return MHD_NO;
+    }
+    state->query_params[count + 1] = NULL;
+    return MHD_YES;
+}
+
 /* ========================================================================
  * MHD access handler callback
  * ======================================================================== */
@@ -271,9 +268,13 @@ mhd_access_handler(void *cls,
     req.body = state->body;
     req.body_len = state->body_size;
 
-    /* URL → path + query params */
-    parse_url_query(url, &req);
-    state->query_params = req.query_params;  /* transfer ownership */
+    /* URL → path */
+    strncpy(req.path, url, sizeof(req.path) - 1);
+    req.path[sizeof(req.path) - 1] = '\0';
+
+    /* Extract query parameters using MHD API */
+    MHD_get_connection_values(connection, MHD_GET_ARGUMENT_KIND, query_param_iterator, state);
+    req.query_params = state->query_params;
 
     /* Client IP */
     get_client_ip(connection, req.client_ip, sizeof(req.client_ip));

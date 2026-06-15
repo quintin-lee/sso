@@ -234,7 +234,7 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
     if (br_read_line(br, line, sizeof(line)) <= 0) return -1;
 
     char method[16], path[SSO_MAX_PATH], version[16];
-    if (sscanf(line, "%15s %255s %15s", method, path, version) < 2) return -1;
+    if (sscanf(line, "%15s %1023s %15s", method, path, version) < 2) return -1;
 
     if (strcmp(method, "GET") == 0)        req->method = HTTP_GET;
     else if (strcmp(method, "POST") == 0)  req->method = HTTP_POST;
