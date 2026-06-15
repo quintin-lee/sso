@@ -356,6 +356,8 @@ int run_demo(sso_config_t *cfg) {
         printf("  token verify: %s  (user=%lu)\n",
                err == SSO_OK ? "OK" : sso_strerror(err),
                (unsigned long)decoded.user_id);
+        token_destroy(&decoded);
+        token_destroy(&token);
     }
 
     /* ---- 22. Role hierarchy ---- */

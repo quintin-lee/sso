@@ -84,7 +84,7 @@ static bool ip_matches_cidr(const char *ip_str,
     if (!parse_cidr(cidr_str, &net, &pre)) {
         return (strcmp(ip_str, cidr_str) == 0);
     }
-    unsigned int mask = (pre >= 32) ? 0xFFFFFFFFU : (0xFFFFFFFFU << (32 - pre));
+    unsigned int mask = (pre >= 32) ? 0xFFFFFFFFU : (pre ? (0xFFFFFFFFU << (32U - pre)) : 0U);
     return (ip & mask) == (net & mask);
 }
 
@@ -155,15 +155,8 @@ static sso_error_t loc_compile(permission_strategy_t *self,
             if (type && cJSON_IsString(type) &&
                 strcmp(type->valuestring, "geo") == 0) {
                 compiled->items[i].type = LOC_TYPE_GEO;
-            } else if (type && cJSON_IsString(type) &&
-                       strcmp(type->valuestring, "ip_cidr") == 0) {
-                compiled->items[i].type = LOC_TYPE_IP_CIDR;
-                if (!parse_cidr(compiled->items[i].value,
-                                &compiled->items[i].cidr_network,
-                                &compiled->items[i].cidr_prefix)) {
-                    compiled->items[i].type = LOC_TYPE_EXACT;
-                }
             } else {
+                /* Default: treat as IP CIDR (or EXACT if parse fails) */
                 compiled->items[i].type = LOC_TYPE_IP_CIDR;
                 if (!parse_cidr(compiled->items[i].value,
                                 &compiled->items[i].cidr_network,

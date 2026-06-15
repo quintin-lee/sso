@@ -97,6 +97,9 @@ sso_error_t eval_context_init(eval_context_t *ctx, const user_t *user) {
 
 void eval_context_destroy(eval_context_t *ctx) {
     if (!ctx) return;
+    /* Free data.record if it was strdup'd by perm_check_data */
+    free(ctx->params.data.record);
+    ctx->params.data.record = NULL;
     /* Free field_filter if allocated by data strategy */
     if (ctx->params.data.field_filter) {
         for (size_t i = 0; i < ctx->params.data.field_filter_count; i++) {

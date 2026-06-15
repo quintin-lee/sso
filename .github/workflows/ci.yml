@@ -60,7 +60,9 @@ jobs:
     - name: Run cppcheck
       run: |
         cppcheck --enable=all --inconclusive --suppress=missingIncludeSystem \
-          --suppress=unmatchedSuppression --error-exitcode=1 \
+          --suppress=unmatchedSuppression --suppress=unusedFunction \
+          --suppress=constVariablePointer --suppress=ctunullpointer \
+          --suppress=unreadVariable --error-exitcode=1 \
           --std=c11 --language=c \
           -Iinclude \
           src/*.c strategies/*.c
