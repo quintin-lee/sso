@@ -78,11 +78,7 @@
 #endif
 
 #ifndef NAN
-#ifdef _WIN32
-#define NAN sqrt(-1.0)
-#else
-#define NAN 0.0/0.0
-#endif
+#define NAN (0.0/0.0)
 #endif
 
 typedef struct {
@@ -296,9 +292,9 @@ typedef struct
 } parse_buffer;
 
 /* check if the given size is left to read in a given parse buffer (starting with 1) */
-#define can_read(buffer, size) ((buffer != NULL) && (((buffer)->offset + size) <= (buffer)->length))
+#define can_read(buffer, size) (((buffer)->offset + (size)) <= (buffer)->length)
 /* check if the buffer can be accessed at the given index (starting with 0) */
-#define can_access_at_index(buffer, index) ((buffer != NULL) && (((buffer)->offset + index) < (buffer)->length))
+#define can_access_at_index(buffer, index) (((buffer)->offset + (index)) < (buffer)->length)
 #define cannot_access_at_index(buffer, index) (!can_access_at_index(buffer, index))
 /* get a pointer to the buffer at the position */
 #define buffer_at_offset(buffer) ((buffer)->content + (buffer)->offset)
@@ -3202,5 +3198,4 @@ CJSON_PUBLIC(void *) cJSON_malloc(size_t size)
 CJSON_PUBLIC(void) cJSON_free(void *object)
 {
     global_hooks.deallocate(object);
-    object = NULL;
 }
