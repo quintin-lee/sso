@@ -77,7 +77,7 @@ static void json_error_response(http_response_t *resp, int status, const char *e
     snprintf(buf, sizeof(buf), "{\"error\":\"%s\"}", error);
     resp->status_code = status;
     resp->body = strdup(buf);
-    resp->body_len = strlen(buf);
+    resp->body_len = resp->body ? strlen(buf) : 0;
     strcpy(resp->content_type, "application/json");
 }
 
@@ -178,10 +178,12 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
     memset(&ac, 0, sizeof(ac));
     gen_auth_code(ac.code, sizeof(ac.code));
     strncpy(ac.client_id, client_id, sizeof(ac.client_id) - 1);
+    ac.client_id[sizeof(ac.client_id) - 1] = '\0';
     ac.user_id = user->id;
     strncpy(ac.redirect_uri, redirect_uri, sizeof(ac.redirect_uri) - 1);
-    if (scope) strncpy(ac.scope, scope, sizeof(ac.scope) - 1);
-    if (nonce) strncpy(ac.nonce, nonce, sizeof(ac.nonce) - 1);
+    ac.redirect_uri[sizeof(ac.redirect_uri) - 1] = '\0';
+    if (scope) { strncpy(ac.scope, scope, sizeof(ac.scope) - 1); ac.scope[sizeof(ac.scope) - 1] = '\0'; }
+    if (nonce) { strncpy(ac.nonce, nonce, sizeof(ac.nonce) - 1); ac.nonce[sizeof(ac.nonce) - 1] = '\0'; }
 
     /* Auth codes: 60s TTL by default */
     long ttl = cfg->oauth_auth_code_ttl_ms > 0 ? cfg->oauth_auth_code_ttl_ms : 60000;
@@ -209,7 +211,7 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
 
     resp->status_code = 302;
     resp->body = strdup(location);
-    resp->body_len = strlen(location);
+    resp->body_len = resp->body ? strlen(location) : 0;
     strcpy(resp->content_type, "text/plain");
     snprintf(resp->extra_headers, sizeof(resp->extra_headers),
              "Location: %s\r\n", location);
