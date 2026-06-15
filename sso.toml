@@ -1,0 +1,44 @@
+# SSO Configuration File
+# Environment variables override equivalent settings.
+# See README.md → Environment Variables for the full reference.
+
+[server]
+# host = "0.0.0.0"
+# port = 8080
+# thread_pool_size = 8
+# queue_size = 1024
+# request_timeout_ms = 10000
+# max_body_size = 1048576
+
+[database]
+# path = "sso_server.db"
+# use_memory = false
+
+[security]
+# token_secret = ""
+# private_key = ""
+# public_key = ""
+# admin_password = ""
+# token_ttl_ms = 3600000
+# password_opslimit = 3
+# password_memlimit = 268435456
+# tls_enabled = false
+# tls_cert_file = ""
+# tls_key_file = ""
+
+[sms]
+# gateway_url = ""
+# api_key = ""
+
+[oauth]
+# client_id = "sso-cli"
+# client_secret = ""
+# redirect_uris = ""
+# issuer = "http://localhost:8080"
+# auth_code_ttl_ms = 300000
+
+[logging]
+# level = 1   # 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR
+
+[ratelimit]
+# max_ips = 10000

@@ -26,9 +26,9 @@ A lightweight, enterprise-ready Single Sign-On (SSO) service written in C11, pro
 
 ## Project Status
 
-This project is in active development. The core authentication and authorization engine is stable and feature-complete with all 7 permission strategies implemented. The HTTP API server, Docker deployment, and CI pipeline are operational.
+The core authentication and authorization engine is stable and feature-complete with all 7 permission strategies implemented. The HTTP API server, Docker deployment, and CI pipeline are operational.
 
-**Current**: `v1.0.0` — core SSO engine, all 7 strategies, embedded HTTP server, Docker support.
+**Current**: `v1.1.0` — OAuth 2.0 / OIDC, libmicrohttpd backend, TOML config, Prometheus `/metrics` public, hardened C codebase.
 
 ---
 
@@ -40,6 +40,8 @@ This project is in active development. The core authentication and authorization
 - **SMS OTP Login**: Mobile verification code with auto-registration, served via libcurl to SMS gateway
 - **JWT-style Tokens**: HMAC-SHA256 signed tokens with roles, groups embdded in claims
 - **Token Revocation**: O(log N) binary search on revocaton lists for instant invalidation
+- **Token Refresh and Rotation**: Long-lived sessions with refresh token rotation
+- **OAuth 2.0 / OpenID Connect**: Authorization code flow, token introspection (RFC 7662), token revocation (RFC 7009), OIDC discovery, JWKS (RFC 7517), `/userinfo` endpoint
 
 ### Authorization — 7 Permission Strategies
 
@@ -84,19 +86,25 @@ sso/
 ├── include/                    # Header files
 │   ├── sso.h                  # Core types, error codes, strategy vtable, eval_context
 │   ├── cJSON.h                # Third-party JSON parser
+│   ├── config.h               # Configuration (TOML load + env overrides)
 │   ├── group.h                # Group management API
+│   ├── oauth.h                # OAuth 2.0 / OIDC handler declarations
 │   ├── permission.h           # Permission engine API
 │   ├── policy.h               # Policy management API
 │   ├── ratelimit.h            # Rate limiter API
 │   ├── role.h                 # Role management API (with hierarchy)
-│   ├── server.h               # Embedded HTTP server API
+│   ├── server.h               # Embedded HTTP server API (unified interface)
 │   ├── storage.h              # Storage abstraction layer (pluggable backend)
 │   ├── token.h                # Token / session management API
+│   ├── toml.h                 # Third-party TOML parser
 │   └── user.h                 # User management API
 ├── src/                        # Source files
 │   ├── main.c                 # Entry point: demo / server / interactive modes
 │   ├── sso.c                  # Core lifecycle: sso_init(), sso_destroy()
-│   ├── server.c               # POSIX socket HTTP server + thread pool
+│   ├── server.c               # POSIX socket HTTP server + thread pool (legacy backend)
+│   ├── server_mhd.c           # libmicrohttpd HTTP server (primary backend)
+│   ├── config.c               # TOML parser + environment variable loader
+│   ├── oauth.c                # OAuth 2.0 / OIDC endpoint implementations
 │   ├── user.c                 # User manager (Argon2id hashing)
 │   ├── role.c                 # Role manager (hierarchy support)
 │   ├── group.c                # Group manager (hierarchy support)
@@ -106,8 +114,10 @@ sso/
 │   ├── ratelimit.c            # Sliding-window rate limiter (DJB2 hash table)
 │   ├── storage_sqlite.c       # SQLite storage backend (WAL mode, recursive CTE)
 │   ├── cJSON.c                # Third-party JSON parser
+│   ├── logger.c               # Logger with level-based filtering
 │   ├── login_page.h           # Embedded login HTML page
-│   └── admin_page.h           # Embedded admin HTML page
+│   ├── admin_page.h           # Embedded admin HTML page
+│   ├── toml.c                 # Third-party TOML parser
 ├── strategies/                 # 7 pluggable permission strategies
 │   ├── func_perm.c            # Functional permission
 │   ├── api_perm.c             # API endpoint permission
@@ -116,9 +126,22 @@ sso/
 │   ├── loc_perm.c             # Location/IP permission
 │   ├── abac_perm.c            # Attribute-based access control
 │   └── lbac_perm.c            # Label-based access control
+├── tests/                      # Unit and integration tests
+│   ├── minunit.h              # Minimal unit test framework (header-only)
+│   ├── test_config.c          # Configuration tests
+│   ├── test_group.c           # Group manager tests
+│   ├── test_http_api.c        # HTTP API integration tests
+│   ├── test_policy.c          # Policy manager tests
+│   ├── test_ratelimit.c       # Rate limiter tests
+│   ├── test_role.c            # Role manager tests
+│   ├── test_server.c          # Server route/handler tests
+│   ├── test_storage.c         # Storage backend tests
+│   ├── test_token.c           # Token manager tests
+│   └── test_user.c            # User manager tests
 ├── Makefile                   # Build system
 ├── Dockerfile                 # Multi-stage Docker build
 ├── docker-compose.yml         # Docker Compose configuration
+├── sso.toml                   # Default TOML configuration
 └── login.html                 # Standalone login UI
 ```
 
@@ -130,17 +153,17 @@ sso/
 
 **Debian / Ubuntu:**
 ```bash
-sudo apt-get install libsqlite3-dev libssl-dev libsodium-dev libcurl4-openssl-dev
+sudo apt-get install libsqlite3-dev libssl-dev libsodium-dev libcurl4-openssl-dev libmicrohttpd-dev
 ```
 
 **Alpine:**
 ```bash
-apk add sqlite-dev openssl-dev libsodium-dev curl-dev gcc musl-dev make
+apk add sqlite-dev openssl-dev libsodium-dev curl-dev libmicrohttpd-dev gcc musl-dev make
 ```
 
 **macOS (Homebrew):**
 ```bash
-brew install sqlite openssl libsodium curl
+brew install sqlite openssl libsodium curl libmicrohttpd
 ```
 
 ### 2. Build
@@ -162,6 +185,10 @@ export SSO_TOKEN_SECRET=your_long_secure_secret
 
 # Interactive mode: text-based policy creation console
 ./sso_system --interactive
+
+# Quick reference
+./sso_system --help
+./sso_system --version
 ```
 
 ### 4. Other Make Targets
@@ -172,6 +199,11 @@ export SSO_TOKEN_SECRET=your_long_secure_secret
 | `make debug` | Debug build with symbols |
 | `make run` | Build and run demo |
 | `make server` | Build and run HTTP server |
+| `make test` | Build and run unit tests |
+| `make integration-test` | Build and run integration tests |
+| `make check` | Run all: demo + unit tests + integration tests |
+| `make asan` | Build with AddressSanitizer + UndefinedBehaviorSanitizer |
+| `make docker` | Build production Docker image |
 | `make clean` | Remove `build/`, binary, and `*.db` files |
 | `make size` | Show binary size stats |
 
@@ -185,8 +217,10 @@ export SSO_TOKEN_SECRET=your_long_secure_secret
 | **OpenSSL** | HMAC-SHA256 token signatures |
 | **SQLite3** | Persistent storage (WAL mode, recursive CTE for hierarchy) |
 | **libcurl** | SMS gateway HTTP calls |
+| **libmicrohttpd** | Embedded HTTP server (optional; falls back to POSIX sockets) |
 | **pthread** | Thread pool, mutex/rwlock synchronization |
 | **cJSON** | Vendored JSON parser (included in source) |
+| **toml.c** | Vendored TOML parser (included in source) |
 
 ---
 
@@ -198,43 +232,69 @@ Creates 3 users (admin, alice, bob), 3 roles (admin -> editor -> viewer hierarch
 
 ### Server Mode (`--server`)
 
-Starts an embedded HTTP server backed by an 8-worker thread pool (queue depth 1024), serving REST APIs on `0.0.0.0:8080`. On first start, bootstraps an admin account and default policies.
+Starts an embedded HTTP server backed by either **libmicrohttpd** (preferred, multi-threaded) or **POSIX sockets** (fallback), serving REST APIs on `0.0.0.0:8080`. On first start, bootstraps an admin account and default policies.
+
+Features:
+- CORS support with preflight handling
+- Security headers (CSP, X-Frame-Options, HSTS)
+- TLS/HTTPS support
+- Request body size limits
+- Configurable thread pool
 
 ### Interactive Mode (`--interactive`)
 
 Text-based console for creating and managing policies interactively across all 7 strategy types.
 
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `-c, --config FILE` | Load TOML configuration file (default: `sso.toml`) |
+| `-h, --help` | Show usage help and exit |
+| `-v, --version` | Show version and exit |
+
 ---
 
 ## API Reference
+
+### Public Pages
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Login page (embedded HTML) |
+| `GET` | `/login` | Login page (alias) |
+| `GET` | `/admin` | Admin management page (embedded HTML; JS handles auth guard) |
 
 ### Authentication
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET` | `/` | No | Login page (HTML) |
-| `GET` | `/admin` | No | Admin management page |
 | `POST` | `/api/v1/auth/register` | No | Register new user |
 | `POST` | `/api/v1/auth/login` | No | Password-based login (rate-limited: 5/min/IP) |
 | `POST` | `/api/v1/auth/send_sms` | No | Send SMS OTP code (rate-limited: 1/min/IP) |
 | `POST` | `/api/v1/auth/login_by_sms` | No | SMS code login with auto-registration |
-| `POST` | `/api/v1/auth/verify` | No | Validate token |
+| `GET/POST` | `/api/v1/auth/verify` | No | Validate token |
 | `POST` | `/api/v1/auth/refresh` | Yes | Refresh token |
-| `POST` | `/api/v1/auth/logout` | Yes | Revoke token |
+| `POST` | `/api/v1/auth/logout` | Yes | Revoke single token |
+| `POST` | `/api/v1/auth/logout_all` | Yes | Revoke all user tokens |
+| `POST` | `/api/v1/auth/password` | Yes | Change password |
 | `GET` | `/api/v1/auth/me` | Yes | Get current user info |
+| `GET` | `/api/v1/auth/userinfo` | Yes | OIDC /userinfo (standard claims) |
+| `GET` | `/api/v1/auth/certs` | No | RSA public keys (PEM) for token verification |
+| `GET` | `/api/v1/auth/jwks` | No | JWKS key set (RFC 7517) |
 
 ### Permission Checks
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `POST` | `/api/v1/check` | No | Unified check (any strategy) |
-| `POST` | `/api/v1/check/functional` | No | Check functional permission |
-| `POST` | `/api/v1/check/api` | No | Check API endpoint access |
-| `POST` | `/api/v1/check/data` | No | Check data scope access |
-| `POST` | `/api/v1/check/rbac` | No | Check role membership |
-| `POST` | `/api/v1/check/location` | No | Check IP-based access |
-| `POST` | `/api/v1/check/lbac` | No | Check label-based access |
-| `POST` | `/api/v1/check/abac` | No | Check attribute-based access |
+| `POST` | `/api/v1/check` | Yes | Unified check (any strategy) |
+| `POST` | `/api/v1/check/functional` | Yes | Check functional permission |
+| `POST` | `/api/v1/check/api` | Yes | Check API endpoint access |
+| `POST` | `/api/v1/check/data` | Yes | Check data scope access |
+| `POST` | `/api/v1/check/rbac` | Yes | Check role membership |
+| `POST` | `/api/v1/check/location` | Yes | Check IP-based access |
+| `POST` | `/api/v1/check/lbac` | Yes | Check label-based access |
+| `POST` | `/api/v1/check/abac` | Yes | Check attribute-based access |
 
 ### Administration (require auth)
 
@@ -248,17 +308,31 @@ Text-based console for creating and managing policies interactively across all 7
 | `POST` | `/api/v1/roles/{id}/unassign` | Unassign role from user |
 | `GET/POST` | `/api/v1/groups` | List / create groups |
 | `GET/PUT/DELETE` | `/api/v1/groups/{id}` | Get / update / delete group |
+| `POST` | `/api/v1/groups/{id}/members` | Add member to group |
+| `DELETE` | `/api/v1/groups/{id}/members/{user_id}` | Remove member from group |
 | `GET/POST` | `/api/v1/policies` | List / create policies |
 | `GET/PUT/DELETE` | `/api/v1/policies/{id}` | Get / update / delete policy |
 | `POST` | `/api/v1/policies/{id}/assign` | Assign policy |
 | `POST` | `/api/v1/policies/{id}/unassign` | Unassign policy |
+| `GET` | `/api/v1/audit/logs` | List audit log entries |
+| `GET` | `/api/v1/admin/status` | System admin status |
 
-### Monitoring
+### OAuth 2.0 / OpenID Connect
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/.well-known/openid-configuration` | No | OIDC discovery document |
+| `GET` | `/api/v1/oauth/authorize` | Yes | Authorization endpoint (auth code flow) |
+| `POST` | `/api/v1/oauth/token` | No | Token endpoint (exchange code for tokens) |
+| `POST` | `/api/v1/oauth/introspect` | Yes | Token introspection (RFC 7662) |
+| `POST` | `/api/v1/oauth/revoke` | Yes | Token revocation (RFC 7009) |
+
+### Monitoring (No Auth)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/v1/health` | Health check |
-| `GET` | `/metrics` | Prometheus metrics |
+| `GET` | `/api/v1/health` | Health check (liveness probe) |
+| `GET` | `/metrics` | Prometheus metrics (cache hit rates, eval duration, counters) |
 
 ---
 
@@ -267,13 +341,14 @@ Text-based console for creating and managing policies interactively across all 7
 ```
 [ Clients ] ───▶ [ Nginx / API Gateway ]
                      │
-                     ▼ (auth_request)
+                     ▼ (auth_request / OAuth Bearer)
               [ sso_system (C11) ] ◀───▶ [ SQLite (WAL) ]
-                ├─ Thread Pool (8 workers)
+                ├─ libmicrohttpd / POSIX sockets (dual backend)
                 ├─ L1 Resolution Cache (60s TTL)
                 ├─ L2 Decision Cache (30s TTL)
                 ├─ Pre-compiled Rule ASTs
                 ├─ 7 Strategy Registry
+                ├─ OAuth 2.0 / OIDC Provider
                 └─ Audit Logger (audit.log)
 ```
 
@@ -312,30 +387,70 @@ perm_engine_evaluate()
 
 ## Environment Variables
 
+All configuration can be set via environment, TOML config file (`sso.toml`), or both — env vars override file values.
+
+### Server
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SSO_HOST` | `0.0.0.0` | Bind address |
+| `SSO_PORT` | `8080` | HTTP port |
+| `SSO_TLS_ENABLED` | `false` | Enable HTTPS (`true`/`false`) |
+| `SSO_TLS_CERT_FILE` | — | Path to TLS certificate PEM file |
+| `SSO_TLS_KEY_FILE` | — | Path to TLS private key PEM file |
+| `SSO_REQUEST_TIMEOUT_MS` | `30000` | Request timeout in milliseconds |
+| `SSO_MAX_BODY_SIZE` | `1048576` | Maximum request body size (bytes) |
+
+### Authentication
+
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `SSO_TOKEN_SECRET` | Yes (HS256) | 32-byte HMAC secret for token signing. |
-| `SSO_PRIVATE_KEY` | Yes (RS256) | RSA Private Key (PEM format) for asymmetric signing. |
-| `SSO_PUBLIC_KEY` | No (RS256) | RSA Public Key (PEM format). If not set, derived from private key. |
-| `SSO_ADMIN_PASSWORD` | Recommended | Initial admin password. If not set, a random one is generated. |
+| `SSO_TOKEN_SECRET` | Yes (HS256) | 32-byte HMAC secret for token signing |
+| `SSO_PRIVATE_KEY` | Yes (RS256) | RSA Private Key (PEM) for asymmetric signing |
+| `SSO_PUBLIC_KEY` | No (RS256) | RSA Public Key (PEM); derived from private key if unset |
+| `SSO_ADMIN_PASSWORD` | Recommended | Initial admin password; random generated if unset |
+| `SSO_PASSWORD_OPSLIMIT` | `4` | Argon2id ops limit (log2 scale) |
+| `SSO_PASSWORD_MEMLIMIT` | `16` | Argon2id memory limit (log2 MiB) |
 
-### Generating RS256 Keys
+### OAuth 2.0 / OIDC
 
-To enable industrial-grade asymmetric signing, generate an RSA key pair:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SSO_OAUTH_CLIENT_ID` | `sso-cli` | OAuth client ID |
+| `SSO_OAUTH_CLIENT_SECRET` | — | OAuth client secret |
+| `SSO_OAUTH_REDIRECT_URIS` | — | Comma-separated redirect URIs |
+| `SSO_OAUTH_ISSUER` | `http://localhost:8080` | OIDC issuer URL |
+| `SSO_OAUTH_AUTH_CODE_TTL_MS` | `300000` | Authorization code TTL (5 min) |
 
+### SMS
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SSO_SMS_GATEWAY_URL` | — | SMS gateway endpoint URL; unset = mock mode |
+| `SSO_SMS_API_KEY` | — | SMS gateway API key |
+
+### Observability
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SSO_LOG_LEVEL` | `1` | Log level (0=DEBUG, 1=INFO, 2=WARN, 3=ERROR) |
+
+### Signature Key Setup
+
+**HS256 (symmetric, default):**
 ```bash
-# Generate 2048-bit RSA private key
+export SSO_TOKEN_SECRET=$(openssl rand -hex 32)
+```
+
+**RS256 (asymmetric, preferred for production):**
+```bash
 openssl genrsa -out private.pem 2048
-
-# Extract public key
 openssl rsa -in private.pem -pubout -out public.pem
-
-# Use in environment
 export SSO_PRIVATE_KEY=$(cat private.pem)
 export SSO_PUBLIC_KEY=$(cat public.pem)
 ```
 
-The system automatically switches to **RS256** mode if `SSO_PRIVATE_KEY` is present. Public keys for verification are exported at `/api/v1/auth/certs`.
+The system auto-detects RS256 when `SSO_PRIVATE_KEY` is set. Public keys are exported at `/api/v1/auth/certs` and JWKS at `/api/v1/auth/jwks`.
 
 ---
 
@@ -367,7 +482,7 @@ docker run -d \
   sso-system
 ```
 
-The Docker image runs as the `nobody` user and exposes port 8080.
+The Docker image runs as the `nobody` user, includes a **HEALTHCHECK** against `/api/v1/health`, and exposes port 8080.
 
 ---
 
@@ -379,9 +494,13 @@ This project uses **GitHub Actions** for continuous integration.
 
 | Step | Description |
 |------|-------------|
-| **Install dependencies** | `build-essential`, `libsqlite3-dev`, `libsodium-dev`, `libssl-dev`, `libcurl4-openssl-dev` |
+| **Install dependencies** | `build-essential`, `libsqlite3-dev`, `libsodium-dev`, `libssl-dev`, `libcurl4-openssl-dev`, `libmicrohttpd-dev` |
 | **Build** | `make` (release build with `-Wall -Wextra -Wpedantic`) |
 | **Run demo** | Executes `./sso_system` which runs comprehensive permission checks and cache stress tests |
+| **Unit tests** | `./sso_test` — runs all 55 unit tests |
+| **Integration tests** | `./sso_test_integration` — runs all 22 integration tests |
+| **AddressSanitizer** | `make asan && ./sso_test` — memory safety + undefined behavior checks |
+| **Static analysis** | `cppcheck --enable=all --suppress=missingIncludeSystem .` |
 
 ### Workflow: `docker-build` (on build-and-test success)
 
@@ -440,6 +559,34 @@ refactor(core): ♻️ extract validation logic to helper
 3. Register in `src/permission.c` alongside existing strategies
 4. Add a convenience checker like `perm_check_your()` if appropriate
 
+### Running Tests
+
+```bash
+# Unit tests (minunit + C11)
+make test && ./sso_test
+
+# Integration tests (full HTTP API round-trips)
+make integration-test && ./sso_test_integration
+
+# Run everything: demo + unit + integration
+make check
+
+# Memory/UB sanitizers
+make asan && ./sso_test
+
+# Static analysis
+cppcheck --enable=all --suppress=missingIncludeSystem .
+```
+
+### Code Style
+
+- C11 standard (`-std=c11`), compiled with `-Wall -Wextra -Wpedantic`
+- BSD-style indentation (tabs for indent, 4-column widths)
+- Function names: `snake_case` prefixed by module (`perm_engine_`, `policy_`, `sso_`)
+- Error handling: return `sso_error_t` enum values, never silently discard errors
+- All allocations checked: `malloc`/`calloc` return values verified before use
+- String safety: `SSO_STRNCPY_DST` macro guarantees null-termination after copy
+
 ### Performance Telemetry
 
 Monitor the `audit.log` or `/metrics` endpoint to observe sub-millisecond performance. Cache hit rates and evaluation duration are tracked using atomic counters for zero-runtime-overhead monitoring.
@@ -450,5 +597,9 @@ Monitor the `audit.log` or `/metrics` endpoint to observe sub-millisecond perfor
 - All password hashing uses Argon2id with moderate parameters
 - Token revocation uses binary search for O(log N) lookup
 - DENY-override evaluation model ensures fail-closed behavior
-- Server runs as non-root in Docker by default
+- Server runs as non-root in Docker by default (HEALTHCHECK enabled)
 - Rate limiting prevents brute-force on login and SMS endpoints
+- Security headers (CSP, X-Frame-Options, X-Content-Type-Options) sent on all responses
+- TLS support with certificate and key file loading
+- CORS allows origin-specific configuration with `Access-Control-Allow-Credentials`
+- Request body size limited to `SSO_MAX_BODY_SIZE` (default 1 MiB)
