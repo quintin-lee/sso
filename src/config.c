@@ -190,25 +190,27 @@ void sso_config_apply_env(sso_config_t *cfg) {
     if (!cfg) return;
 
     char *val;
-    if ((val = getenv("SSO_HOST"))) strncpy(cfg->host, val, sizeof(cfg->host)-1);
+#define SSO_STRNCPY_DST(dst, src) do { strncpy((dst), (src), sizeof(dst)-1); (dst)[sizeof(dst)-1] = '\0'; } while(0)
+    if ((val = getenv("SSO_HOST"))) SSO_STRNCPY_DST(cfg->host, val);
     if ((val = getenv("SSO_PORT"))) cfg->port = atoi(val);
-    if ((val = getenv("SSO_TOKEN_SECRET"))) strncpy(cfg->token_secret, val, sizeof(cfg->token_secret)-1);
-    if ((val = getenv("SSO_PRIVATE_KEY"))) strncpy(cfg->private_key_pem, val, sizeof(cfg->private_key_pem)-1);
-    if ((val = getenv("SSO_PUBLIC_KEY"))) strncpy(cfg->public_key_pem, val, sizeof(cfg->public_key_pem)-1);
-    if ((val = getenv("SSO_ADMIN_PASSWORD"))) strncpy(cfg->admin_password, val, sizeof(cfg->admin_password)-1);
-    if ((val = getenv("SSO_SMS_GATEWAY_URL"))) strncpy(cfg->sms_gateway_url, val, sizeof(cfg->sms_gateway_url)-1);
-    if ((val = getenv("SSO_SMS_API_KEY"))) strncpy(cfg->sms_api_key, val, sizeof(cfg->sms_api_key)-1);
+    if ((val = getenv("SSO_TOKEN_SECRET"))) SSO_STRNCPY_DST(cfg->token_secret, val);
+    if ((val = getenv("SSO_PRIVATE_KEY"))) SSO_STRNCPY_DST(cfg->private_key_pem, val);
+    if ((val = getenv("SSO_PUBLIC_KEY"))) SSO_STRNCPY_DST(cfg->public_key_pem, val);
+    if ((val = getenv("SSO_ADMIN_PASSWORD"))) SSO_STRNCPY_DST(cfg->admin_password, val);
+    if ((val = getenv("SSO_SMS_GATEWAY_URL"))) SSO_STRNCPY_DST(cfg->sms_gateway_url, val);
+    if ((val = getenv("SSO_SMS_API_KEY"))) SSO_STRNCPY_DST(cfg->sms_api_key, val);
     { char *ev = getenv("SSO_PASSWORD_OPSLIMIT"); if (ev) cfg->password_opslimit = (unsigned long)atol(ev); }
     { char *ev = getenv("SSO_PASSWORD_MEMLIMIT"); if (ev) cfg->password_memlimit = (unsigned long)atol(ev); }
     { char *ev = getenv("SSO_LOG_LEVEL"); if (ev) { cfg->log_level = atoi(ev); if (cfg->log_level < LOG_DEBUG) cfg->log_level = LOG_DEBUG; if (cfg->log_level > LOG_ERROR) cfg->log_level = LOG_ERROR; } }
     if ((val = getenv("SSO_REQUEST_TIMEOUT_MS"))) cfg->request_timeout_ms = atoi(val);
     if ((val = getenv("SSO_MAX_BODY_SIZE"))) cfg->max_body_size = atol(val);
     if ((val = getenv("SSO_TLS_ENABLED"))) cfg->tls_enabled = (strcmp(val, "1") == 0 || strcasecmp(val, "true") == 0);
-    if ((val = getenv("SSO_TLS_CERT_FILE"))) strncpy(cfg->tls_cert_file, val, sizeof(cfg->tls_cert_file)-1);
-    if ((val = getenv("SSO_TLS_KEY_FILE"))) strncpy(cfg->tls_key_file, val, sizeof(cfg->tls_key_file)-1);
-    if ((val = getenv("SSO_OAUTH_CLIENT_ID"))) strncpy(cfg->oauth_client_id, val, sizeof(cfg->oauth_client_id)-1);
-    if ((val = getenv("SSO_OAUTH_CLIENT_SECRET"))) strncpy(cfg->oauth_client_secret, val, sizeof(cfg->oauth_client_secret)-1);
-    if ((val = getenv("SSO_OAUTH_REDIRECT_URIS"))) strncpy(cfg->oauth_redirect_uris, val, sizeof(cfg->oauth_redirect_uris)-1);
-    if ((val = getenv("SSO_OAUTH_ISSUER"))) strncpy(cfg->oauth_issuer, val, sizeof(cfg->oauth_issuer)-1);
+    if ((val = getenv("SSO_TLS_CERT_FILE"))) SSO_STRNCPY_DST(cfg->tls_cert_file, val);
+    if ((val = getenv("SSO_TLS_KEY_FILE"))) SSO_STRNCPY_DST(cfg->tls_key_file, val);
+    if ((val = getenv("SSO_OAUTH_CLIENT_ID"))) SSO_STRNCPY_DST(cfg->oauth_client_id, val);
+    if ((val = getenv("SSO_OAUTH_CLIENT_SECRET"))) SSO_STRNCPY_DST(cfg->oauth_client_secret, val);
+    if ((val = getenv("SSO_OAUTH_REDIRECT_URIS"))) SSO_STRNCPY_DST(cfg->oauth_redirect_uris, val);
+    if ((val = getenv("SSO_OAUTH_ISSUER"))) SSO_STRNCPY_DST(cfg->oauth_issuer, val);
     { char *ev = getenv("SSO_OAUTH_AUTH_CODE_TTL_MS"); if (ev) cfg->oauth_auth_code_ttl_ms = atol(ev); }
+#undef SSO_STRNCPY_DST
 }
