@@ -54,7 +54,8 @@ static const char *test_login_success() {
     sso_error_t err = user_authenticate(umgr, "admin", "Admin1@345", &user);
     ASSERT_INT_EQUAL(err, SSO_OK);
 
-    sso_id_t roles[16], groups[16];
+    sso_id_t roles[16] = {0};
+    sso_id_t groups[16] = {0};
     size_t rc = 0, gc = 0;
     user_get_roles(umgr, user.id, roles, &rc, 16);
 
@@ -175,7 +176,8 @@ static const char *test_refresh_token() {
     user_t user;
     user_authenticate(umgr, "admin", "Admin1@345", &user);
 
-    sso_id_t roles[16], groups[16];
+    sso_id_t roles[16] = {0};
+    sso_id_t groups[16] = {0};
     size_t rc = 0, gc = 0;
     user_get_roles(umgr, user.id, roles, &rc, 16);
 
