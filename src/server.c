@@ -173,7 +173,20 @@ static void pool_init(sso_server_t *server) {
     g_pool.threads = (pthread_t *)calloc((size_t)pool_size, sizeof(pthread_t));
     g_pool.queue = (task_t *)calloc((size_t)queue_size, sizeof(task_t));
 
-    pthread_mutex_init(&g_pool.lock, NULL);
+    if (!g_pool.threads || !g_pool.queue) {
+        LOG_ERROR("Failed to allocate thread pool (threads=%p queue=%p)",
+                  (void *)g_pool.threads, (void *)g_pool.queue);
+        free(g_pool.threads);
+        free(g_pool.queue);
+        g_pool.threads = NULL;
+        g_pool.queue = NULL;
+        /* Signal failure to caller via pool_size = 0 */
+        g_pool.pool_size = 0;
+        g_pool.queue_size = 0;
+        pthread_mutex_destroy(&g_pool.lock);
+        pthread_cond_destroy(&g_pool.notify);
+        return;
+    }    pthread_mutex_init(&g_pool.lock, NULL);
     pthread_cond_init(&g_pool.notify, NULL);
 
     for (int i = 0; i < pool_size; i++) {
@@ -306,7 +319,7 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
 void sso_response_ok(http_response_t *resp, const char *body_json) {
     resp->status_code = 200;
     resp->body = strdup(body_json);
-    resp->body_len = strlen(body_json);
+    resp->body_len = resp->body ? strlen(body_json) : 0;
     strcpy(resp->content_type, "application/json");
 }
 
@@ -315,7 +328,7 @@ void sso_response_error(http_response_t *resp, int status_code, const char *mess
     char buf[1024];
     snprintf(buf, sizeof(buf), "{\"error\":\"%s\"}", message);
     resp->body = strdup(buf);
-    resp->body_len = strlen(buf);
+    resp->body_len = resp->body ? strlen(buf) : 0;
     strcpy(resp->content_type, "application/json");
 }
 

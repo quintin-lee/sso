@@ -68,7 +68,7 @@ bool match_route(const char *pattern, const char *path, char **params) {
 void sso_response_ok(http_response_t *resp, const char *body_json) {
     resp->status_code = 200;
     resp->body = strdup(body_json);
-    resp->body_len = strlen(body_json);
+    resp->body_len = resp->body ? strlen(body_json) : 0;
     strcpy(resp->content_type, "application/json");
 }
 
@@ -77,7 +77,7 @@ void sso_response_error(http_response_t *resp, int status_code, const char *mess
     char buf[1024];
     snprintf(buf, sizeof(buf), "{\"error\":\"%s\"}", message);
     resp->body = strdup(buf);
-    resp->body_len = strlen(buf);
+    resp->body_len = resp->body ? strlen(buf) : 0;
     strcpy(resp->content_type, "application/json");
 }
 
