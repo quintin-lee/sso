@@ -68,7 +68,7 @@ static sso_error_t func_compile(permission_strategy_t *self,
     cJSON *root = cJSON_Parse(rules_json);
     if (!root) return SSO_ERR_RULE_INVALID;
 
-    cJSON *funcs = cJSON_GetObjectItem(root, "functions");
+    const cJSON *funcs = cJSON_GetObjectItem(root, "functions");
     if (!cJSON_IsArray(funcs)) {
         cJSON_Delete(root);
         return SSO_ERR_RULE_INVALID;
@@ -90,9 +90,9 @@ static sso_error_t func_compile(permission_strategy_t *self,
     }
 
     for (size_t i = 0; i < count; i++) {
-        cJSON *item = cJSON_GetArrayItem(funcs, (int)i);
-        cJSON *code = cJSON_GetObjectItem(item, "code");
-        cJSON *effect = cJSON_GetObjectItem(item, "effect");
+        const cJSON *item = cJSON_GetArrayItem(funcs, (int)i);
+        const cJSON *code = cJSON_GetObjectItem(item, "code");
+        const cJSON *effect = cJSON_GetObjectItem(item, "effect");
 
         if (cJSON_IsString(code)) {
             strncpy(compiled->items[i].code, code->valuestring, 127);

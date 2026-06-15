@@ -105,7 +105,7 @@ static sso_error_t abac_compile(permission_strategy_t *self,
     cJSON *root = cJSON_Parse(rules_json);
     if (!root) return SSO_ERR_RULE_INVALID;
 
-    cJSON *conditions = cJSON_GetObjectItem(root, "conditions");
+    const cJSON *conditions = cJSON_GetObjectItem(root, "conditions");
     if (!cJSON_IsArray(conditions)) {
         cJSON_Delete(root);
         return SSO_ERR_RULE_INVALID;
@@ -126,19 +126,19 @@ static sso_error_t abac_compile(permission_strategy_t *self,
     }
 
     /* Parse logic and effect */
-    cJSON *logic = cJSON_GetObjectItem(root, "logic");
+    const cJSON *logic = cJSON_GetObjectItem(root, "logic");
     compiled->is_or_logic = (logic && cJSON_IsString(logic) && strcmp(logic->valuestring, "or") == 0);
 
-    cJSON *effect = cJSON_GetObjectItem(root, "effect");
+    const cJSON *effect = cJSON_GetObjectItem(root, "effect");
     compiled->is_allow_effect = !(effect && cJSON_IsString(effect) && strcmp(effect->valuestring, "deny") == 0);
 
     /* Parse conditions */
     for (size_t i = 0; i < compiled->count; i++) {
-        cJSON *item = cJSON_GetArrayItem(conditions, (int)i);
-        cJSON *src = cJSON_GetObjectItem(item, "source");
-        cJSON *attr = cJSON_GetObjectItem(item, "attr");
-        cJSON *op = cJSON_GetObjectItem(item, "op");
-        cJSON *val = cJSON_GetObjectItem(item, "value");
+        const cJSON *item = cJSON_GetArrayItem(conditions, (int)i);
+        const cJSON *src = cJSON_GetObjectItem(item, "source");
+        const cJSON *attr = cJSON_GetObjectItem(item, "attr");
+        const cJSON *op = cJSON_GetObjectItem(item, "op");
+        const cJSON *val = cJSON_GetObjectItem(item, "value");
 
         if (attr && cJSON_IsString(attr)) {
             strncpy(compiled->conditions[i].attr_name, attr->valuestring, 63);
@@ -183,7 +183,7 @@ static void abac_free_compiled(permission_strategy_t *self,
 
 static const char *get_attr_from_cjson(cJSON *root, const char *attr_name, char *buffer, size_t buf_size) {
     if (!root || !attr_name) return NULL;
-    cJSON *item = cJSON_GetObjectItem(root, attr_name);
+    const cJSON *item = cJSON_GetObjectItem(root, attr_name);
     if (!item) return NULL;
     
     if (cJSON_IsString(item)) {
@@ -218,7 +218,7 @@ static sso_error_t abac_evaluate(permission_strategy_t *self,
     if (ctx->environment[0] != '\0') env_root = cJSON_Parse(ctx->environment);
 
     for (size_t i = 0; i < compiled->count; i++) {
-        abac_condition_t *cond = &compiled->conditions[i];
+        const abac_condition_t *cond = &compiled->conditions[i];
         cJSON *source_root = NULL;
 
         switch (cond->source) {

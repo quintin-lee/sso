@@ -98,7 +98,7 @@ static sso_error_t rbac_compile(permission_strategy_t *self,
     cJSON *root = cJSON_Parse(rules_json);
     if (!root) return SSO_ERR_RULE_INVALID;
 
-    cJSON *roles_arr = cJSON_GetObjectItem(root, "roles");
+    const cJSON *roles_arr = cJSON_GetObjectItem(root, "roles");
     if (!cJSON_IsArray(roles_arr)) {
         cJSON_Delete(root);
         return SSO_ERR_RULE_INVALID;
@@ -120,9 +120,9 @@ static sso_error_t rbac_compile(permission_strategy_t *self,
     }
 
     for (size_t i = 0; i < count; i++) {
-        cJSON *item = cJSON_GetArrayItem(roles_arr, (int)i);
-        cJSON *name = cJSON_GetObjectItem(item, "name");
-        cJSON *effect = cJSON_GetObjectItem(item, "effect");
+        const cJSON *item = cJSON_GetArrayItem(roles_arr, (int)i);
+        const cJSON *name = cJSON_GetObjectItem(item, "name");
+        const cJSON *effect = cJSON_GetObjectItem(item, "effect");
 
         if (cJSON_IsString(name)) {
             strncpy(compiled->items[i].role_name, name->valuestring, 63);
@@ -186,7 +186,7 @@ static sso_error_t rbac_validate(permission_strategy_t *self,
     cJSON *root = cJSON_Parse(rules_json);
     if (!root) return SSO_ERR_RULE_INVALID;
 
-    cJSON *roles = cJSON_GetObjectItem(root, "roles");
+    const cJSON *roles = cJSON_GetObjectItem(root, "roles");
     if (!cJSON_IsArray(roles)) {
         cJSON_Delete(root);
         return SSO_ERR_RULE_INVALID;

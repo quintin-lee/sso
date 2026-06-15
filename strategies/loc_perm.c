@@ -111,7 +111,7 @@ static sso_error_t loc_compile(permission_strategy_t *self,
     cJSON *root = cJSON_Parse(rules_json);
     if (!root) return SSO_ERR_RULE_INVALID;
 
-    cJSON *location_list = cJSON_GetObjectItem(root, "locations");
+    const cJSON *location_list = cJSON_GetObjectItem(root, "locations");
     if (!cJSON_IsArray(location_list)) {
         location_list = cJSON_GetObjectItem(root, "allowed_ips");
     }
@@ -134,7 +134,7 @@ static sso_error_t loc_compile(permission_strategy_t *self,
     }
 
     for (size_t i = 0; i < count; i++) {
-        cJSON *item = cJSON_GetArrayItem(location_list, (int)i);
+        const cJSON *item = cJSON_GetArrayItem(location_list, (int)i);
 
         if (cJSON_IsString(item)) {
             /* Simple string format: exact IP match */
@@ -145,8 +145,8 @@ static sso_error_t loc_compile(permission_strategy_t *self,
         } else if (cJSON_IsObject(item)) {
             /* Object format: {type, value, effect} */
             cJSON *type  = cJSON_GetObjectItem(item, "type");
-            cJSON *value = cJSON_GetObjectItem(item, "value");
-            cJSON *effect = cJSON_GetObjectItem(item, "effect");
+            const cJSON *value = cJSON_GetObjectItem(item, "value");
+            const cJSON *effect = cJSON_GetObjectItem(item, "effect");
 
             if (value && cJSON_IsString(value))
                 strncpy(compiled->items[i].value,

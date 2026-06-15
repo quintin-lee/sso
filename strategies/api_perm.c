@@ -70,7 +70,7 @@ static sso_error_t api_compile(permission_strategy_t *self,
     cJSON *root = cJSON_Parse(rules_json);
     if (!root) return SSO_ERR_RULE_INVALID;
 
-    cJSON *endpoints = cJSON_GetObjectItem(root, "endpoints");
+    const cJSON *endpoints = cJSON_GetObjectItem(root, "endpoints");
     if (!cJSON_IsArray(endpoints)) {
         cJSON_Delete(root);
         return SSO_ERR_RULE_INVALID;
@@ -91,10 +91,10 @@ static sso_error_t api_compile(permission_strategy_t *self,
     }
 
     for (size_t i = 0; i < compiled->count; i++) {
-        cJSON *item = cJSON_GetArrayItem(endpoints, (int)i);
-        cJSON *method = cJSON_GetObjectItem(item, "method");
-        cJSON *path = cJSON_GetObjectItem(item, "path");
-        cJSON *effect = cJSON_GetObjectItem(item, "effect");
+        const cJSON *item = cJSON_GetArrayItem(endpoints, (int)i);
+        const cJSON *method = cJSON_GetObjectItem(item, "method");
+        const cJSON *path = cJSON_GetObjectItem(item, "path");
+        const cJSON *effect = cJSON_GetObjectItem(item, "effect");
 
         if (method && cJSON_IsString(method)) strncpy(compiled->items[i].method, method->valuestring, 15);
         if (path && cJSON_IsString(path)) strncpy(compiled->items[i].path, path->valuestring, 255);

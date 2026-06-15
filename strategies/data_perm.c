@@ -58,19 +58,19 @@ static sso_error_t data_compile(permission_strategy_t *self,
         return SSO_ERR_OUT_OF_MEMORY;
     }
 
-    cJSON *res_type = cJSON_GetObjectItem(root, "resource_type");
+    const cJSON *res_type = cJSON_GetObjectItem(root, "resource_type");
     if (cJSON_IsString(res_type)) strncpy(compiled->resource_type, res_type->valuestring, 63);
 
     /* Parse record-level conditions */
-    cJSON *conds = cJSON_GetObjectItem(root, "conditions");
+    const cJSON *conds = cJSON_GetObjectItem(root, "conditions");
     if (cJSON_IsArray(conds)) {
         compiled->cond_count = (size_t)cJSON_GetArraySize(conds);
         compiled->conditions = (data_condition_t *)calloc(compiled->cond_count, sizeof(data_condition_t));
         for (size_t i = 0; i < compiled->cond_count; i++) {
-            cJSON *item = cJSON_GetArrayItem(conds, (int)i);
-            cJSON *f = cJSON_GetObjectItem(item, "field");
-            cJSON *o = cJSON_GetObjectItem(item, "op");
-            cJSON *v = cJSON_GetObjectItem(item, "value");
+            const cJSON *item = cJSON_GetArrayItem(conds, (int)i);
+            const cJSON *f = cJSON_GetObjectItem(item, "field");
+            const cJSON *o = cJSON_GetObjectItem(item, "op");
+            const cJSON *v = cJSON_GetObjectItem(item, "value");
             if (f) strncpy(compiled->conditions[i].field, f->valuestring, 63);
             if (o) strncpy(compiled->conditions[i].op, o->valuestring, 15);
             if (v) {
@@ -81,17 +81,17 @@ static sso_error_t data_compile(permission_strategy_t *self,
     }
 
     /* Parse field-level visibility */
-    cJSON *fields = cJSON_GetObjectItem(root, "allowed_fields");
+    const cJSON *fields = cJSON_GetObjectItem(root, "allowed_fields");
     if (cJSON_IsArray(fields)) {
         compiled->field_count = (size_t)cJSON_GetArraySize(fields);
         compiled->allowed_fields = (char **)calloc(compiled->field_count, sizeof(char *));
         for (size_t i = 0; i < compiled->field_count; i++) {
-            cJSON *f = cJSON_GetArrayItem(fields, (int)i);
+            const cJSON *f = cJSON_GetArrayItem(fields, (int)i);
             if (cJSON_IsString(f)) compiled->allowed_fields[i] = strdup(f->valuestring);
         }
     }
 
-    cJSON *effect = cJSON_GetObjectItem(root, "effect");
+    const cJSON *effect = cJSON_GetObjectItem(root, "effect");
     compiled->is_allow = !(effect && cJSON_IsString(effect) && strcmp(effect->valuestring, "deny") == 0);
 
     cJSON_Delete(root);
@@ -141,7 +141,7 @@ static sso_error_t data_evaluate(permission_strategy_t *self,
         if (!record) return SSO_ERR_RULE_INVALID;
 
         for (size_t i = 0; i < compiled->cond_count; i++) {
-            cJSON *val = cJSON_GetObjectItem(record, compiled->conditions[i].field);
+            const cJSON *val = cJSON_GetObjectItem(record, compiled->conditions[i].field);
             if (!val) { cJSON_Delete(record); return SSO_ERR_NOT_FOUND; }
 
             char actual[256];

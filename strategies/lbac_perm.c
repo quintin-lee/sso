@@ -58,7 +58,7 @@ static sso_error_t lbac_compile(permission_strategy_t *self,
     if (!root) return SSO_ERR_RULE_INVALID;
 
     /* Support both "labels" (new) and "clearance_levels" (old) format */
-    cJSON *levels = cJSON_GetObjectItem(root, "labels");
+    const cJSON *levels = cJSON_GetObjectItem(root, "labels");
     if (!cJSON_IsArray(levels)) {
         levels = cJSON_GetObjectItem(root, "clearance_levels");
     }
@@ -81,7 +81,7 @@ static sso_error_t lbac_compile(permission_strategy_t *self,
     }
 
     for (size_t i = 0; i < count; i++) {
-        cJSON *item = cJSON_GetArrayItem(levels, (int)i);
+        const cJSON *item = cJSON_GetArrayItem(levels, (int)i);
 
         if (cJSON_IsString(item)) {
             /* Simple string: {array of strings} */
@@ -90,8 +90,8 @@ static sso_error_t lbac_compile(permission_strategy_t *self,
             compiled->items[i].is_allow = true;
         } else if (cJSON_IsObject(item)) {
             /* Object: {name: "...", effect: "..."} */
-            cJSON *name = cJSON_GetObjectItem(item, "name");
-            cJSON *effect = cJSON_GetObjectItem(item, "effect");
+            const cJSON *name = cJSON_GetObjectItem(item, "name");
+            const cJSON *effect = cJSON_GetObjectItem(item, "effect");
 
             if (name && cJSON_IsString(name)) {
                 strncpy(compiled->items[i].label_name,
