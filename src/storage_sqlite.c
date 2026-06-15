@@ -136,6 +136,22 @@ static const char *SCHEMA_SQL =
     "  code_challenge_method TEXT DEFAULT '',"
     "  expires_at INTEGER NOT NULL,"
     "  used INTEGER DEFAULT 0"
+    ");"
+
+    "CREATE TABLE IF NOT EXISTS oauth_clients ("
+    "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  client_id TEXT UNIQUE NOT NULL,"
+    "  client_secret_hash TEXT NOT NULL,"
+    "  redirect_uris TEXT NOT NULL,"
+    "  app_name TEXT DEFAULT '',"
+    "  app_description TEXT DEFAULT '',"
+    "  app_logo_url TEXT DEFAULT '',"
+    "  allowed_scopes TEXT DEFAULT '',"
+    "  allowed_grant_types TEXT DEFAULT '',"
+    "  token_ttl_ms INTEGER DEFAULT 0,"
+    "  status INTEGER DEFAULT 1,"
+    "  created_at INTEGER DEFAULT 0,"
+    "  updated_at INTEGER DEFAULT 0"
     ");";
 
 /* ========================================================================
@@ -1221,6 +1237,115 @@ static sso_error_t sqlite_oauth_code_cleanup(storage_backend_t *self) {
 }
 
 /* ========================================================================
+ * OAuth clients
+ * ======================================================================== */
+static void bind_oauth_client(sqlite3_stmt *stmt, const oauth_client_t *c) {
+    sqlite3_bind_text(stmt, 1, c->client_id, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, c->client_secret_hash, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, c->redirect_uris, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 4, c->app_name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, c->app_description, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 6, c->app_logo_url, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 7, c->allowed_scopes, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 8, c->allowed_grant_types, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 9, c->token_ttl_ms);
+    sqlite3_bind_int(stmt, 10, c->status);
+    sqlite3_bind_int64(stmt, 11, c->created_at);
+    sqlite3_bind_int64(stmt, 12, c->updated_at);
+}
+
+static void read_oauth_client(sqlite3_stmt *stmt, oauth_client_t *c) {
+    memset(c, 0, sizeof(*c));
+    c->id = (sso_id_t)sqlite3_column_int64(stmt, 0);
+    const char *client_id = (const char *)sqlite3_column_text(stmt, 1);
+    if(client_id) strncpy(c->client_id, client_id, sizeof(c->client_id)-1);
+    const char *hash = (const char *)sqlite3_column_text(stmt, 2);
+    if(hash) strncpy(c->client_secret_hash, hash, sizeof(c->client_secret_hash)-1);
+    const char *uris = (const char *)sqlite3_column_text(stmt, 3);
+    if(uris) strncpy(c->redirect_uris, uris, sizeof(c->redirect_uris)-1);
+    const char *name = (const char *)sqlite3_column_text(stmt, 4);
+    if(name) strncpy(c->app_name, name, sizeof(c->app_name)-1);
+    const char *desc = (const char *)sqlite3_column_text(stmt, 5);
+    if(desc) strncpy(c->app_description, desc, sizeof(c->app_description)-1);
+    const char *logo = (const char *)sqlite3_column_text(stmt, 6);
+    if(logo) strncpy(c->app_logo_url, logo, sizeof(c->app_logo_url)-1);
+    const char *scopes = (const char *)sqlite3_column_text(stmt, 7);
+    if(scopes) strncpy(c->allowed_scopes, scopes, sizeof(c->allowed_scopes)-1);
+    const char *grants = (const char *)sqlite3_column_text(stmt, 8);
+    if(grants) strncpy(c->allowed_grant_types, grants, sizeof(c->allowed_grant_types)-1);
+    c->token_ttl_ms = (long)sqlite3_column_int64(stmt, 9);
+    c->status = sqlite3_column_int(stmt, 10);
+    c->created_at = (sso_timestamp_t)sqlite3_column_int64(stmt, 11);
+    c->updated_at = (sso_timestamp_t)sqlite3_column_int64(stmt, 12);
+}
+
+static sso_error_t sqlite_oauth_client_create(storage_backend_t *self, oauth_client_t *c) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    sqlite3_stmt *stmt;
+    const char *sql = "INSERT INTO oauth_clients (client_id, client_secret_hash, redirect_uris, app_name, app_description, app_logo_url, allowed_scopes, allowed_grant_types, token_ttl_ms, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)";
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE;
+    if (c->created_at == 0) c->created_at = sso_timestamp_now();
+    if (c->updated_at == 0) c->updated_at = c->created_at;
+    bind_oauth_client(stmt, c);
+    if (sqlite3_step(stmt) != SQLITE_DONE) { sqlite3_finalize(stmt); return SSO_ERR_STORAGE; }
+    c->id = (sso_id_t)sqlite3_last_insert_rowid(priv->db);
+    sqlite3_finalize(stmt);
+    return SSO_OK;
+}
+
+static sso_error_t sqlite_oauth_client_get(storage_backend_t *self, const char *client_id, oauth_client_t *c) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(priv->db, "SELECT id, client_id, client_secret_hash, redirect_uris, app_name, app_description, app_logo_url, allowed_scopes, allowed_grant_types, token_ttl_ms, status, created_at, updated_at FROM oauth_clients WHERE client_id = ?", -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE;
+    sqlite3_bind_text(stmt, 1, client_id, -1, SQLITE_STATIC);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        read_oauth_client(stmt, c);
+        sqlite3_finalize(stmt);
+        return SSO_OK;
+    }
+    sqlite3_finalize(stmt);
+    return SSO_ERR_NOT_FOUND;
+}
+
+static sso_error_t sqlite_oauth_client_update(storage_backend_t *self, const oauth_client_t *c) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    sqlite3_stmt *stmt;
+    const char *sql = "UPDATE oauth_clients SET client_id=?, client_secret_hash=?, redirect_uris=?, app_name=?, app_description=?, app_logo_url=?, allowed_scopes=?, allowed_grant_types=?, token_ttl_ms=?, status=?, created_at=?, updated_at=? WHERE id=?";
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE;
+    bind_oauth_client(stmt, c);
+    sqlite3_bind_int64(stmt, 13, (sqlite3_int64)c->id);
+    sso_error_t err = (sqlite3_step(stmt) == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+    sqlite3_finalize(stmt);
+    return err;
+}
+
+static sso_error_t sqlite_oauth_client_delete(storage_backend_t *self, const char *client_id) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(priv->db, "DELETE FROM oauth_clients WHERE client_id=?", -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE;
+    sqlite3_bind_text(stmt, 1, client_id, -1, SQLITE_STATIC);
+    sso_error_t err = (sqlite3_step(stmt) == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+    sqlite3_finalize(stmt);
+    return err;
+}
+
+static sso_error_t sqlite_oauth_client_list(storage_backend_t *self, int offset, int limit, oauth_client_t *clients, size_t *count, size_t max) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(priv->db, "SELECT id, client_id, client_secret_hash, redirect_uris, app_name, app_description, app_logo_url, allowed_scopes, allowed_grant_types, token_ttl_ms, status, created_at, updated_at FROM oauth_clients LIMIT ? OFFSET ?", -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE;
+    sqlite3_bind_int(stmt, 1, limit);
+    sqlite3_bind_int(stmt, 2, offset);
+    size_t c = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && c < max) {
+        read_oauth_client(stmt, &clients[c]);
+        c++;
+    }
+    sqlite3_finalize(stmt);
+    if(count) *count = c;
+    return SSO_OK;
+}
+
+/* ========================================================================
  * Backend constructor
  * ======================================================================== */
 sso_error_t storage_sqlite_create(storage_backend_t **backend) {
@@ -1310,6 +1435,12 @@ sso_error_t storage_sqlite_create(storage_backend_t **backend) {
     (*backend)->oauth_code_get      = sqlite_oauth_code_get;
     (*backend)->oauth_code_mark_used = sqlite_oauth_code_mark_used;
     (*backend)->oauth_code_cleanup  = sqlite_oauth_code_cleanup;
+
+    (*backend)->oauth_client_create    = sqlite_oauth_client_create;
+    (*backend)->oauth_client_get       = sqlite_oauth_client_get;
+    (*backend)->oauth_client_update    = sqlite_oauth_client_update;
+    (*backend)->oauth_client_delete    = sqlite_oauth_client_delete;
+    (*backend)->oauth_client_list      = sqlite_oauth_client_list;
 
     (*backend)->handle = priv;
     return SSO_OK;

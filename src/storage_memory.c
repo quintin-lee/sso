@@ -438,6 +438,14 @@ static sso_error_t mem_delete_sms_code(storage_backend_t *self, const char *p) {
     return SSO_OK;
 }
 
+/* ===== OAuth Clients (Stubs) ===== */
+
+static sso_error_t mem_oauth_client_create(storage_backend_t *self, oauth_client_t *c) { (void)self; (void)c; return SSO_ERR_STORAGE; }
+static sso_error_t mem_oauth_client_get(storage_backend_t *self, const char *client_id, oauth_client_t *c) { (void)self; (void)client_id; (void)c; return SSO_ERR_NOT_FOUND; }
+static sso_error_t mem_oauth_client_update(storage_backend_t *self, const oauth_client_t *c) { (void)self; (void)c; return SSO_ERR_STORAGE; }
+static sso_error_t mem_oauth_client_delete(storage_backend_t *self, const char *client_id) { (void)self; (void)client_id; return SSO_ERR_STORAGE; }
+static sso_error_t mem_oauth_client_list(storage_backend_t *self, int offset, int limit, oauth_client_t *clients, size_t *count, size_t max) { (void)self; (void)offset; (void)limit; (void)clients; (void)max; if(count) *count=0; return SSO_OK; }
+
 #undef P
 
 /* ===== Constructor ===== */
@@ -504,6 +512,12 @@ sso_error_t storage_memory_create(storage_backend_t **backend) {
     (*backend)->oauth_code_get=mem_oauth_code_get;
     (*backend)->oauth_code_mark_used=mem_oauth_code_mark_used;
     (*backend)->oauth_code_cleanup=mem_oauth_code_cleanup;
+
+    (*backend)->oauth_client_create    = mem_oauth_client_create;
+    (*backend)->oauth_client_get       = mem_oauth_client_get;
+    (*backend)->oauth_client_update    = mem_oauth_client_update;
+    (*backend)->oauth_client_delete    = mem_oauth_client_delete;
+    (*backend)->oauth_client_list      = mem_oauth_client_list;
 
     (*backend)->handle = priv;
     return SSO_OK;
