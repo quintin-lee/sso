@@ -321,6 +321,40 @@ static const char *test_memory_not_found() {
     return 0;
 }
 
+static const char *test_oauth_clients() {
+    storage_backend_t *sb = NULL;
+    mu_assert("storage_sqlite_create failed", storage_sqlite_create(&sb) == SSO_OK);
+    mu_assert("storage_open failed", sb->open(sb, "file::memory:?cache=shared") == SSO_OK);
+
+    oauth_client_t client;
+    memset(&client, 0, sizeof(client));
+    strcpy(client.client_id, "test_client_1");
+    strcpy(client.client_secret_hash, "$argon2id$v=19$m=65536,t=2,p=1$abc$def");
+    strcpy(client.redirect_uris, "http://localhost/callback");
+    client.status = 1;
+
+    mu_assert("oauth_client_create failed", sb->oauth_client_create(sb, &client) == SSO_OK);
+    mu_assert("ID assigned", client.id > 0);
+
+    oauth_client_t fetched;
+    mu_assert("oauth_client_get failed", sb->oauth_client_get(sb, "test_client_1", &fetched) == SSO_OK);
+    mu_assert("client_id mismatch", strcmp(fetched.client_id, "test_client_1") == 0);
+
+    fetched.token_ttl_ms = 7200000;
+    mu_assert("oauth_client_update failed", sb->oauth_client_update(sb, &fetched) == SSO_OK);
+
+    oauth_client_t fetched2;
+    mu_assert("oauth_client_get failed", sb->oauth_client_get(sb, "test_client_1", &fetched2) == SSO_OK);
+    mu_assert("TTL mismatch", fetched2.token_ttl_ms == 7200000);
+
+    mu_assert("oauth_client_delete failed", sb->oauth_client_delete(sb, "test_client_1") == SSO_OK);
+    mu_assert("oauth_client_get should fail", sb->oauth_client_get(sb, "test_client_1", &fetched) == SSO_ERR_NOT_FOUND);
+
+    sb->close(sb);
+    free(sb);
+    return 0;
+}
+
 static const char *all_tests() {
     mu_run_test(test_sqlite_user_crud);
     mu_run_test(test_sqlite_role_crud);
@@ -333,6 +367,7 @@ static const char *all_tests() {
     mu_run_test(test_memory_group_crud);
     mu_run_test(test_memory_assignments);
     mu_run_test(test_memory_not_found);
+    mu_run_test(test_oauth_clients);
     return 0;
 }
 
