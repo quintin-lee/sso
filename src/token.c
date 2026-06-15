@@ -101,9 +101,9 @@ size_t base64url_encode(const unsigned char *input, size_t len,
 
         output[o++] = b64url_table[a >> 2];
         output[o++] = b64url_table[((a & 0x03) << 4) | (b >> 4)];
-        if (o < output_len && (i + 1) < len)
+        if ((i + 1) < len)
             output[o++] = b64url_table[((b & 0x0f) << 2) | (c >> 6)];
-        if (o < output_len && (i + 2) < len)
+        if ((i + 2) < len)
             output[o++] = b64url_table[c & 0x3f];
         i += 3;
     }

@@ -305,7 +305,7 @@ sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
                           http_response_t *resp) {
     const char *token_str = NULL;
     if (req->body) {
-        char *t = json_str_value(req->body, "token");
+        const char *t = json_str_value(req->body, "token");
         if (t) { token_str = t; }
     }
     if (!token_str && req->auth_token[0]) {
@@ -316,7 +316,7 @@ sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
         return SSO_OK;
     }
 
-    LOG_INFO("[verify] Verifying token: %.16s...", token_str ? token_str : "NULL");
+    LOG_INFO("[verify] Verifying token: %.16s...", token_str);
     token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
     token_t tok;
     sso_error_t err = token_verify(tmgr, token_str, &tok);
@@ -518,7 +518,7 @@ sso_error_t handle_change_password(sso_context_t *ctx, const http_request_t *req
 sso_error_t handle_me(sso_context_t *ctx, const http_request_t *req,
                         http_response_t *resp) {
     (void)ctx;
-    auth_context_t *auth = (auth_context_t *)req->userdata;
+    const auth_context_t *auth = (const auth_context_t *)req->userdata;
     if (!auth) {
         sso_response_error(resp, 401, "Authentication required");
         return SSO_OK;

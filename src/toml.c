@@ -435,7 +435,6 @@ static char *norm_lit_str(const char *src, int srclen, int multiline,
   int off = 0;   /* cur offset in dst[] */
   const char *sp = src;
   const char *sq = src + srclen;
-  int ch;
 
   /* scan forward on src */
   for (;;) {
@@ -455,7 +454,7 @@ static char *norm_lit_str(const char *src, int srclen, int multiline,
     if (sp >= sq)
       break;
 
-    ch = *sp++;
+    int ch = *sp++;
     /* control characters other than tab is not allowed */
     if ((0 <= ch && ch <= 0x08) || (0x0a <= ch && ch <= 0x1f) || (ch == 0x7f)) {
       if (!(multiline && (ch == '\r' || ch == '\n'))) {
@@ -484,7 +483,6 @@ static char *norm_basic_str(const char *src, int srclen, int multiline,
   int off = 0;   /* cur offset in dst[] */
   const char *sp = src;
   const char *sq = src + srclen;
-  int ch;
 
   /* scan forward on src */
   for (;;) {
@@ -504,7 +502,7 @@ static char *norm_basic_str(const char *src, int srclen, int multiline,
     if (sp >= sq)
       break;
 
-    ch = *sp++;
+    int ch = *sp++;
     if (ch != '\\') {
       /* these chars must be escaped: U+0000 to U+0008, U+000A to U+001F, U+007F
        */

@@ -257,7 +257,7 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
         if (req->query_params) {
             size_t idx = 0;
             char *save;
-            char *token = strtok_r(qmark, "&", &save);
+            const char *token = strtok_r(qmark, "&", &save);
             while (token) {
                 req->query_params[idx++] = strdup(token);
                 token = strtok_r(NULL, "&", &save);
@@ -457,11 +457,9 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
     http_request_t req;
     http_response_t resp;
 
-    struct timeval tv;
-    tv.tv_sec = 0;
-    tv.tv_usec = 0;
     sso_config_t *cfg = (sso_config_t *)server->sso_ctx->config;
     if (cfg) {
+        struct timeval tv;
         tv.tv_sec  = cfg->request_timeout_ms / 1000;
         tv.tv_usec = (cfg->request_timeout_ms % 1000) * 1000;
         setsockopt(conn->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
@@ -705,7 +703,7 @@ sso_error_t sso_server_start(sso_server_t *server) {
                                (struct sockaddr *)&client_addr, &client_len);
         if (client_fd < 0) {
             if (errno == EINTR || errno == EBADF || errno == EINVAL) {
-                int *sock = (int *)&server->server_data;
+                const int *sock = (const int *)&server->server_data;
                 if (*sock == 0) break;
                 continue;
             }

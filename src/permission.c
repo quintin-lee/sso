@@ -101,9 +101,9 @@ struct permission_engine {
 /* -----------------------------------------------------------------------
  * Hashing for result cache
  * ----------------------------------------------------------------------- */
-static uint32_t hash_params(eval_context_t *ctx) {
+static uint32_t hash_params(const eval_context_t *ctx) {
     uint32_t hash = 5381;
-    unsigned char *p = (unsigned char *)&ctx->params;
+    const unsigned char *p = (const unsigned char *)&ctx->params;
     size_t len = sizeof(ctx->params);
     for (size_t i = 0; i < len; i++) {
         hash = ((hash << 5) + hash) + p[i];
@@ -457,7 +457,7 @@ static void rotate_audit_log(void) {
     rename("audit.log", "audit.log.1");
 }
 
-static void audit_log_decision(eval_context_t *ctx, bool allowed, const char *trace,
+static void audit_log_decision(const eval_context_t *ctx, bool allowed, const char *trace,
                                 uint64_t duration_ms, bool cache_hit) {
     pthread_mutex_lock(&audit_log_lock);
 
@@ -549,7 +549,6 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
     policy_t policies_buf[64];
     policy_t *policies = policies_buf;
     size_t policy_count = 0;
-    size_t max_policies = 64;
 
     /* Check Resolution Cache (L1) */
     if (engine->res_cache[l1_idx].valid &&
@@ -559,6 +558,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         policy_count = engine->res_cache[l1_idx].count;
         atomic_fetch_add(&engine->metrics.cache_hits_l1, 1);
     } else {
+        size_t max_policies = 64;
         policy_manager_t *pmgr = (policy_manager_t *)engine->ctx->policy_mgr;
         if (!pmgr) {
             pthread_rwlock_unlock(&engine->lock);

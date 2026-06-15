@@ -543,7 +543,6 @@ sso_error_t sso_server_start(sso_server_t *server) {
     opts[opt_idx].option = MHD_OPTION_END;
     opts[opt_idx].value  = 0;
     opts[opt_idx].ptr_value = NULL;
-    opt_idx++;
 
     /* Start the daemon */
     unsigned int flags = MHD_USE_INTERNAL_POLLING_THREAD;

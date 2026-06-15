@@ -37,8 +37,8 @@ void parse_query_params(const char *path, char *q, int *status, int *page, int *
         char *eq = strchr(token, '=');
         if (eq) {
             *eq = '\0';
-            char *key = token;
-            char *val = eq + 1;
+            const char *key = token;
+            const char *val = eq + 1;
             if (strcmp(key, "q") == 0 && q) {
                 strncpy(q, val, SSO_MAX_QUERY - 1);
                 q[SSO_MAX_QUERY - 1] = '\0';

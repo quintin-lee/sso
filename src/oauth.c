@@ -172,7 +172,7 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
         return SSO_OK;
     }
     auth_context_t *auth = (auth_context_t *)req->userdata;
-    user_t *user = &auth->user;
+    const user_t *user = &auth->user;
     if (user->status != USER_STATUS_ACTIVE) {
         json_error_response(resp, 403, "user_inactive");
         return SSO_OK;
@@ -245,7 +245,7 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
 sso_error_t handle_oauth_token(sso_context_t *ctx,
                                const http_request_t *req,
                                http_response_t *resp) {
-    sso_config_t *cfg = get_cfg(ctx);
+    const sso_config_t *cfg = get_cfg(ctx);
     if (!cfg || !cfg->oauth_client_id[0]) {
         json_error_response(resp, 400, "oauth_not_configured");
         return SSO_OK;
@@ -629,8 +629,8 @@ sso_error_t handle_userinfo(sso_context_t *ctx,
         json_error_response(resp, 401, "unauthorized");
         return SSO_OK;
     }
-    auth_context_t *auth = (auth_context_t *)req->userdata;
-    user_t *user = &auth->user;
+    const auth_context_t *auth = (const auth_context_t *)req->userdata;
+    const user_t *user = &auth->user;
 
     char buf[4096];
     snprintf(buf, sizeof(buf),

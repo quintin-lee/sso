@@ -17,7 +17,7 @@
 #include <time.h>
 
 /* Helper: read a line from stdin, strip trailing newline. */
-void prompt_line(const char *msg, char *buf, size_t size) {
+static void prompt_line(const char *msg, char *buf, size_t size) {
     printf("%s", msg);
     fflush(stdout);
     if (fgets(buf, (int)size, stdin)) {
@@ -26,7 +26,7 @@ void prompt_line(const char *msg, char *buf, size_t size) {
     }
 }
 
-void print_banner(void) {
+static void print_banner(void) {
     printf("\n");
     printf("  ╔═══════════════════════════════════════════════╗\n");
     printf("  ║     SSO Permission Strategy Configurator      ║\n");
@@ -34,7 +34,7 @@ void print_banner(void) {
     printf("  ╚═══════════════════════════════════════════════╝\n\n");
 }
 
-void print_menu(void) {
+static void print_menu(void) {
     printf("  ┌───── Strategy Configuration ─────────────────────┐\n");
     printf("  │  1. Functional    (feature/menu permissions)     │\n");
     printf("  │  2. API           (HTTP method + path control)   │\n");
@@ -72,7 +72,7 @@ void print_menu(void) {
  * Sub-menus for each strategy type
  * ------------------------------------------------------------------ */
 
-void config_functional(policy_manager_t *pmgr) {
+static void config_functional(policy_manager_t *pmgr) {
     printf("\n  ─── Functional Permission ───\n");
     printf("  Controls feature/menu/button-level access.\n");
     printf("  Examples: \"user:create\", \"report:*\", \"admin:settings\"\n\n");
@@ -97,7 +97,7 @@ void config_functional(policy_manager_t *pmgr) {
         (unsigned long)p.id);
 }
 
-void config_api(policy_manager_t *pmgr) {
+static void config_api(policy_manager_t *pmgr) {
     printf("\n  ─── API Endpoint Permission ───\n");
     printf("  Controls HTTP method + path access.\n");
     printf("  Supports wildcards: * matches any method/path segment.\n\n");
@@ -125,7 +125,7 @@ void config_api(policy_manager_t *pmgr) {
         (unsigned long)p.id);
 }
 
-void config_data(policy_manager_t *pmgr) {
+static void config_data(policy_manager_t *pmgr) {
     printf("\n  ─── Data Scope Permission ───\n");
     printf("  Controls resource/field-level access with conditions.\n\n");
 
@@ -174,7 +174,7 @@ void config_data(policy_manager_t *pmgr) {
         (unsigned long)p.id);
 }
 
-void config_rbac(policy_manager_t *pmgr) {
+static void config_rbac(policy_manager_t *pmgr) {
     printf("\n  ─── RBAC Permission (Role-Based) ───\n");
     printf("  Grants access based on role membership.\n");
     printf("  The user must hold the specified role.\n\n");
@@ -199,7 +199,7 @@ void config_rbac(policy_manager_t *pmgr) {
         (unsigned long)p.id);
 }
 
-void config_location(policy_manager_t *pmgr) {
+static void config_location(policy_manager_t *pmgr) {
     printf("\n  ─── Location Permission (IP-Based) ───\n");
     printf("  Controls access based on source IP address.\n");
     printf("  Uses CIDR notation: 10.0.0.0/8, 192.168.0.0/16, etc.\n\n");
@@ -225,7 +225,7 @@ void config_location(policy_manager_t *pmgr) {
         (unsigned long)p.id);
 }
 
-void config_lbac(policy_manager_t *pmgr) {
+static void config_lbac(policy_manager_t *pmgr) {
     printf("\n  ─── LBAC Permission (Label-Based) ───\n");
     printf("  Controls access based on security labels (MLS).\n");
     printf("  Examples: \"INTERNAL\", \"CONFIDENTIAL\", \"TOP_SECRET\"\n\n");
@@ -250,7 +250,7 @@ void config_lbac(policy_manager_t *pmgr) {
         (unsigned long)p.id);
 }
 
-void config_abac(policy_manager_t *pmgr) {
+static void config_abac(policy_manager_t *pmgr) {
     printf("\n  ─── ABAC Permission (Attribute-Based) ───\n");
     printf("  Evaluates conditions against subject/resource/environment attributes.\n");
     printf("  Operators: eq, neq, gt, gte, lt, lte, contains, in\n\n");
@@ -287,7 +287,7 @@ void config_abac(policy_manager_t *pmgr) {
 /* ------------------------------------------------------------------
  * Action: assign policy to a role
  * ------------------------------------------------------------------ */
-void action_assign(policy_manager_t *pmgr, role_manager_t *rmgr) {
+static void action_assign(policy_manager_t *pmgr, role_manager_t *rmgr) {
     printf("\n  ─── Assign Policy to Role ───\n");
     char pid_str[16], rid_str[16];
     prompt_line("  Policy ID: ", pid_str, sizeof(pid_str));
@@ -316,7 +316,7 @@ void action_assign(policy_manager_t *pmgr, role_manager_t *rmgr) {
 /* ------------------------------------------------------------------
  * Action: test a permission check
  * ------------------------------------------------------------------ */
-void action_check(sso_context_t *ctx) {
+static void action_check(sso_context_t *ctx) {
     printf("\n  ─── Test Permission Check ───\n");
     printf("  Strategy types: 1=Functional  2=API  3=Data\n");
     printf("                  4=RBAC        5=Location  6=ABAC  7=LBAC\n");
@@ -410,7 +410,7 @@ void action_check(sso_context_t *ctx) {
 /* ------------------------------------------------------------------
  * Action: list all policies
  * ------------------------------------------------------------------ */
-void action_list(policy_manager_t *pmgr) {
+static void action_list(policy_manager_t *pmgr) {
     printf("\n  ─── All Policies ───\n");
     for (sso_id_t i = 1; i <= 64; i++) {
         policy_t p;
@@ -427,7 +427,7 @@ void action_list(policy_manager_t *pmgr) {
  * Entity management actions
  * ------------------------------------------------------------------ */
 
-void action_create_user(user_manager_t *umgr) {
+static void action_create_user(user_manager_t *umgr) {
     printf("\n  ─── Create User ───\n");
     char username[SSO_MAX_USERNAME];
     char password[SSO_MAX_USERNAME];
@@ -448,7 +448,7 @@ void action_create_user(user_manager_t *umgr) {
         (unsigned long)u.id);
 }
 
-void action_list_users(sso_context_t *ctx) {
+static void action_list_users(sso_context_t *ctx) {
     printf("\n  ─── All Users ───\n");
     user_manager_t  *umgr = (user_manager_t  *)ctx->user_mgr;
     role_manager_t  *rmgr = (role_manager_t  *)ctx->role_mgr;
@@ -501,7 +501,7 @@ void action_list_users(sso_context_t *ctx) {
     printf("  Total: %zu user(s)\n", count);
 }
 
-void action_delete_user(user_manager_t *umgr) {
+static void action_delete_user(user_manager_t *umgr) {
     printf("\n  ─── Delete User ───\n");
     char uid_str[16];
     prompt_line("  User ID: ", uid_str, sizeof(uid_str));
@@ -517,7 +517,7 @@ void action_delete_user(user_manager_t *umgr) {
     printf("  → %s\n", err == SSO_OK ? "Deleted" : sso_strerror(err));
 }
 
-void action_create_role(role_manager_t *rmgr) {
+static void action_create_role(role_manager_t *rmgr) {
     printf("\n  ─── Create Role ───\n");
     char name[SSO_MAX_ROLE_NAME], desc[SSO_MAX_DESCRIPTION], pid_str[16];
     prompt_line("  Role name: ", name, sizeof(name));
@@ -533,7 +533,7 @@ void action_create_role(role_manager_t *rmgr) {
         (unsigned long)r.id);
 }
 
-void action_list_roles(role_manager_t *rmgr) {
+static void action_list_roles(role_manager_t *rmgr) {
     printf("\n  ─── All Roles ───\n");
     sso_id_t ids[256];
     size_t count = 0;
@@ -554,7 +554,7 @@ void action_list_roles(role_manager_t *rmgr) {
     printf("  Total: %zu role(s)\n", count);
 }
 
-void action_delete_role(role_manager_t *rmgr) {
+static void action_delete_role(role_manager_t *rmgr) {
     printf("\n  ─── Delete Role ───\n");
     char rid_str[16];
     prompt_line("  Role ID: ", rid_str, sizeof(rid_str));
@@ -570,7 +570,7 @@ void action_delete_role(role_manager_t *rmgr) {
     printf("  → %s\n", err == SSO_OK ? "Deleted" : sso_strerror(err));
 }
 
-void action_assign_role_to_user(role_manager_t *rmgr) {
+static void action_assign_role_to_user(role_manager_t *rmgr) {
     printf("\n  ─── Assign Role to User ───\n");
     char rid_str[16], uid_str[16];
     prompt_line("  Role ID: ", rid_str, sizeof(rid_str));
@@ -584,7 +584,7 @@ void action_assign_role_to_user(role_manager_t *rmgr) {
     printf("  → %s\n", err == SSO_OK ? "Assigned" : sso_strerror(err));
 }
 
-void action_unassign_role_from_user(role_manager_t *rmgr) {
+static void action_unassign_role_from_user(role_manager_t *rmgr) {
     printf("\n  ─── Unassign Role from User ───\n");
     char rid_str[16], uid_str[16];
     prompt_line("  Role ID: ", rid_str, sizeof(rid_str));
@@ -598,7 +598,7 @@ void action_unassign_role_from_user(role_manager_t *rmgr) {
     printf("  → %s\n", err == SSO_OK ? "Unassigned" : sso_strerror(err));
 }
 
-void action_create_group(group_manager_t *gmgr) {
+static void action_create_group(group_manager_t *gmgr) {
     printf("\n  ─── Create Group ───\n");
     char name[SSO_MAX_GROUP_NAME], desc[SSO_MAX_DESCRIPTION], pid_str[16];
     prompt_line("  Group name: ", name, sizeof(name));
@@ -614,7 +614,7 @@ void action_create_group(group_manager_t *gmgr) {
         (unsigned long)g.id);
 }
 
-void action_list_groups(group_manager_t *gmgr) {
+static void action_list_groups(group_manager_t *gmgr) {
     printf("\n  ─── All Groups ───\n");
     sso_id_t ids[256];
     size_t count = 0;
@@ -635,7 +635,7 @@ void action_list_groups(group_manager_t *gmgr) {
     printf("  Total: %zu group(s)\n", count);
 }
 
-void action_add_user_to_group(group_manager_t *gmgr) {
+static void action_add_user_to_group(group_manager_t *gmgr) {
     printf("\n  ─── Add User to Group ───\n");
     char gid_str[16], uid_str[16];
     prompt_line("  Group ID: ", gid_str, sizeof(gid_str));
@@ -649,7 +649,7 @@ void action_add_user_to_group(group_manager_t *gmgr) {
     printf("  → %s\n", err == SSO_OK ? "Added" : sso_strerror(err));
 }
 
-void action_remove_user_from_group(group_manager_t *gmgr) {
+static void action_remove_user_from_group(group_manager_t *gmgr) {
     printf("\n  ─── Remove User from Group ───\n");
     char gid_str[16], uid_str[16];
     prompt_line("  Group ID: ", gid_str, sizeof(gid_str));

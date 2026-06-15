@@ -66,7 +66,7 @@ void rate_limiter_destroy(rate_limiter_t *rl) {
     free(rl);
 }
 
-static size_t find_slot(rl_entry_t *entries, size_t max, const char *key) {
+static size_t find_slot(const rl_entry_t *entries, size_t max, const char *key) {
     size_t idx = hash_string(key) % max;
     for (size_t i = 0; i < max; i++) {
         size_t probe = (idx + i) % max;

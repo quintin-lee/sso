@@ -144,8 +144,8 @@ sso_error_t sso_config_load(const char *filename, sso_config_t *cfg) {
         get_string(sec, "public_key", cfg->public_key_pem, sizeof(cfg->public_key_pem));
         get_string(sec, "admin_password", cfg->admin_password, sizeof(cfg->admin_password));
         get_long(sec, "token_ttl_ms", &cfg->token_ttl_ms);
-        { unsigned long v; toml_datum_t d = toml_int_in(sec, "password_opslimit"); if (d.ok) { v = (unsigned long)d.u.i; cfg->password_opslimit = v; } }
-        { unsigned long v; toml_datum_t d = toml_int_in(sec, "password_memlimit"); if (d.ok) { v = (unsigned long)d.u.i; cfg->password_memlimit = v; } }
+        { toml_datum_t d = toml_int_in(sec, "password_opslimit"); if (d.ok) { unsigned long v = (unsigned long)d.u.i; cfg->password_opslimit = v; } }
+        { toml_datum_t d = toml_int_in(sec, "password_memlimit"); if (d.ok) { unsigned long v = (unsigned long)d.u.i; cfg->password_memlimit = v; } }
         get_bool(sec, "tls_enabled", &cfg->tls_enabled);
         get_string(sec, "tls_cert_file", cfg->tls_cert_file, sizeof(cfg->tls_cert_file));
         get_string(sec, "tls_key_file", cfg->tls_key_file, sizeof(cfg->tls_key_file));
@@ -199,9 +199,9 @@ void sso_config_apply_env(sso_config_t *cfg) {
     if ((val = getenv("SSO_ADMIN_PASSWORD"))) SSO_STRNCPY_DST(cfg->admin_password, val);
     if ((val = getenv("SSO_SMS_GATEWAY_URL"))) SSO_STRNCPY_DST(cfg->sms_gateway_url, val);
     if ((val = getenv("SSO_SMS_API_KEY"))) SSO_STRNCPY_DST(cfg->sms_api_key, val);
-    { char *ev = getenv("SSO_PASSWORD_OPSLIMIT"); if (ev) cfg->password_opslimit = (unsigned long)atol(ev); }
-    { char *ev = getenv("SSO_PASSWORD_MEMLIMIT"); if (ev) cfg->password_memlimit = (unsigned long)atol(ev); }
-    { char *ev = getenv("SSO_LOG_LEVEL"); if (ev) { cfg->log_level = atoi(ev); if (cfg->log_level < LOG_DEBUG) cfg->log_level = LOG_DEBUG; if (cfg->log_level > LOG_ERROR) cfg->log_level = LOG_ERROR; } }
+    { const char *ev = getenv("SSO_PASSWORD_OPSLIMIT"); if (ev) cfg->password_opslimit = (unsigned long)atol(ev); }
+    { const char *ev = getenv("SSO_PASSWORD_MEMLIMIT"); if (ev) cfg->password_memlimit = (unsigned long)atol(ev); }
+    { const char *ev = getenv("SSO_LOG_LEVEL"); if (ev) { cfg->log_level = atoi(ev); if (cfg->log_level < LOG_DEBUG) cfg->log_level = LOG_DEBUG; if (cfg->log_level > LOG_ERROR) cfg->log_level = LOG_ERROR; } }
     if ((val = getenv("SSO_REQUEST_TIMEOUT_MS"))) cfg->request_timeout_ms = atoi(val);
     if ((val = getenv("SSO_MAX_BODY_SIZE"))) cfg->max_body_size = atol(val);
     if ((val = getenv("SSO_TLS_ENABLED"))) cfg->tls_enabled = (strcmp(val, "1") == 0 || strcasecmp(val, "true") == 0);

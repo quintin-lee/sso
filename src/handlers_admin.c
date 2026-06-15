@@ -187,8 +187,8 @@ sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *req,
         strcat(roles_json, "[");
         for (size_t j = 0; j < rc; j++) {
             role_t r;
-            char buf[128];
             if (role_get_by_id(rmgr, role_ids[j], &r) == SSO_OK) {
+                char buf[128];
                 snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
                          j > 0 ? "," : "",
                          (unsigned long long)r.id, r.name);
@@ -208,8 +208,8 @@ sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *req,
         strcat(groups_json, "[");
         for (size_t j = 0; j < gc; j++) {
             group_t g;
-            char buf[128];
             if (group_get_by_id(gmgr, group_ids[j], &g) == SSO_OK) {
+                char buf[128];
                 snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
                          j > 0 ? "," : "",
                          (unsigned long long)g.id, g.name);
@@ -278,8 +278,8 @@ sso_error_t handle_get_user(sso_context_t *ctx, const http_request_t *req,
     strcat(roles_json, "[");
     for (size_t j = 0; j < rc; j++) {
         role_t r;
-        char buf[128];
         if (role_get_by_id(rmgr, role_ids[j], &r) == SSO_OK) {
+            char buf[128];
             snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
                      j > 0 ? "," : "",
                      (unsigned long long)r.id, r.name);
@@ -297,8 +297,8 @@ sso_error_t handle_get_user(sso_context_t *ctx, const http_request_t *req,
     strcat(groups_json, "[");
     for (size_t j = 0; j < gc; j++) {
         group_t g;
-        char buf[128];
         if (group_get_by_id(gmgr, group_ids[j], &g) == SSO_OK) {
+            char buf[128];
             snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
                      j > 0 ? "," : "",
                      (unsigned long long)g.id, g.name);

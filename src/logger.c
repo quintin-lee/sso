@@ -34,7 +34,7 @@ void log_write(log_level_t level, const char *file, int line,
     /* Timestamp */
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    struct tm *tm = localtime(&ts.tv_sec);
+    const struct tm *tm = localtime(&ts.tv_sec);
 
     char timebuf[64];
     strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M:%S", tm);
