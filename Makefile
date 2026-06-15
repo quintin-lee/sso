@@ -39,9 +39,16 @@ SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/ratelimit.c     \
        $(SRCDIR)/cJSON.c         \
        $(SRCDIR)/toml.c          \
-        $(SRCDIR)/config.c        \
-        $(SRCDIR)/oauth.c          \
-        $(SRCDIR)/main.c
+       $(SRCDIR)/config.c        \
+       $(SRCDIR)/oauth.c         \
+       $(SRCDIR)/handlers_common.c \
+       $(SRCDIR)/handlers_pages.c \
+       $(SRCDIR)/handlers_auth.c \
+       $(SRCDIR)/handlers_admin.c \
+       $(SRCDIR)/handlers_check.c \
+       $(SRCDIR)/demo.c          \
+       $(SRCDIR)/interactive.c   \
+       $(SRCDIR)/main.c
 
 # Detect libmicrohttpd availability (prefer pkg-config, fallback to header check)
 MHD_AVAIL := $(shell pkg-config --exists libmicrohttpd 2>/dev/null && echo yes)

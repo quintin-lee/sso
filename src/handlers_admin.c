@@ -1,0 +1,1019 @@
+#include "sso.h"
+#include "server.h"
+#include "handlers.h"
+#include "logger.h"
+#include "user.h"
+#include "role.h"
+#include "group.h"
+#include "policy.h"
+#include "storage.h"
+#include "cJSON.h"
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+sso_error_t handle_create_user(sso_context_t *ctx, const http_request_t *req,
+                                       http_response_t *resp) {
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *username = json_str_value(req->body, "username");
+    char *password = json_str_value(req->body, "password");
+    char *email    = json_str_value(req->body, "email");
+    char *display  = json_str_value(req->body, "display_name");
+
+    if (!username || !password) {
+        free(username); free(password); free(email); free(display);
+        sso_response_error(resp, 400, "username and password required");
+        return SSO_OK;
+    }
+
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    user_t user;
+    sso_error_t err = user_create(umgr, username, password,
+                                  email ? email : "",
+                                  display ? display : username,
+                                  &user);
+    free(username); free(password); free(email); free(display);
+
+    if (err == SSO_ERR_ALREADY_EXISTS) {
+        sso_response_error(resp, 409, "Username already exists");
+        return SSO_OK;
+    }
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to create user");
+        return SSO_OK;
+    }
+
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "{\"user_id\":%llu,\"username\":\"%s\",\"created\":true}",
+        (unsigned long long)user.id, user.username);
+    sso_response_ok(resp, buf);
+    return SSO_OK;
+}
+
+sso_error_t handle_create_role(sso_context_t *ctx, const http_request_t *req,
+                                       http_response_t *resp) {
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *name = json_str_value(req->body, "name");
+    if (!name) {
+        sso_response_error(resp, 400, "name required");
+        return SSO_OK;
+    }
+    char *desc = json_str_value(req->body, "description");
+    sso_id_t parent_id = (sso_id_t)json_int_value(req->body, "parent_role_id", 0);
+
+    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+    role_t role;
+    sso_error_t err = role_create(rmgr, name, desc ? desc : "", parent_id, &role);
+    free(name); free(desc);
+    if (err == SSO_ERR_ALREADY_EXISTS) {
+        sso_response_error(resp, 409, "Role already exists");
+        return SSO_OK;
+    }
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to create role");
+        return SSO_OK;
+    }
+
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "{\"role_id\":%llu,\"name\":\"%s\",\"created\":true}",
+        (unsigned long long)role.id, role.name);
+    sso_response_ok(resp, buf);
+    return SSO_OK;
+}
+
+sso_error_t handle_assign_role(sso_context_t *ctx, const http_request_t *req,
+                                       http_response_t *resp) {
+    /* Parse role_id from path: /api/v1/roles/NNN/assign */
+    sso_id_t role_id = 0;
+    const char *p = req->path;
+    /* Skip to role id segment */
+    const char *id_start = strstr(p, "/roles/");
+    if (id_start) {
+        id_start += 7; /* past "/roles/" */
+        role_id = (sso_id_t)atoll(id_start);
+    }
+
+    if (!role_id) {
+        sso_response_error(resp, 400, "Invalid role ID in path");
+        return SSO_OK;
+    }
+
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    sso_id_t user_id = (sso_id_t)json_int_value(req->body, "user_id", 0);
+    sso_id_t group_id = (sso_id_t)json_int_value(req->body, "group_id", 0);
+
+    if (user_id == 0 && group_id == 0) {
+        sso_response_error(resp, 400, "user_id or group_id required");
+        return SSO_OK;
+    }
+
+    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+    sso_error_t err;
+    if (user_id != 0) {
+        err = role_assign_to_user(rmgr, role_id, user_id);
+    } else {
+        err = role_assign_to_group(rmgr, role_id, group_id);
+    }
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"assigned\":true}");
+    return SSO_OK;
+}
+
+/* ========================================================================
+ * List handlers — return JSON arrays of objects
+ * ======================================================================== */
+
+sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *req,
+                                     http_response_t *resp) {
+    char q[SSO_MAX_QUERY];
+    int status, page, limit;
+    parse_query_params(req->path, q, &status, &page, &limit);
+
+    int offset = (page - 1) * limit;
+
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+    sso_id_t ids[100];
+    size_t count = 0;
+    size_t total_count = 0;
+
+    sso_error_t err = user_list(umgr, q, status, offset, limit, ids, &count, &total_count);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to list users");
+        return SSO_OK;
+    }
+
+    size_t total_json_len = 1024; /* Metadata + brackets */
+    for (size_t i = 0; i < count; i++) total_json_len += 3072;
+
+    char *json = (char *)calloc(1, total_json_len + 1);
+    if (!json) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
+    snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
+
+    for (size_t i = 0; i < count; i++) {
+        user_t u;
+        err = user_get_by_id(umgr, ids[i], &u);
+        if (err != SSO_OK) continue;
+
+        /* Get roles for this user */
+        sso_id_t role_ids[16];
+        size_t rc = 0;
+        user_get_roles(umgr, u.id, role_ids, &rc, 16);
+
+        char roles_json[1024];
+        roles_json[0] = '\0';
+        strcat(roles_json, "[");
+        for (size_t j = 0; j < rc; j++) {
+            role_t r;
+            char buf[128];
+            if (role_get_by_id(rmgr, role_ids[j], &r) == SSO_OK) {
+                snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
+                         j > 0 ? "," : "",
+                         (unsigned long long)r.id, r.name);
+                strcat(roles_json, buf);
+            }
+        }
+        strcat(roles_json, "]");
+
+        /* Get groups for this user */
+        sso_id_t group_ids[16];
+        size_t gc = 0;
+        user_get_groups(umgr, u.id, group_ids, &gc, 16);
+        group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+
+        char groups_json[1024];
+        groups_json[0] = '\0';
+        strcat(groups_json, "[");
+        for (size_t j = 0; j < gc; j++) {
+            group_t g;
+            char buf[128];
+            if (group_get_by_id(gmgr, group_ids[j], &g) == SSO_OK) {
+                snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
+                         j > 0 ? "," : "",
+                         (unsigned long long)g.id, g.name);
+                strcat(groups_json, buf);
+            }
+        }
+        strcat(groups_json, "]");
+
+        char buf[4096];
+        snprintf(buf, sizeof(buf),
+            "%s{"
+            "\"id\":%llu,"
+            "\"username\":\"%s\","
+            "\"email\":\"%s\","
+            "\"display_name\":\"%s\","
+            "\"phone\":\"%s\","
+            "\"status\":%d,"
+            "\"roles\":%s,"
+            "\"groups\":%s,"
+            "\"created_at\":%lld"
+            "}",
+            i > 0 ? "," : "",
+            (unsigned long long)u.id,
+            u.username,
+            u.email,
+            u.display_name,
+            u.phone,
+            (int)u.status,
+            roles_json,
+            groups_json,
+            (long long)u.created_at);
+        strcat(json, buf);
+    }
+    strcat(json, "]}");
+
+    sso_response_ok(resp, json);
+    free(json);
+    return SSO_OK;
+}
+
+sso_error_t handle_get_user(sso_context_t *ctx, const http_request_t *req,
+                                    http_response_t *resp) {
+    sso_id_t user_id = extract_path_id(req->path, "/api/v1/users/");
+    if (user_id == 0) {
+        sso_response_error(resp, 400, "Invalid user ID");
+        return SSO_OK;
+    }
+
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+
+    user_t u;
+    sso_error_t err = user_get_by_id(umgr, user_id, &u);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 404, "User not found");
+        return SSO_OK;
+    }
+
+    sso_id_t role_ids[16];
+    size_t rc = 0;
+    user_get_roles(umgr, u.id, role_ids, &rc, 16);
+
+    char roles_json[1024];
+    roles_json[0] = '\0';
+    strcat(roles_json, "[");
+    for (size_t j = 0; j < rc; j++) {
+        role_t r;
+        char buf[128];
+        if (role_get_by_id(rmgr, role_ids[j], &r) == SSO_OK) {
+            snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
+                     j > 0 ? "," : "",
+                     (unsigned long long)r.id, r.name);
+            strcat(roles_json, buf);
+        }
+    }
+    strcat(roles_json, "]");
+
+    sso_id_t group_ids[16];
+    size_t gc = 0;
+    user_get_groups(umgr, u.id, group_ids, &gc, 16);
+
+    char groups_json[1024];
+    groups_json[0] = '\0';
+    strcat(groups_json, "[");
+    for (size_t j = 0; j < gc; j++) {
+        group_t g;
+        char buf[128];
+        if (group_get_by_id(gmgr, group_ids[j], &g) == SSO_OK) {
+            snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
+                     j > 0 ? "," : "",
+                     (unsigned long long)g.id, g.name);
+            strcat(groups_json, buf);
+        }
+    }
+    strcat(groups_json, "]");
+
+    char json[4096];
+    snprintf(json, sizeof(json),
+        "{"
+        "\"id\":%llu,"
+        "\"username\":\"%s\","
+        "\"email\":\"%s\","
+        "\"display_name\":\"%s\","
+        "\"phone\":\"%s\","
+        "\"status\":%d,"
+        "\"roles\":%s,"
+        "\"groups\":%s,"
+        "\"created_at\":%lld"
+        "}",
+        (unsigned long long)u.id,
+        u.username,
+        u.email,
+        u.display_name,
+        u.phone,
+        (int)u.status,
+        roles_json,
+        groups_json,
+        (long long)u.created_at);
+
+    sso_response_ok(resp, json);
+    return SSO_OK;
+}
+
+sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *req,
+                                       http_response_t *resp) {
+    char q[SSO_MAX_QUERY];
+    int status, page, limit;
+    parse_query_params(req->path, q, &status, &page, &limit);
+
+    int offset = (page - 1) * limit;
+
+    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+    sso_id_t ids[100];
+    size_t count = 0;
+    size_t total_count = 0;
+
+    sso_error_t err = role_list(rmgr, q, status, offset, limit, ids, &count, &total_count);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to list roles");
+        return SSO_OK;
+    }
+
+    size_t total_json_len = 1024;
+    for (size_t i = 0; i < count; i++) total_json_len += 2048;
+
+    char *json = (char *)calloc(1, total_json_len + 1);
+    if (!json) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
+    snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
+
+    for (size_t i = 0; i < count; i++) {
+        role_t r;
+        err = role_get_by_id(rmgr, ids[i], &r);
+        if (err != SSO_OK) continue;
+
+        /* Get parent role name */
+        char parent_name[64] = "";
+        if (r.parent_role_id != 0) {
+            role_t parent;
+            if (role_get_by_id(rmgr, r.parent_role_id, &parent) == SSO_OK) {
+                snprintf(parent_name, sizeof(parent_name), "%s", parent.name);
+            }
+        }
+
+        char buf[4096];
+        snprintf(buf, sizeof(buf),
+            "%s{"
+            "\"id\":%llu,"
+            "\"name\":\"%s\","
+            "\"description\":\"%s\","
+            "\"parent_role_id\":%llu,"
+            "\"parent_name\":\"%s\","
+            "\"status\":%d,"
+            "\"created_at\":%lld"
+            "}",
+            i > 0 ? "," : "",
+            (unsigned long long)r.id,
+            r.name,
+            r.description,
+            (unsigned long long)r.parent_role_id,
+            parent_name,
+            (int)r.status,
+            (long long)r.created_at);
+        strcat(json, buf);
+    }
+    strcat(json, "]}");
+
+    sso_response_ok(resp, json);
+    free(json);
+    return SSO_OK;
+}
+
+sso_error_t handle_list_policies(sso_context_t *ctx, const http_request_t *req,
+                                          http_response_t *resp) {
+    char q[SSO_MAX_QUERY];
+    int status, page, limit;
+    parse_query_params(req->path, q, &status, &page, &limit);
+
+    int offset = (page - 1) * limit;
+
+    policy_manager_t *pmgr = (policy_manager_t *)ctx->policy_mgr;
+    sso_id_t ids[100];
+    size_t count = 0;
+    size_t total_count = 0;
+
+    sso_error_t err = policy_list(pmgr, q, status, offset, limit, ids, &count, &total_count);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to list policies");
+        return SSO_OK;
+    }
+
+    size_t total_json_len = 1024;
+    for (size_t i = 0; i < count; i++) total_json_len += 8192;
+
+    char *json = (char *)calloc(1, total_json_len + 1);
+    if (!json) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
+    snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
+
+    for (size_t i = 0; i < count; i++) {
+        policy_t p;
+        err = policy_get_by_id(pmgr, ids[i], &p);
+        if (err != SSO_OK) continue;
+
+        char buf[10240];
+        snprintf(buf, sizeof(buf),
+            "%s{"
+            "\"id\":%llu,"
+            "\"name\":\"%s\","
+            "\"strategy_type\":%d,"
+            "\"strategy_name\":\"%s\","
+            "\"effect\":%d,"
+            "\"priority\":%d,"
+            "\"status\":%d,"
+            "\"rules\":%.8000s,"
+            "\"created_at\":%lld"
+            "}",
+            i > 0 ? "," : "",
+            (unsigned long long)p.id,
+            p.name,
+            (int)p.strategy_type,
+            perm_strategy_name(p.strategy_type),
+            (int)p.effect,
+            p.priority,
+            (int)p.status,
+            p.rules,
+            (long long)p.created_at);
+        strcat(json, buf);
+    }
+    strcat(json, "]}");
+
+    sso_response_ok(resp, json);
+    free(json);
+    return SSO_OK;
+}
+
+sso_error_t handle_list_groups(sso_context_t *ctx, const http_request_t *req,
+                                        http_response_t *resp) {
+    char q[SSO_MAX_QUERY];
+    int status, page, limit;
+    parse_query_params(req->path, q, &status, &page, &limit);
+
+    int offset = (page - 1) * limit;
+
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+    sso_id_t ids[100];
+    size_t count = 0;
+    size_t total_count = 0;
+
+    sso_error_t err = group_list(gmgr, q, status, offset, limit, ids, &count, &total_count);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to list groups");
+        return SSO_OK;
+    }
+
+    size_t total_json_len = 1024;
+    for (size_t i = 0; i < count; i++) total_json_len += 2048;
+
+    char *json = (char *)calloc(1, total_json_len + 1);
+    if (!json) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
+    snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
+
+    for (size_t i = 0; i < count; i++) {
+        group_t g;
+        err = group_get_by_id(gmgr, ids[i], &g);
+        if (err != SSO_OK) continue;
+
+        char parent_name[64] = "";
+        if (g.parent_group_id != 0) {
+            group_t parent;
+            if (group_get_by_id(gmgr, g.parent_group_id, &parent) == SSO_OK) {
+                snprintf(parent_name, sizeof(parent_name), "%s", parent.name);
+            }
+        }
+
+        char buf[4096];
+        snprintf(buf, sizeof(buf),
+            "%s{"
+            "\"id\":%llu,"
+            "\"name\":\"%s\","
+            "\"description\":\"%s\","
+            "\"parent_group_id\":%llu,"
+            "\"parent_name\":\"%s\","
+            "\"status\":%d,"
+            "\"created_at\":%lld"
+            "}",
+            i > 0 ? "," : "",
+            (unsigned long long)g.id,
+            g.name,
+            g.description,
+            (unsigned long long)g.parent_group_id,
+            parent_name,
+            (int)g.status,
+            (long long)g.created_at);
+        strcat(json, buf);
+    }
+    strcat(json, "]}");
+
+    sso_response_ok(resp, json);
+    free(json);
+    return SSO_OK;
+}
+
+sso_error_t handle_create_policy(sso_context_t *ctx, const http_request_t *req,
+                                         http_response_t *resp) {
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *name = json_str_value(req->body, "name");
+    if (!name) {
+        sso_response_error(resp, 400, "name required");
+        return SSO_OK;
+    }
+
+    int strategy_type = (int)json_int_value(req->body, "strategy_type", 1);
+    int effect = (int)json_int_value(req->body, "effect", 1);
+    int priority = (int)json_int_value(req->body, "priority", 50);
+    char *rules = json_str_value(req->body, "rules");
+
+    policy_manager_t *pmgr = (policy_manager_t *)ctx->policy_mgr;
+    policy_t policy;
+    sso_error_t err = policy_create(pmgr, name,
+                                     (perm_strategy_type_t)strategy_type,
+                                     (policy_effect_t)effect,
+                                     priority,
+                                     rules ? rules : "{}",
+                                     &policy);
+    free(name);
+    free(rules);
+
+    if (err == SSO_ERR_ALREADY_EXISTS) {
+        sso_response_error(resp, 409, "Policy already exists");
+        return SSO_OK;
+    }
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to create policy");
+        return SSO_OK;
+    }
+
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "{\"policy_id\":%llu,\"name\":\"%s\",\"created\":true}",
+        (unsigned long long)policy.id, policy.name);
+    sso_response_ok(resp, buf);
+    return SSO_OK;
+}
+
+sso_error_t handle_assign_policy(sso_context_t *ctx, const http_request_t *req,
+                                         http_response_t *resp) {
+    sso_id_t policy_id = 0;
+    const char *p = req->path;
+    const char *id_start = strstr(p, "/policies/");
+    if (id_start) {
+        id_start += 10;
+        policy_id = (sso_id_t)atoll(id_start);
+    }
+
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    int target_type = (int)json_int_value(req->body, "target_type", 0);
+    sso_id_t target_id = (sso_id_t)json_int_value(req->body, "target_id", 0);
+
+    if (target_id == 0) {
+        sso_response_error(resp, 400, "target_id required");
+        return SSO_OK;
+    }
+
+    policy_manager_t *pmgr = (policy_manager_t *)ctx->policy_mgr;
+    sso_error_t err = policy_assign_to(pmgr, policy_id,
+                                        (policy_target_type_t)target_type,
+                                        target_id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"assigned\":true}");
+    return SSO_OK;
+}
+
+sso_error_t handle_create_group(sso_context_t *ctx, const http_request_t *req,
+                                        http_response_t *resp) {
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *name = json_str_value(req->body, "name");
+    if (!name) {
+        sso_response_error(resp, 400, "name required");
+        return SSO_OK;
+    }
+    char *desc = json_str_value(req->body, "description");
+    sso_id_t parent_id = (sso_id_t)json_int_value(req->body, "parent_group_id", 0);
+
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+    group_t group;
+    sso_error_t err = group_create(gmgr, name, desc ? desc : "", parent_id, &group);
+    free(name); free(desc);
+    if (err == SSO_ERR_ALREADY_EXISTS) {
+        sso_response_error(resp, 409, "Group already exists");
+        return SSO_OK;
+    }
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to create group");
+        return SSO_OK;
+    }
+
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "{\"id\":%llu,\"name\":\"%s\",\"created\":true}",
+        (unsigned long long)group.id, group.name);
+    sso_response_ok(resp, buf);
+    return SSO_OK;
+    }
+
+sso_error_t handle_update_user(sso_context_t *ctx, const http_request_t *req,
+                                       http_response_t *resp) {
+    sso_id_t user_id = extract_path_id(req->path, "/users/");
+    if (!user_id || !req->body) {
+        sso_response_error(resp, 400, "user_id and body required");
+        return SSO_OK;
+    }
+
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    user_t user;
+    sso_error_t err = user_get_by_id(umgr, user_id, &user);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 404, "User not found");
+        return SSO_OK;
+    }
+
+    char *email = json_str_value(req->body, "email");
+    char *display = json_str_value(req->body, "display_name");
+    int status = (int)json_int_value(req->body, "status", -1);
+
+    if (email) {
+        strncpy(user.email, email, SSO_MAX_EMAIL - 1);
+        free(email);
+    }
+    if (display) {
+        strncpy(user.display_name, display, SSO_MAX_DISPLAY_NAME - 1);
+        free(display);
+    }
+    if (status >= 0) {
+        user.status = (user_status_t)status;
+    }
+
+    err = user_update(umgr, &user);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"updated\":true}");
+    return SSO_OK;
+}
+
+sso_error_t handle_delete_user(sso_context_t *ctx, const http_request_t *req,
+                                       http_response_t *resp) {
+    (void)req;
+    sso_id_t user_id = extract_path_id(req->path, "/users/");
+    if (!user_id) {
+        sso_response_error(resp, 400, "user_id required");
+        return SSO_OK;
+    }
+
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    sso_error_t err = user_delete(umgr, user_id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"deleted\":true}");
+    return SSO_OK;
+}
+
+sso_error_t handle_update_role(sso_context_t *ctx, const http_request_t *req,
+                                       http_response_t *resp) {
+    sso_id_t role_id = extract_path_id(req->path, "/roles/");
+    if (!role_id || !req->body) {
+        sso_response_error(resp, 400, "role_id and body required");
+        return SSO_OK;
+    }
+
+    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+    role_t role;
+    sso_error_t err = role_get_by_id(rmgr, role_id, &role);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 404, "Role not found");
+        return SSO_OK;
+    }
+
+    char *name = json_str_value(req->body, "name");
+    char *desc = json_str_value(req->body, "description");
+    sso_id_t parent = (sso_id_t)json_int_value(req->body, "parent_role_id", -1);
+
+    if (name) {
+        strncpy(role.name, name, SSO_MAX_ROLE_NAME - 1);
+        free(name);
+    }
+    if (desc) {
+        strncpy(role.description, desc, SSO_MAX_DESCRIPTION - 1);
+        free(desc);
+    }
+    if (parent != (sso_id_t)-1) {
+        role.parent_role_id = parent;
+    }
+
+    err = role_update(rmgr, &role);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"updated\":true}");
+    return SSO_OK;
+}
+
+sso_error_t handle_delete_role(sso_context_t *ctx, const http_request_t *req,
+                                       http_response_t *resp) {
+    (void)req;
+    sso_id_t role_id = extract_path_id(req->path, "/roles/");
+    if (!role_id) {
+        sso_response_error(resp, 400, "role_id required");
+        return SSO_OK;
+    }
+
+    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+    sso_error_t err = role_delete(rmgr, role_id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"deleted\":true}");
+    return SSO_OK;
+}
+
+sso_error_t handle_unassign_role(sso_context_t *ctx, const http_request_t *req,
+                                          http_response_t *resp) {
+    sso_id_t role_id = extract_path_id(req->path, "/roles/");
+    if (!role_id || !req->body) {
+        sso_response_error(resp, 400, "role_id and body required");
+        return SSO_OK;
+    }
+
+    sso_id_t user_id = (sso_id_t)json_int_value(req->body, "user_id", 0);
+    sso_id_t group_id = (sso_id_t)json_int_value(req->body, "group_id", 0);
+
+    role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
+    sso_error_t err;
+    if (user_id != 0) {
+        err = role_unassign_from_user(rmgr, role_id, user_id);
+    } else if (group_id != 0) {
+        err = role_unassign_from_group(rmgr, role_id, group_id);
+    } else {
+        sso_response_error(resp, 400, "user_id or group_id required");
+        return SSO_OK;
+    }
+
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"unassigned\":true}");
+    return SSO_OK;
+}
+
+sso_error_t handle_update_group(sso_context_t *ctx, const http_request_t *req,
+                                        http_response_t *resp) {
+    sso_id_t group_id = extract_path_id(req->path, "/groups/");
+    if (!group_id || !req->body) {
+        sso_response_error(resp, 400, "group_id and body required");
+        return SSO_OK;
+    }
+
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+    group_t group;
+    sso_error_t err = group_get_by_id(gmgr, group_id, &group);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 404, "Group not found");
+        return SSO_OK;
+    }
+
+    char *name = json_str_value(req->body, "name");
+    char *desc = json_str_value(req->body, "description");
+    sso_id_t parent = (sso_id_t)json_int_value(req->body, "parent_group_id", -1);
+
+    if (name) {
+        strncpy(group.name, name, SSO_MAX_GROUP_NAME - 1);
+        free(name);
+    }
+    if (desc) {
+        strncpy(group.description, desc, SSO_MAX_DESCRIPTION - 1);
+        free(desc);
+    }
+    if (parent != (sso_id_t)-1) {
+        group.parent_group_id = parent;
+    }
+
+    err = group_update(gmgr, &group);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"updated\":true}");
+    return SSO_OK;
+}
+
+sso_error_t handle_delete_group(sso_context_t *ctx, const http_request_t *req,
+                                        http_response_t *resp) {
+    (void)req;
+    sso_id_t group_id = extract_path_id(req->path, "/groups/");
+    if (!group_id) {
+        sso_response_error(resp, 400, "group_id required");
+        return SSO_OK;
+    }
+
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+    sso_error_t err = group_delete(gmgr, group_id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"deleted\":true}");
+    return SSO_OK;
+}
+
+sso_error_t handle_update_policy(sso_context_t *ctx, const http_request_t *req,
+                                         http_response_t *resp) {
+    sso_id_t policy_id = extract_path_id(req->path, "/policies/");
+    if (!policy_id || !req->body) {
+        sso_response_error(resp, 400, "policy_id and body required");
+        return SSO_OK;
+    }
+
+    policy_manager_t *pmgr = (policy_manager_t *)ctx->policy_mgr;
+    policy_t policy;
+    sso_error_t err = policy_get_by_id(pmgr, policy_id, &policy);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 404, "Policy not found");
+        return SSO_OK;
+    }
+
+    char *name = json_str_value(req->body, "name");
+    char *rules = json_str_value(req->body, "rules");
+    int effect = (int)json_int_value(req->body, "effect", -1);
+    int priority = (int)json_int_value(req->body, "priority", -1);
+    int status = (int)json_int_value(req->body, "status", -1);
+
+    if (name) {
+        strncpy(policy.name, name, SSO_MAX_POLICY_NAME - 1);
+        free(name);
+    }
+    if (rules) {
+        strncpy(policy.rules, rules, SSO_MAX_RULES_JSON - 1);
+        free(rules);
+    }
+    if (effect >= 0) policy.effect = (policy_effect_t)effect;
+    if (priority >= 0) policy.priority = priority;
+    if (status >= 0) policy.status = (policy_status_t)status;
+
+    err = policy_update(pmgr, &policy);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"updated\":true}");
+    return SSO_OK;
+}
+
+sso_error_t handle_delete_policy(sso_context_t *ctx, const http_request_t *req,
+                                         http_response_t *resp) {
+    (void)req;
+    sso_id_t policy_id = extract_path_id(req->path, "/policies/");
+    if (!policy_id) {
+        sso_response_error(resp, 400, "policy_id required");
+        return SSO_OK;
+    }
+
+    policy_manager_t *pmgr = (policy_manager_t *)ctx->policy_mgr;
+    sso_error_t err = policy_delete(pmgr, policy_id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"deleted\":true}");
+    return SSO_OK;
+}
+
+sso_error_t handle_unassign_policy(sso_context_t *ctx, const http_request_t *req,
+                                            http_response_t *resp) {
+    sso_id_t policy_id = extract_path_id(req->path, "/policies/");
+    if (!policy_id || !req->body) {
+        sso_response_error(resp, 400, "policy_id and body required");
+        return SSO_OK;
+    }
+
+    sso_id_t target_id = (sso_id_t)json_int_value(req->body, "target_id", 0);
+    int target_type = (int)json_int_value(req->body, "target_type", -1);
+    if (!target_id || target_type < 0) {
+        sso_response_error(resp, 400, "target_id and target_type required");
+        return SSO_OK;
+    }
+
+    policy_manager_t *pmgr = (policy_manager_t *)ctx->policy_mgr;
+    sso_error_t err = policy_unassign_from(pmgr, policy_id,
+        (policy_target_type_t)target_type, target_id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"unassigned\":true}");
+    return SSO_OK;
+}
+
+sso_error_t handle_add_group_member(sso_context_t *ctx, const http_request_t *req,
+                                           http_response_t *resp) {
+    sso_id_t group_id = extract_path_id(req->path, "/groups/");
+    if (!group_id || !req->body) {
+        sso_response_error(resp, 400, "group_id and body required");
+        return SSO_OK;
+    }
+
+    sso_id_t user_id = (sso_id_t)json_int_value(req->body, "user_id", 0);
+    if (user_id == 0) {
+        sso_response_error(resp, 400, "user_id required");
+        return SSO_OK;
+    }
+
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+    sso_error_t err = group_add_user(gmgr, group_id, user_id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"added\":true}");
+    return SSO_OK;
+}
+sso_error_t handle_remove_group_member(sso_context_t *ctx, const http_request_t *req,
+                                              http_response_t *resp) {
+    /* Path: /api/v1/groups/:id/members/:user_id */
+    sso_id_t group_id = extract_path_id(req->path, "/groups/");
+    
+    /* Extract user_id from end of path */
+    const char *last_slash = strrchr(req->path, '/');
+    if (!last_slash || !group_id) {
+        sso_response_error(resp, 400, "invalid path");
+        return SSO_OK;
+    }
+    sso_id_t user_id = (sso_id_t)atoll(last_slash + 1);
+
+    group_manager_t *gmgr = (group_manager_t *)ctx->group_mgr;
+    sso_error_t err = group_remove_user(gmgr, group_id, user_id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"removed\":true}");
+    return SSO_OK;
+}
