@@ -67,6 +67,7 @@ jobs:
           --suppress=redundantAssignment --suppress=unreadVariable \
           --suppress=unreadVariable:src/toml.c --suppress=unreadVariable:src/server.c \
           --suppress=ctunullpointer:src/cJSON.c --suppress=unknownMacro:src/cJSON.c \
+          --suppress=toomanyconfigs --suppress=missingInclude \
           --suppress=staticFunction --error-exitcode=1 \
           --std=c11 --language=c \
           -Iinclude \
