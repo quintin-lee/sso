@@ -368,6 +368,7 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
         memset(&client_user, 0, sizeof(client_user));
         client_user.id = 0;
         strncpy(client_user.username, "oauth_client", sizeof(client_user.username) - 1);
+        client_user.username[sizeof(client_user.username) - 1] = '\0';
         client_user.status = USER_STATUS_ACTIVE;
 
         sso_error_t terr = token_issue(tmgr, &client_user, NULL, 0, NULL, 0,
@@ -376,7 +377,7 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
             json_error_response(resp, 500, "server_error");
             goto cleanup;
         }
-        if (scope) strncpy(access_token.scope, scope, sizeof(access_token.scope) - 1);
+        if (scope) { strncpy(access_token.scope, scope, sizeof(access_token.scope) - 1); access_token.scope[sizeof(access_token.scope) - 1] = '\0'; }
 
         char buf[2048];
         snprintf(buf, sizeof(buf),
