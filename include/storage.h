@@ -102,6 +102,19 @@ typedef sso_error_t (*storage_get_user_roles_with_ancestors_fn)(storage_backend_
                                                                  sso_id_t *role_ids,
                                                                  size_t *count, size_t max);
 
+typedef struct {
+    char token_hash[128];
+    sso_id_t user_id;
+    char client_id[64];
+    sso_timestamp_t expires_at;
+    sso_timestamp_t issued_at;
+    int revoked;
+} refresh_token_t;
+
+typedef sso_error_t (*storage_refresh_token_create_fn)(storage_backend_t *self, const refresh_token_t *rt);
+typedef sso_error_t (*storage_refresh_token_get_fn)(storage_backend_t *self, const char *token_hash, refresh_token_t *out);
+typedef sso_error_t (*storage_refresh_token_revoke_fn)(storage_backend_t *self, const char *token_hash);
+
 /* OAuth authorization code */
 typedef struct {
     char              code[128];
@@ -230,6 +243,10 @@ struct storage_backend {
     storage_oauth_client_update_fn    oauth_client_update;
     storage_oauth_client_delete_fn    oauth_client_delete;
     storage_oauth_client_list_fn      oauth_client_list;
+
+    storage_refresh_token_create_fn refresh_token_create;
+    storage_refresh_token_get_fn    refresh_token_get;
+    storage_refresh_token_revoke_fn refresh_token_revoke;
 
     /* Opaque backend-private data (e.g. sqlite3*, FILE*, hashtable*) */
     void *handle;

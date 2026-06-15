@@ -114,6 +114,8 @@ typedef struct {
     sms_t *sms; size_t sms_n, sms_cap;
     oauth_auth_code_t *oauth_codes;
     size_t oauth_n, oauth_cap;
+    refresh_token_t *refresh_tokens;
+    size_t rt_n, rt_cap;
     sso_id_t next_uid, next_rid, next_gid, next_pid;
 } mem_priv_t;
 
@@ -127,6 +129,7 @@ static sso_error_t mem_open(storage_backend_t *self, const char *dsn) {
     al_init(&p->policy_assignments);
     p->sms=NULL; p->sms_n=0; p->sms_cap=0;
     p->oauth_codes=NULL; p->oauth_n=0; p->oauth_cap=0;
+    p->refresh_tokens=NULL; p->rt_n=0; p->rt_cap=0;
     p->next_uid=1; p->next_rid=1; p->next_gid=1; p->next_pid=1;
     return SSO_OK;
 }
@@ -184,6 +187,7 @@ static void mem_close(storage_backend_t *self) {
     da_free(&p->users); da_free(&p->roles); da_free(&p->groups); da_free(&p->policies);
     pl_free(&p->user_roles); pl_free(&p->user_groups); pl_free(&p->role_groups);
     al_free(&p->policy_assignments); free(p->sms);
+    free(p->oauth_codes); free(p->refresh_tokens);
     free(p);
     self->handle = NULL;
 }
@@ -446,6 +450,40 @@ static sso_error_t mem_oauth_client_update(storage_backend_t *self, const oauth_
 static sso_error_t mem_oauth_client_delete(storage_backend_t *self, const char *client_id) { (void)self; (void)client_id; return SSO_ERR_STORAGE; }
 static sso_error_t mem_oauth_client_list(storage_backend_t *self, int offset, int limit, oauth_client_t *clients, size_t *count, size_t max) { (void)self; (void)offset; (void)limit; (void)clients; (void)max; if(count) *count=0; return SSO_OK; }
 
+static sso_error_t mem_rt_create(storage_backend_t *self, const refresh_token_t *rt) {
+    mem_priv_t *p = P; if (!p || !rt) return SSO_ERR_STORAGE;
+    if (p->rt_n >= p->rt_cap) {
+        size_t nc = p->rt_cap ? p->rt_cap * 2 : 16;
+        refresh_token_t *n = realloc(p->refresh_tokens, nc * sizeof(refresh_token_t));
+        if (!n) return SSO_ERR_OUT_OF_MEMORY;
+        p->refresh_tokens = n; p->rt_cap = nc;
+    }
+    p->refresh_tokens[p->rt_n++] = *rt;
+    return SSO_OK;
+}
+
+static sso_error_t mem_rt_get(storage_backend_t *self, const char *h, refresh_token_t *rt) {
+    mem_priv_t *p = P; if (!p || !h || !rt) return SSO_ERR_STORAGE;
+    for (size_t i = 0; i < p->rt_n; i++) {
+        if (strcmp(p->refresh_tokens[i].token_hash, h) == 0) {
+            *rt = p->refresh_tokens[i];
+            return SSO_OK;
+        }
+    }
+    return SSO_ERR_NOT_FOUND;
+}
+
+static sso_error_t mem_rt_revoke(storage_backend_t *self, const char *h) {
+    mem_priv_t *p = P; if (!p || !h) return SSO_ERR_STORAGE;
+    for (size_t i = 0; i < p->rt_n; i++) {
+        if (strcmp(p->refresh_tokens[i].token_hash, h) == 0) {
+            p->refresh_tokens[i].revoked = 1;
+            return SSO_OK;
+        }
+    }
+    return SSO_ERR_NOT_FOUND;
+}
+
 #undef P
 
 /* ===== Constructor ===== */
@@ -518,6 +556,10 @@ sso_error_t storage_memory_create(storage_backend_t **backend) {
     (*backend)->oauth_client_update    = mem_oauth_client_update;
     (*backend)->oauth_client_delete    = mem_oauth_client_delete;
     (*backend)->oauth_client_list      = mem_oauth_client_list;
+
+    (*backend)->refresh_token_create = mem_rt_create;
+    (*backend)->refresh_token_get    = mem_rt_get;
+    (*backend)->refresh_token_revoke = mem_rt_revoke;
 
     (*backend)->handle = priv;
     return SSO_OK;

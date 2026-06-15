@@ -355,6 +355,69 @@ static const char *test_oauth_clients() {
     return 0;
 }
 
+static const char *test_sqlite_refresh_tokens() {
+    printf("  Running test_sqlite_refresh_tokens...\n");
+    storage_backend_t *s;
+    ASSERT_INT_EQUAL(storage_sqlite_create(&s), SSO_OK);
+    ASSERT_INT_EQUAL(s->open(s, ":memory:"), SSO_OK);
+
+    refresh_token_t rt;
+    memset(&rt, 0, sizeof(rt));
+    strcpy(rt.token_hash, "hash123");
+    rt.user_id = 1;
+    strcpy(rt.client_id, "client1");
+    rt.expires_at = sso_timestamp_now() + 3600;
+    rt.issued_at = sso_timestamp_now();
+    rt.revoked = 0;
+
+    ASSERT_INT_EQUAL(s->refresh_token_create(s, &rt), SSO_OK);
+
+    refresh_token_t fetched;
+    ASSERT_INT_EQUAL(s->refresh_token_get(s, "hash123", &fetched), SSO_OK);
+    ASSERT_STR_EQUAL(fetched.token_hash, "hash123");
+    ASSERT_INT_EQUAL(fetched.user_id, 1);
+    ASSERT_INT_EQUAL(fetched.revoked, 0);
+
+    ASSERT_INT_EQUAL(s->refresh_token_revoke(s, "hash123"), SSO_OK);
+    ASSERT_INT_EQUAL(s->refresh_token_get(s, "hash123", &fetched), SSO_OK);
+    ASSERT_INT_EQUAL(fetched.revoked, 1);
+
+    s->close(s);
+    free(s);
+    return 0;
+}
+
+static const char *test_memory_refresh_tokens() {
+    printf("  Running test_memory_refresh_tokens...\n");
+    storage_backend_t *s;
+    ASSERT_INT_EQUAL(storage_memory_create(&s), SSO_OK);
+    ASSERT_INT_EQUAL(s->open(s, NULL), SSO_OK);
+
+    refresh_token_t rt;
+    memset(&rt, 0, sizeof(rt));
+    strcpy(rt.token_hash, "memhash");
+    rt.user_id = 2;
+    strcpy(rt.client_id, "client2");
+    rt.expires_at = sso_timestamp_now() + 3600;
+    rt.issued_at = sso_timestamp_now();
+    rt.revoked = 0;
+
+    ASSERT_INT_EQUAL(s->refresh_token_create(s, &rt), SSO_OK);
+
+    refresh_token_t fetched;
+    ASSERT_INT_EQUAL(s->refresh_token_get(s, "memhash", &fetched), SSO_OK);
+    ASSERT_STR_EQUAL(fetched.token_hash, "memhash");
+    ASSERT_INT_EQUAL(fetched.revoked, 0);
+
+    ASSERT_INT_EQUAL(s->refresh_token_revoke(s, "memhash"), SSO_OK);
+    ASSERT_INT_EQUAL(s->refresh_token_get(s, "memhash", &fetched), SSO_OK);
+    ASSERT_INT_EQUAL(fetched.revoked, 1);
+
+    s->close(s);
+    free(s);
+    return 0;
+}
+
 static const char *all_tests() {
     mu_run_test(test_sqlite_user_crud);
     mu_run_test(test_sqlite_role_crud);
@@ -362,11 +425,13 @@ static const char *all_tests() {
     mu_run_test(test_sqlite_assignments);
     mu_run_test(test_sqlite_not_found);
     mu_run_test(test_sqlite_duplicate);
+    mu_run_test(test_sqlite_refresh_tokens);
     mu_run_test(test_memory_user_crud);
     mu_run_test(test_memory_role_crud);
     mu_run_test(test_memory_group_crud);
     mu_run_test(test_memory_assignments);
     mu_run_test(test_memory_not_found);
+    mu_run_test(test_memory_refresh_tokens);
     mu_run_test(test_oauth_clients);
     return 0;
 }

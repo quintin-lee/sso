@@ -152,6 +152,15 @@ static const char *SCHEMA_SQL =
     "  status INTEGER DEFAULT 1,"
     "  created_at INTEGER DEFAULT 0,"
     "  updated_at INTEGER DEFAULT 0"
+    ");"
+
+    "CREATE TABLE IF NOT EXISTS refresh_tokens ("
+    "  token_hash TEXT PRIMARY KEY,"
+    "  user_id INTEGER NOT NULL,"
+    "  client_id TEXT,"
+    "  expires_at INTEGER NOT NULL,"
+    "  issued_at INTEGER NOT NULL,"
+    "  revoked INTEGER DEFAULT 0"
     ");";
 
 /* ========================================================================
@@ -1345,6 +1354,54 @@ static sso_error_t sqlite_oauth_client_list(storage_backend_t *self, int offset,
     return SSO_OK;
 }
 
+static sso_error_t sqlite_refresh_token_create(storage_backend_t *self, const refresh_token_t *rt) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    sqlite3_stmt *stmt;
+    const char *sql = "INSERT INTO refresh_tokens (token_hash, user_id, client_id, expires_at, issued_at, revoked) VALUES (?, ?, ?, ?, ?, ?)";
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE;
+    sqlite3_bind_text(stmt, 1, rt->token_hash, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 2, rt->user_id);
+    if (rt->client_id[0]) sqlite3_bind_text(stmt, 3, rt->client_id, -1, SQLITE_STATIC);
+    else sqlite3_bind_null(stmt, 3);
+    sqlite3_bind_int64(stmt, 4, rt->expires_at);
+    sqlite3_bind_int64(stmt, 5, rt->issued_at);
+    sqlite3_bind_int(stmt, 6, rt->revoked);
+    sso_error_t err = (sqlite3_step(stmt) == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+    sqlite3_finalize(stmt);
+    return err;
+}
+
+static sso_error_t sqlite_refresh_token_get(storage_backend_t *self, const char *token_hash, refresh_token_t *out) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(priv->db, "SELECT token_hash, user_id, client_id, expires_at, issued_at, revoked FROM refresh_tokens WHERE token_hash = ?", -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE;
+    sqlite3_bind_text(stmt, 1, token_hash, -1, SQLITE_STATIC);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        memset(out, 0, sizeof(*out));
+        strncpy(out->token_hash, (const char *)sqlite3_column_text(stmt, 0), sizeof(out->token_hash)-1);
+        out->user_id = sqlite3_column_int64(stmt, 1);
+        const char *client_id = (const char *)sqlite3_column_text(stmt, 2);
+        if (client_id) strncpy(out->client_id, client_id, sizeof(out->client_id)-1);
+        out->expires_at = sqlite3_column_int64(stmt, 3);
+        out->issued_at = sqlite3_column_int64(stmt, 4);
+        out->revoked = sqlite3_column_int(stmt, 5);
+        sqlite3_finalize(stmt);
+        return SSO_OK;
+    }
+    sqlite3_finalize(stmt);
+    return SSO_ERR_NOT_FOUND;
+}
+
+static sso_error_t sqlite_refresh_token_revoke(storage_backend_t *self, const char *token_hash) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(priv->db, "UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?", -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE;
+    sqlite3_bind_text(stmt, 1, token_hash, -1, SQLITE_STATIC);
+    sso_error_t err = (sqlite3_step(stmt) == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+    sqlite3_finalize(stmt);
+    return err;
+}
+
 /* ========================================================================
  * Backend constructor
  * ======================================================================== */
@@ -1441,6 +1498,10 @@ sso_error_t storage_sqlite_create(storage_backend_t **backend) {
     (*backend)->oauth_client_update    = sqlite_oauth_client_update;
     (*backend)->oauth_client_delete    = sqlite_oauth_client_delete;
     (*backend)->oauth_client_list      = sqlite_oauth_client_list;
+
+    (*backend)->refresh_token_create = sqlite_refresh_token_create;
+    (*backend)->refresh_token_get    = sqlite_refresh_token_get;
+    (*backend)->refresh_token_revoke = sqlite_refresh_token_revoke;
 
     (*backend)->handle = priv;
     return SSO_OK;
