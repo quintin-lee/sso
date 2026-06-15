@@ -81,6 +81,7 @@ static const char *test_token_tampered() {
     token_issue(tmgr, &user, NULL, 0, NULL, 0, 3600000LL, &issued);
 
     char *tampered = strdup(issued.token_str);
+    if (!tampered) { token_manager_destroy(tmgr); return "OOM strdup"; }
     tampered[strlen(tampered) - 1] ^= 0x01;
 
     token_t verified;

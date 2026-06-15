@@ -373,9 +373,11 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
         if (EVP_DigestSignFinal(md_ctx, NULL, &sig_len) <= 0) goto rs_fail;
         
         sig = (unsigned char *)malloc(sig_len);
+        if (!sig) { goto rs_fail; }
         if (EVP_DigestSignFinal(md_ctx, sig, &sig_len) <= 0) { free(sig); goto rs_fail; }
 
         char *sig_b64 = (char *)malloc(sig_len * 2 + 2);
+        if (!sig_b64) { free(sig); goto rs_fail; }
         base64url_encode(sig, sig_len, sig_b64, sig_len * 2 + 2);
         snprintf(out->token_str, sizeof(out->token_str), "%s.%s", signing_input, sig_b64);
         
@@ -454,6 +456,7 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         if (legacy_hex) {
             sig_len = strlen(sig_part) / 2;
             sig = (unsigned char *)malloc(sig_len);
+            if (!sig) return SSO_ERR_TOKEN_INVALID; // Or an OOM error if you have one
             for (size_t i = 0; i < sig_len; i++) {
                 unsigned int val;
                 sscanf(sig_part + i*2, "%02x", &val);
@@ -462,6 +465,7 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         } else {
             sig_len = strlen(sig_part) / 4 * 3 + 4;
             sig = (unsigned char *)malloc(sig_len);
+            if (!sig) return SSO_ERR_TOKEN_INVALID; // Or OOM error
             sig_len = base64url_decode(sig_part, sig, sig_len);
         }
 
