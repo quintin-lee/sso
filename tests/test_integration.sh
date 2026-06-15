@@ -289,7 +289,9 @@ test_oauth_endpoints() {
     local authz_headers
     authz_headers=$(mktemp)
     local authz_http_code
-    authz_http_code=$(curl -s -o /dev/null -w "%{http_code}" -D "$authz_headers" \
+    local authz_body
+    authz_body=$(mktemp)
+    authz_http_code=$(curl -s -o "$authz_body" -w "%{http_code}" -D "$authz_headers" \
         "${BASE}/api/v1/oauth/authorize?response_type=code&client_id=test-client&redirect_uri=http://localhost:3000/callback&scope=openid+profile" \
         -H "$AUTH" 2>&1) || true
     local location_header
@@ -297,6 +299,14 @@ test_oauth_endpoints() {
     local authz_code
     authz_code=$(echo "$location_header" | sed 's/.*code=\([a-f0-9]*\).*/\1/')
     rm -f "$authz_headers"
+    if [ "$authz_http_code" != "302" ]; then
+        local err_body
+        err_body=$(cat "$authz_body" 2>/dev/null | tr -d '\n')
+        rm -f "$authz_body"
+        fail "OAuth authorize expected HTTP 302 got $authz_http_code body=$err_body"
+        return
+    fi
+    rm -f "$authz_body"
     if [ "$authz_http_code" != "302" ]; then
         fail "OAuth authorize expected HTTP 302 got $authz_http_code"
         return
