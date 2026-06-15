@@ -2,12 +2,7 @@
 #include "server.h"
 #include "logger.h"
 #include "user.h"
-#include "role.h"
-#include "group.h"
-#include "policy.h"
-#include "permission.h"
 #include "token.h"
-#include "storage.h"
 #include "config.h"
 
 #include <stdlib.h>
@@ -209,7 +204,7 @@ static void pool_submit(conn_t *conn, const char *client_ip) {
     pthread_mutex_unlock(&g_pool.lock);
 }
 
-static void pool_shutdown() {
+static void pool_shutdown(void) {
     pthread_mutex_lock(&g_pool.lock);
     g_pool.stop = true;
     pthread_cond_broadcast(&g_pool.notify);
