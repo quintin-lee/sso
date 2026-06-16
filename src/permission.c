@@ -12,6 +12,7 @@
  */
 
 #include "sso.h"
+#include "config.h"
 #include "logger.h"
 #include "permission.h"
 #include "policy.h"
@@ -25,6 +26,9 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <sys/stat.h>
+
+/* Audit log path — set from sso_config_t during engine creation. */
+static char s_audit_log_path[256] = "audit.log";
 
 /* ========================================================================
  * Built-in strategy declarations (defined in strategies/ dir)
@@ -157,6 +161,12 @@ sso_error_t perm_engine_create(permission_engine_t **engine, sso_context_t *ctx)
         (err = perm_engine_register_strategy(*engine, &lbac_perm_strategy)) != SSO_OK) {
         perm_engine_destroy(*engine);
         return err;
+    }
+
+    /* Copy audit log path from config */
+    sso_config_t *cfg = (sso_config_t *)ctx->config;
+    if (cfg && cfg->audit_log_path[0]) {
+        strncpy(s_audit_log_path, cfg->audit_log_path, sizeof(s_audit_log_path) - 1);
     }
 
     return SSO_OK;
@@ -481,15 +491,17 @@ static void rotate_audit_log(void) {
     if ((++stat_count) % AUDIT_LOG_STAT_INTERVAL != 0) return;
 
     struct stat st;
-    if (stat("audit.log", &st) != 0 || st.st_size <= AUDIT_LOG_MAX_SIZE) return;
+    if (stat(s_audit_log_path, &st) != 0 || st.st_size <= AUDIT_LOG_MAX_SIZE) return;
 
     char oldpath[512], newpath[512];
     for (int i = AUDIT_LOG_MAX_BACKUPS - 1; i > 0; i--) {
-        snprintf(oldpath, sizeof(oldpath), "audit.log.%d", i);
-        snprintf(newpath, sizeof(newpath), "audit.log.%d", i + 1);
+        snprintf(oldpath, sizeof(oldpath), "%s.%d", s_audit_log_path, i);
+        snprintf(newpath, sizeof(newpath), "%s.%d", s_audit_log_path, i + 1);
         rename(oldpath, newpath);
     }
-    rename("audit.log", "audit.log.1");
+    char rotated[512];
+    snprintf(rotated, sizeof(rotated), "%s.1", s_audit_log_path);
+    rename(s_audit_log_path, rotated);
 }
 
 static void audit_log_decision(const eval_context_t *ctx, bool allowed, const char *trace,
@@ -498,7 +510,7 @@ static void audit_log_decision(const eval_context_t *ctx, bool allowed, const ch
 
     rotate_audit_log();
 
-    FILE *f = fopen("audit.log", "a");
+    FILE *f = fopen(s_audit_log_path, "a");
     if (!f) {
         pthread_mutex_unlock(&audit_log_lock);
         return;
@@ -634,17 +646,17 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         engine->res_cache[l1_idx].valid = true;
     }
 
+    size_t trace_off = 0;
+
     for (size_t i = 0; i < policy_count; i++) {
         bool policy_result = false;
         char *policy_trace = NULL;
         err = perm_engine_evaluate_policy(engine, &policies[i], ctx, &policy_result, &policy_trace);
 
         if (decision_trace && policy_trace) {
-            strncat(full_trace, "[Policy ", sizeof(full_trace) - strlen(full_trace) - 1);
-            strncat(full_trace, policies[i].name, sizeof(full_trace) - strlen(full_trace) - 1);
-            strncat(full_trace, "] ", sizeof(full_trace) - strlen(full_trace) - 1);
-            strncat(full_trace, policy_trace, sizeof(full_trace) - strlen(full_trace) - 1);
-            strncat(full_trace, "\n", sizeof(full_trace) - strlen(full_trace) - 1);
+            trace_off += snprintf(full_trace + trace_off, sizeof(full_trace) - trace_off,
+                                  "[Policy %s] %s\n", policies[i].name, policy_trace);
+            if (trace_off >= sizeof(full_trace)) trace_off = sizeof(full_trace) - 1;
         }
         if (policy_trace) free(policy_trace);
 
@@ -654,7 +666,9 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         if (!policy_result) {
             *result = false;
             if (decision_trace) {
-                strncat(full_trace, "Result: DENIED (Override by policy)\n", sizeof(full_trace) - strlen(full_trace) - 1);
+                trace_off += snprintf(full_trace + trace_off, sizeof(full_trace) - trace_off,
+                                      "Result: DENIED (Override by policy)\n");
+                if (trace_off >= sizeof(full_trace)) trace_off = sizeof(full_trace) - 1;
                 *decision_trace = strdup(full_trace);
             }
 
@@ -674,7 +688,9 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
 
     *result = any_allowed;
     if (decision_trace) {
-        strncat(full_trace, any_allowed ? "Result: ALLOWED\n" : "Result: DENIED (No matching allow rule)\n", sizeof(full_trace) - strlen(full_trace) - 1);
+        trace_off += snprintf(full_trace + trace_off, sizeof(full_trace) - trace_off,
+                              "%s\n", any_allowed ? "Result: ALLOWED" : "Result: DENIED (No matching allow rule)");
+        if (trace_off >= sizeof(full_trace)) trace_off = sizeof(full_trace) - 1;
         *decision_trace = strdup(full_trace);
     }
 

@@ -43,6 +43,7 @@ typedef struct {
 
     /* [logging] */
     int      log_level;     /* 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR */
+    char     audit_log_path[256];
 
     /* [oauth] */
     char     oauth_client_id[64];

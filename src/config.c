@@ -33,6 +33,9 @@ void sso_config_default(sso_config_t *cfg) {
     cfg->tls_cert_file[0] = '\0';
     cfg->tls_key_file[0] = '\0';
     
+    /* [logging] defaults */
+    memcpy(cfg->audit_log_path, "audit.log", 10);
+
     /* [ratelimit] defaults */
     cfg->max_ips = 10000;
 }
@@ -174,6 +177,7 @@ sso_error_t sso_config_load(const char *filename, sso_config_t *cfg) {
         get_int(logging, "level", &cfg->log_level);
         if (cfg->log_level < LOG_DEBUG) cfg->log_level = LOG_DEBUG;
         if (cfg->log_level > LOG_ERROR) cfg->log_level = LOG_ERROR;
+        get_string(logging, "audit_log_path", cfg->audit_log_path, sizeof(cfg->audit_log_path));
     }
 
     /* [ratelimit] */
@@ -202,6 +206,7 @@ void sso_config_apply_env(sso_config_t *cfg) {
     { const char *ev = getenv("SSO_PASSWORD_OPSLIMIT"); if (ev) cfg->password_opslimit = (unsigned long)atol(ev); }
     { const char *ev = getenv("SSO_PASSWORD_MEMLIMIT"); if (ev) cfg->password_memlimit = (unsigned long)atol(ev); }
     { const char *ev = getenv("SSO_LOG_LEVEL"); if (ev) { cfg->log_level = atoi(ev); if (cfg->log_level < LOG_DEBUG) cfg->log_level = LOG_DEBUG; if (cfg->log_level > LOG_ERROR) cfg->log_level = LOG_ERROR; } }
+    if ((val = getenv("SSO_AUDIT_LOG_PATH"))) SSO_STRNCPY_DST(cfg->audit_log_path, val);
     if ((val = getenv("SSO_REQUEST_TIMEOUT_MS"))) cfg->request_timeout_ms = atoi(val);
     if ((val = getenv("SSO_MAX_BODY_SIZE"))) cfg->max_body_size = atol(val);
     if ((val = getenv("SSO_TLS_ENABLED"))) cfg->tls_enabled = (strcmp(val, "1") == 0 || strcasecmp(val, "true") == 0);
