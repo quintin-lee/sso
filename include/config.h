@@ -24,6 +24,8 @@ typedef struct {
     /* [database] */
     char     path[256];
     bool     use_memory;
+    char     database_type[16]; /* "sqlite" or "postgres" */
+    char     database_url[SSO_MAX_PATH];
 
     /* [security] */
     char     token_secret[128];

@@ -262,6 +262,9 @@ sso_error_t storage_sqlite_create(storage_backend_t **backend);
 /* In-memory backend (volatile, useful for testing). */
 sso_error_t storage_memory_create(storage_backend_t **backend);
 
+/* PostgreSQL backend — requires libpq at link time. */
+sso_error_t storage_postgres_create(storage_backend_t **backend);
+
 #ifdef __cplusplus
 }
 #endif

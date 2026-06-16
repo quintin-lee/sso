@@ -189,11 +189,11 @@ sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
 
     /* 1. Storage backend */
     if (storage) {
-        const char *db_path = config ? config->path : "sso_server.db";
-        if (config && config->use_memory) db_path = ":memory:";
+        const char *db_url = config ? config->database_url : "sso_server.db";
+        if (config && config->use_memory) db_url = ":memory:";
 
         if (storage->open) {
-            err = storage->open(storage, db_path);
+            err = storage->open(storage, db_url);
             if (err != SSO_OK) return err;
         }
         ctx->storage_backend = storage;

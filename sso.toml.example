@@ -7,10 +7,14 @@ thread_pool_size = 8
 queue_size = 1024
 
 [database]
-# Path to SQLite database file
-path = "sso_server.db"
-# If true, uses an in-memory database (data lost on restart)
-use_memory = false
+# Database type: "sqlite" or "postgres"
+type = "sqlite"
+# Database URL or path. For SQLite, it's the file path. For Postgres, it's a DSN.
+url = "sso_server.db"
+
+# Legacy fields (deprecated)
+# path = "sso_server.db"
+# use_memory = false
 
 [security]
 # HS256 Symmetric Secret (minimum 32 characters recommended)

@@ -16,8 +16,8 @@
 #   sudo apt-get install libsqlite3-dev libssl-dev
 
 CC       = gcc
-CFLAGS   = -Wall -Wextra -Wpedantic -std=c11 -O2 -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP $(MHD_CFLAGS)
-LDFLAGS  = -lsodium -lsqlite3 -lssl -lcrypto -lcurl $(MHD_LIBS)
+CFLAGS   = -Wall -Wextra -Wpedantic -std=c11 -O2 -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP $(MHD_CFLAGS) $(shell pkg-config --cflags libpq 2>/dev/null)
+LDFLAGS  = -lsodium -lsqlite3 -lssl -lcrypto -lcurl $(MHD_LIBS) $(shell pkg-config --libs libpq 2>/dev/null)
 INCLUDES = -Iinclude
 
 SRCDIR   = src
@@ -36,6 +36,7 @@ SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/token.c         \
        $(SRCDIR)/storage_sqlite.c \
        $(SRCDIR)/storage_memory.c \
+       $(SRCDIR)/storage_postgres.c \
        $(SRCDIR)/ratelimit.c     \
        $(SRCDIR)/cJSON.c         \
        $(SRCDIR)/toml.c          \

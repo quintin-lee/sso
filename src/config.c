@@ -24,6 +24,8 @@ void sso_config_default(sso_config_t *cfg) {
     /* [database] defaults */
     memcpy(cfg->path, "sso_server.db", 14);
     cfg->use_memory = false;
+    strncpy(cfg->database_type, "sqlite", sizeof(cfg->database_type)-1);
+    strncpy(cfg->database_url, "sso_server.db", sizeof(cfg->database_url)-1);
 
     /* [security] defaults */
     cfg->token_ttl_ms = 3600000; /* 1 hour */
@@ -135,8 +137,19 @@ sso_error_t sso_config_load(const char *filename, sso_config_t *cfg) {
     /* [database] */
     toml_table_t *db = toml_table_in(root, "database");
     if (db) {
+        bool path_provided = toml_key_exists(db, "path");
+        bool url_provided = toml_key_exists(db, "url");
+
         get_string(db, "path", cfg->path, sizeof(cfg->path));
         get_bool(db, "use_memory", &cfg->use_memory);
+        get_string(db, "type", cfg->database_type, sizeof(cfg->database_type));
+        get_string(db, "url", cfg->database_url, sizeof(cfg->database_url));
+
+        /* Legacy fallback: if url is NOT provided but path IS provided, use path as url */
+        if (!url_provided && path_provided) {
+            strncpy(cfg->database_url, cfg->path, sizeof(cfg->database_url) - 1);
+            cfg->database_url[sizeof(cfg->database_url) - 1] = '\0';
+        }
     }
 
     /* [security] */
@@ -197,6 +210,8 @@ void sso_config_apply_env(sso_config_t *cfg) {
 #define SSO_STRNCPY_DST(dst, src) do { strncpy((dst), (src), sizeof(dst)-1); (dst)[sizeof(dst)-1] = '\0'; } while(0)
     if ((val = getenv("SSO_HOST"))) SSO_STRNCPY_DST(cfg->host, val);
     if ((val = getenv("SSO_PORT"))) cfg->port = atoi(val);
+    if ((val = getenv("SSO_DATABASE_TYPE"))) SSO_STRNCPY_DST(cfg->database_type, val);
+    if ((val = getenv("SSO_DATABASE_URL"))) SSO_STRNCPY_DST(cfg->database_url, val);
     if ((val = getenv("SSO_TOKEN_SECRET"))) SSO_STRNCPY_DST(cfg->token_secret, val);
     if ((val = getenv("SSO_PRIVATE_KEY"))) SSO_STRNCPY_DST(cfg->private_key_pem, val);
     if ((val = getenv("SSO_PUBLIC_KEY"))) SSO_STRNCPY_DST(cfg->public_key_pem, val);

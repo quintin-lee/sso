@@ -145,7 +145,11 @@ static int run_server(sso_config_t *cfg) {
 
     /* Init SSO */
     storage_backend_t *storage = NULL;
-    err = storage_sqlite_create(&storage);
+    if (strcmp(cfg->database_type, "postgres") == 0) {
+        err = storage_postgres_create(&storage);
+    } else {
+        err = storage_sqlite_create(&storage);
+    }
     if (err != SSO_OK) {
         LOG_ERROR("Failed to create storage: %s", sso_strerror(err));
         return 1;
