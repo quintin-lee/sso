@@ -42,11 +42,15 @@ size_t base32_decode(const char *encoded, uint8_t *result, size_t max_len) {
     while (*encoded) {
         char c = *encoded++;
         uint8_t val = 0;
-        if (c >= 'A' && c <= 'Z') val = c - 'A';
-        else if (c >= 'a' && c <= 'z') val = c - 'a';
-        else if (c >= '2' && c <= '7') val = c - '2' + 26;
-        else if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '-') continue;
-        else continue;
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+            val = (c >= 'A' && c <= 'Z') ? (c - 'A') : (c - 'a');
+        } else if (c >= '2' && c <= '7') {
+            val = c - '2' + 26;
+        } else if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '-') {
+            continue;
+        } else {
+            continue;
+        }
         
         buffer = (buffer << 5) | val;
         bits_left += 5;
