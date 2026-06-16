@@ -109,6 +109,7 @@ typedef struct { char p[32]; char c[16]; sso_timestamp_t ex; } sms_t;
 
 typedef struct {
     da_t users, roles, groups, policies;
+    da_t oauth_clients;
     pl_t user_roles, user_groups, role_groups;
     al_t policy_assignments;
     sms_t *sms; size_t sms_n, sms_cap;
@@ -116,7 +117,7 @@ typedef struct {
     size_t oauth_n, oauth_cap;
     refresh_token_t *refresh_tokens;
     size_t rt_n, rt_cap;
-    sso_id_t next_uid, next_rid, next_gid, next_pid;
+    sso_id_t next_uid, next_rid, next_gid, next_pid, next_ocid;
 } mem_priv_t;
 
 #define P ((mem_priv_t*)self->handle)
@@ -125,12 +126,13 @@ static sso_error_t mem_open(storage_backend_t *self, const char *dsn) {
     (void)dsn; mem_priv_t *p = (mem_priv_t*)self->handle;
     da_init(&p->users,sizeof(user_t)); da_init(&p->roles,sizeof(role_t));
     da_init(&p->groups,sizeof(group_t)); da_init(&p->policies,sizeof(policy_t));
+    da_init(&p->oauth_clients,sizeof(oauth_client_t));
     pl_init(&p->user_roles); pl_init(&p->user_groups); pl_init(&p->role_groups);
     al_init(&p->policy_assignments);
     p->sms=NULL; p->sms_n=0; p->sms_cap=0;
     p->oauth_codes=NULL; p->oauth_n=0; p->oauth_cap=0;
     p->refresh_tokens=NULL; p->rt_n=0; p->rt_cap=0;
-    p->next_uid=1; p->next_rid=1; p->next_gid=1; p->next_pid=1;
+    p->next_uid=1; p->next_rid=1; p->next_gid=1; p->next_pid=1; p->next_ocid=1;
     return SSO_OK;
 }
 
@@ -442,13 +444,50 @@ static sso_error_t mem_delete_sms_code(storage_backend_t *self, const char *p) {
     return SSO_OK;
 }
 
-/* ===== OAuth Clients (Stubs) ===== */
+/* ===== OAuth Clients ===== */
 
-static sso_error_t mem_oauth_client_create(storage_backend_t *self, oauth_client_t *c) { (void)self; (void)c; return SSO_ERR_STORAGE; }
-static sso_error_t mem_oauth_client_get(storage_backend_t *self, const char *client_id, oauth_client_t *c) { (void)self; (void)client_id; (void)c; return SSO_ERR_NOT_FOUND; }
-static sso_error_t mem_oauth_client_update(storage_backend_t *self, const oauth_client_t *c) { (void)self; (void)c; return SSO_ERR_STORAGE; }
-static sso_error_t mem_oauth_client_delete(storage_backend_t *self, const char *client_id) { (void)self; (void)client_id; return SSO_ERR_STORAGE; }
-static sso_error_t mem_oauth_client_list(storage_backend_t *self, int offset, int limit, oauth_client_t *clients, size_t *count, size_t max) { (void)self; (void)offset; (void)limit; (void)clients; (void)max; if(count) *count=0; return SSO_OK; }
+static sso_error_t mem_oauth_client_create(storage_backend_t *self, oauth_client_t *c) {
+    if (da_find_str(&P->oauth_clients, offsetof(oauth_client_t, client_id), c->client_id) >= 0)
+        return SSO_ERR_ALREADY_EXISTS;
+    c->id = P->next_ocid++;
+    if (c->created_at == 0) c->created_at = sso_timestamp_now();
+    if (c->updated_at == 0) c->updated_at = c->created_at;
+    return da_add(&P->oauth_clients, c);
+}
+
+static sso_error_t mem_oauth_client_get(storage_backend_t *self, const char *client_id, oauth_client_t *c) {
+    ssize_t i = da_find_str(&P->oauth_clients, offsetof(oauth_client_t, client_id), client_id);
+    if (i < 0) return SSO_ERR_NOT_FOUND;
+    memcpy(c, (const oauth_client_t*)P->oauth_clients.items + i, sizeof(oauth_client_t));
+    return SSO_OK;
+}
+
+static sso_error_t mem_oauth_client_update(storage_backend_t *self, const oauth_client_t *c) {
+    ssize_t i = da_find_id(&P->oauth_clients, offsetof(oauth_client_t, id), c->id);
+    if (i < 0) return SSO_ERR_NOT_FOUND;
+    memcpy((oauth_client_t*)P->oauth_clients.items + i, c, sizeof(oauth_client_t));
+    return SSO_OK;
+}
+
+static sso_error_t mem_oauth_client_delete(storage_backend_t *self, const char *client_id) {
+    ssize_t i = da_find_str(&P->oauth_clients, offsetof(oauth_client_t, client_id), client_id);
+    if (i < 0) return SSO_ERR_NOT_FOUND;
+    da_rm(&P->oauth_clients, (size_t)i);
+    return SSO_OK;
+}
+
+static sso_error_t mem_oauth_client_list(storage_backend_t *self, int offset, int limit, oauth_client_t *clients, size_t *count, size_t max) {
+    size_t total = P->oauth_clients.count;
+    size_t match = 0;
+    size_t n = 0;
+    for (size_t i = 0; i < total; i++) {
+        if (match++ < (size_t)offset) continue;
+        if (n >= (size_t)limit || n >= max) break;
+        clients[n++] = *((const oauth_client_t*)P->oauth_clients.items + i);
+    }
+    if (count) *count = n;
+    return SSO_OK;
+}
 
 static sso_error_t mem_rt_create(storage_backend_t *self, const refresh_token_t *rt) {
     mem_priv_t *p = P; if (!p || !rt) return SSO_ERR_STORAGE;
