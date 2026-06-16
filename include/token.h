@@ -108,6 +108,7 @@ void token_destroy(token_t *token);
 sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
                         const sso_id_t *role_ids, size_t role_count,
                         const sso_id_t *group_ids, size_t group_count,
+                        const char *scope,
                         sso_timestamp_t ttl_ms, token_t *out);
 
 /* Verify and decode a token string.  Returns SSO_OK on success,

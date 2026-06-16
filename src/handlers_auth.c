@@ -65,10 +65,9 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
     if (user.mfa_enabled) {
         token_t mfa_token;
         /* Issue a short-lived token with "mfa" scope */
-        token_issue(tmgr, &user, NULL, 0, NULL, 0, 300000, &mfa_token);
-        strncpy(mfa_token.scope, "mfa", sizeof(mfa_token.scope) - 1);
+        token_issue(tmgr, &user, NULL, 0, NULL, 0, "mfa", 300000, &mfa_token);
         
-        /* Re-issue to embed scope (a bit hacky but works given how token_issue is implemented) */
+        /* Success: return MFA requirement */
         char buf[8192];
         snprintf(buf, sizeof(buf),
             "{"
@@ -82,12 +81,12 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
     }
 
     token_t access_token, refresh_token;
-    err = token_issue(tmgr, &user, roles, rc, groups, gc, 900000, &access_token);
+    err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 900000, &access_token);
     if (err != SSO_OK) {
         sso_response_error(resp, 500, "Failed to issue access token");
         return SSO_OK;
     }
-    err = token_issue(tmgr, &user, roles, rc, groups, gc, 604800000, &refresh_token);
+    err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 604800000, &refresh_token);
     if (err != SSO_OK) {
         token_destroy(&access_token);
         sso_response_error(resp, 500, "Failed to issue refresh token");
@@ -232,9 +231,9 @@ sso_error_t handle_mfa_verify(sso_context_t *ctx, const http_request_t *req,
     user_get_groups(umgr, user.id, groups, &gc, 16);
 
     token_t access_token, refresh_token;
-    err = token_issue(tmgr, &user, roles, rc, groups, gc, 900000, &access_token);
+    err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 900000, &access_token);
     if (err == SSO_OK) {
-        err = token_issue(tmgr, &user, roles, rc, groups, gc, 604800000, &refresh_token);
+        err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 604800000, &refresh_token);
     }
 
     if (err != SSO_OK) {
@@ -381,7 +380,7 @@ sso_error_t handle_login_by_sms(sso_context_t *ctx, const http_request_t *req,
 
     token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
     token_t token;
-    err = token_issue(tmgr, &user, roles, rc, groups, gc, 3600000, &token);
+    err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 3600000, &token);
     
     if (err != SSO_OK) {
         sso_response_error(resp, 500, "Failed to issue token");
@@ -582,12 +581,12 @@ sso_error_t handle_refresh(sso_context_t *ctx, const http_request_t *req,
     err = token_issue(tmgr, &user,
                       old_token.role_ids, old_token.role_count,
                       old_token.group_ids, old_token.group_count,
-                      900000, &access_token);
+                      NULL, 900000, &access_token);
     if (err == SSO_OK) {
         err = token_issue(tmgr, &user,
                           old_token.role_ids, old_token.role_count,
                           old_token.group_ids, old_token.group_count,
-                          604800000, &refresh_token);
+                          NULL, 604800000, &refresh_token);
     }
     token_destroy(&old_token);
 

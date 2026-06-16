@@ -407,12 +407,11 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
         long ttl = get_client_token_ttl(cfg, sb, ac.client_id);
 
         sso_error_t terr = token_issue(tmgr, &user, roles, rc, groups, gc,
-                                       ttl, &access_token);
+                                       ac.scope, ttl, &access_token);
         if (terr != SSO_OK) {
             json_error_response(resp, 500, "server_error");
             goto cleanup;
         }
-        if (ac.scope[0]) snprintf(access_token.scope, sizeof(access_token.scope), "%s", ac.scope);
         if (ac.nonce[0]) snprintf(access_token.oauth_nonce, sizeof(access_token.oauth_nonce), "%s", ac.nonce);
 
         /* Store generated Refresh Token on issue */
@@ -481,12 +480,11 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
         long ttl = get_client_token_ttl(cfg, sb, client_id);
 
         sso_error_t terr = token_issue(tmgr, &client_user, NULL, 0, NULL, 0,
-                                       ttl, &access_token);
+                                       scope, ttl, &access_token);
         if (terr != SSO_OK) {
             json_error_response(resp, 500, "server_error");
             goto cleanup;
         }
-        if (scope) { strncpy(access_token.scope, scope, sizeof(access_token.scope) - 1); access_token.scope[sizeof(access_token.scope) - 1] = '\0'; }
 
         char buf[2048];
         snprintf(buf, sizeof(buf),
@@ -537,7 +535,7 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
         user_get_groups(umgr, user.id, groups, &gc, 16);
 
         long ttl = get_client_token_ttl(cfg, sb, rt_record.client_id);
-        sso_error_t terr = token_issue(tmgr, &user, roles, rc, groups, gc, ttl, &access_token);
+        sso_error_t terr = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, ttl, &access_token);
         if (terr != SSO_OK) {
             json_error_response(resp, 500, "server_error");
             goto cleanup;

@@ -347,7 +347,7 @@ int run_demo(sso_config_t *cfg) {
         user_get_groups(umgr, auth_user.id, groups, &gc, 8);
 
         token_t token;
-        token_issue(tmgr, &auth_user, roles, rc, groups, gc, 3600000, &token);
+        token_issue(tmgr, &auth_user, roles, rc, groups, gc, NULL, 3600000, &token);
         printf("  token: %s\n", token.token_str);
 
         /* Verify token */

@@ -27,7 +27,7 @@ static const char *test_token_hs256_lifecycle() {
     sso_id_t roles[] = {1, 2};
     sso_id_t groups[] = {10};
     token_t issued;
-    sso_error_t err = token_issue(tmgr, &user, roles, 2, groups, 1, 3600000LL, &issued);
+    sso_error_t err = token_issue(tmgr, &user, roles, 2, groups, 1, NULL, 3600000LL, &issued);
     ASSERT_INT_EQUAL(err, SSO_OK);
     ASSERT_NOT_NULL(issued.token_str);
 
@@ -56,7 +56,7 @@ static const char *test_refresh_token_generation() {
     strcpy(user.username, "testuser");
 
     token_t issued;
-    sso_error_t err = token_issue(tmgr, &user, NULL, 0, NULL, 0, 3600000LL, &issued);
+    sso_error_t err = token_issue(tmgr, &user, NULL, 0, NULL, 0, NULL, 3600000LL, &issued);
     ASSERT_INT_EQUAL(err, SSO_OK);
     
     /* Verify refresh token is generated and not empty */
@@ -80,7 +80,7 @@ static const char *test_token_expired() {
     strcpy(user.username, "expireduser");
 
     token_t issued;
-    sso_error_t err = token_issue(tmgr, &user, NULL, 0, NULL, 0, -1000LL, &issued);
+    sso_error_t err = token_issue(tmgr, &user, NULL, 0, NULL, 0, NULL, -1000LL, &issued);
     ASSERT_INT_EQUAL(err, SSO_OK);
 
     token_t verified;
@@ -102,7 +102,7 @@ static const char *test_token_tampered() {
     strcpy(user.username, "tamperuser");
 
     token_t issued;
-    token_issue(tmgr, &user, NULL, 0, NULL, 0, 3600000LL, &issued);
+    token_issue(tmgr, &user, NULL, 0, NULL, 0, NULL, 3600000LL, &issued);
 
     char *tampered = strdup(issued.token_str);
     if (!tampered) { token_manager_destroy(tmgr); return "OOM strdup"; }
@@ -128,7 +128,7 @@ static const char *test_token_revoked() {
     strcpy(user.username, "revokeuser");
 
     token_t issued;
-    token_issue(tmgr, &user, NULL, 0, NULL, 0, 3600000LL, &issued);
+    token_issue(tmgr, &user, NULL, 0, NULL, 0, NULL, 3600000LL, &issued);
 
     token_revoke(tmgr, issued.jti);
     ASSERT_TRUE(token_is_revoked(tmgr, issued.jti));
@@ -148,7 +148,7 @@ static const char *test_token_empty_payload() {
     strcpy(user.username, "emptyuser");
 
     token_t issued;
-    sso_error_t err = token_issue(tmgr, &user, NULL, 0, NULL, 0, 3600000LL, &issued);
+    sso_error_t err = token_issue(tmgr, &user, NULL, 0, NULL, 0, NULL, 3600000LL, &issued);
     ASSERT_INT_EQUAL(err, SSO_OK);
 
     token_t verified;

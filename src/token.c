@@ -269,6 +269,7 @@ void token_destroy(token_t *token) {
 sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
                         const sso_id_t *role_ids, size_t role_count,
                         const sso_id_t *group_ids, size_t group_count,
+                        const char *scope,
                         sso_timestamp_t ttl_ms, token_t *out) {
     if (!mgr || !user || !out) return SSO_ERR_INVALID_PARAM;
 
@@ -280,6 +281,10 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     out->role_count = role_count;
     out->group_count = group_count;
     out->nonce = token_get_nonce(mgr, user->id);
+
+    if (scope) {
+        strncpy(out->scope, scope, sizeof(out->scope) - 1);
+    }
 
     unsigned char rand_bytes[8];
     randombytes_buf(rand_bytes, sizeof(rand_bytes));
@@ -582,6 +587,7 @@ sso_error_t token_refresh(token_manager_t *mgr, const token_t *old_token,
     return token_issue(mgr, &user,
                        old_token->role_ids, old_token->role_count,
                        old_token->group_ids, old_token->group_count,
+                       old_token->scope,
                        ttl_ms > 0 ? ttl_ms : mgr->default_ttl_ms,
                        out);
 }

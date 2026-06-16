@@ -363,7 +363,15 @@ static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
                         "CREATE INDEX IF NOT EXISTS idx_policy_assignments_target ON policy_assignments(target_type, target_id);";
         } else if (v == 2) {
             migration = "ALTER TABLE users ADD COLUMN mfa_enabled INTEGER DEFAULT 0;"
-                        "ALTER TABLE users ADD COLUMN mfa_secret TEXT DEFAULT '';";
+                        "ALTER TABLE users ADD COLUMN mfa_secret TEXT DEFAULT '';"
+                        "CREATE TABLE IF NOT EXISTS refresh_tokens ("
+                        "  token_hash TEXT PRIMARY KEY,"
+                        "  user_id INTEGER NOT NULL,"
+                        "  client_id TEXT,"
+                        "  expires_at INTEGER NOT NULL,"
+                        "  issued_at INTEGER NOT NULL,"
+                        "  revoked INTEGER DEFAULT 0"
+                        ");";
         } else {
             break;
         }
@@ -1402,10 +1410,11 @@ static sso_error_t sqlite_refresh_token_get(storage_backend_t *self, const char 
     sqlite3_bind_text(stmt, 1, token_hash, -1, SQLITE_STATIC);
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         memset(out, 0, sizeof(*out));
-        strncpy(out->token_hash, (const char *)sqlite3_column_text(stmt, 0), sizeof(out->token_hash)-1);
+        const char *token_hash_val = (const char *)sqlite3_column_text(stmt, 0);
+        if (token_hash_val) strncpy(out->token_hash, token_hash_val, sizeof(out->token_hash)-1);
         out->user_id = sqlite3_column_int64(stmt, 1);
-        const char *client_id = (const char *)sqlite3_column_text(stmt, 2);
-        if (client_id) strncpy(out->client_id, client_id, sizeof(out->client_id)-1);
+        const char *client_id_val = (const char *)sqlite3_column_text(stmt, 2);
+        if (client_id_val) strncpy(out->client_id, client_id_val, sizeof(out->client_id)-1);
         out->expires_at = sqlite3_column_int64(stmt, 3);
         out->issued_at = sqlite3_column_int64(stmt, 4);
         out->revoked = sqlite3_column_int(stmt, 5);

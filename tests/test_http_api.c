@@ -60,7 +60,7 @@ static const char *test_login_success() {
     user_get_roles(umgr, user.id, roles, &rc, 16);
 
     token_t token;
-    err = token_issue(tmgr, &user, roles, rc, groups, gc, 900000, &token);
+    err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 900000, &token);
     ASSERT_INT_EQUAL(err, SSO_OK);
     ASSERT_TRUE(strlen(token.token_str) > 0);
     ASSERT_TRUE(token.nonce == 0);
@@ -93,7 +93,7 @@ static const char *test_token_expired() {
 
     /* Issue an expired token (TTL = -1 → immediate expiry) */
     token_t token;
-    token_issue(tmgr, &user, NULL, 0, NULL, 0, -1, &token);
+    token_issue(tmgr, &user, NULL, 0, NULL, 0, NULL, -1, &token);
 
     token_t decoded;
     sso_error_t err = token_verify(tmgr, token.token_str, &decoded);
@@ -135,7 +135,7 @@ static const char *test_token_nonce() {
 
     /* Issue a token */
     token_t token;
-    token_issue(tmgr, &user, NULL, 0, NULL, 0, 900000, &token);
+    token_issue(tmgr, &user, NULL, 0, NULL, 0, NULL, 900000, &token);
     ASSERT_TRUE(token.nonce == 0);
 
     /* Bump nonce (simulates "logout all") */
@@ -154,7 +154,7 @@ static const char *test_token_nonce() {
 
     /* New token should have updated nonce */
     token_t token2;
-    token_issue(tmgr, &user, NULL, 0, NULL, 0, 900000, &token2);
+    token_issue(tmgr, &user, NULL, 0, NULL, 0, NULL, 900000, &token2);
     ASSERT_TRUE(token2.nonce == 1);
 
     token_destroy(&token);
@@ -183,8 +183,8 @@ static const char *test_refresh_token() {
 
     /* Issue access token (short TTL) and refresh token (long TTL) */
     token_t access, refresh;
-    token_issue(tmgr, &user, roles, rc, groups, gc, 900000, &access);
-    token_issue(tmgr, &user, roles, rc, groups, gc, 604800000, &refresh);
+    token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 900000, &access);
+    token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 604800000, &refresh);
 
     /* Refresh: verify refresh token, issue new pair */
     token_t old_refresh;
@@ -194,9 +194,10 @@ static const char *test_refresh_token() {
     /* Issue new tokens using refresh */
     token_t new_access, new_refresh;
     token_issue(tmgr, &user, old_refresh.role_ids, old_refresh.role_count,
-                old_refresh.group_ids, old_refresh.group_count, 900000, &new_access);
+                old_refresh.group_ids, old_refresh.group_count, NULL, 900000, &new_access);
     token_issue(tmgr, &user, old_refresh.role_ids, old_refresh.role_count,
-                old_refresh.group_ids, old_refresh.group_count, 604800000, &new_refresh);
+                old_refresh.group_ids, old_refresh.group_count, NULL, 604800000, &new_refresh);
+
 
     ASSERT_TRUE(new_access.user_id == user.id);
     ASSERT_TRUE(new_refresh.user_id == user.id);
