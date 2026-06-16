@@ -46,9 +46,8 @@ size_t base32_decode(const char *encoded, uint8_t *result, size_t max_len) {
             val = (c >= 'A' && c <= 'Z') ? (c - 'A') : (c - 'a');
         } else if (c >= '2' && c <= '7') {
             val = c - '2' + 26;
-        } else if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '-') {
-            continue;
         } else {
+            /* Skip whitespace, dashes, and other characters */
             continue;
         }
         

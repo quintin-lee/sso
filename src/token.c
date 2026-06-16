@@ -24,9 +24,9 @@
 #include <sodium.h>
 #include <pthread.h>
 
-/* ========================================================================
+/*           ==
  * Internal helpers
- * ======================================================================== */
+ *           == */
 
 static void to_hex(const unsigned char *bin, size_t len, char *hex, size_t hex_len) {
     char *p = hex;
@@ -34,57 +34,6 @@ static void to_hex(const unsigned char *bin, size_t len, char *hex, size_t hex_l
         p += snprintf(p, hex_len - (size_t)(p - hex), "%02x", bin[i]);
     }
     *p = '\0';
-}
-
-/* ---- Self-contained base64 (no OpenSSL BIO dependency) ---- */
-static const char b64_table[] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-static void base64_encode(const unsigned char *input, size_t len,
-                           char *output, size_t output_len) {
-    size_t i = 0, o = 0;
-    while (i < len && o + 4 < output_len) {
-        unsigned char a = input[i];
-        unsigned char b = (i + 1 < len) ? input[i + 1] : 0;
-        unsigned char c = (i + 2 < len) ? input[i + 2] : 0;
-
-        output[o++] = b64_table[a >> 2];
-        output[o++] = b64_table[((a & 0x03) << 4) | (b >> 4)];
-        output[o++] = (i + 1 < len) ? b64_table[((b & 0x0f) << 2) | (c >> 6)] : '=';
-        output[o++] = (i + 2 < len) ? b64_table[c & 0x3f] : '=';
-        i += 3;
-    }
-    output[o] = '\0';
-}
-
-static int b64_rev(char c) {
-    if (c >= 'A' && c <= 'Z') return c - 'A';
-    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-    if (c >= '0' && c <= '9') return c - '0' + 52;
-    if (c == '+') return 62;
-    if (c == '/') return 63;
-    return -1;
-}
-
-static size_t base64_decode(const char *input, unsigned char *output, size_t output_len) {
-    size_t i = 0, o = 0;
-    size_t len = strlen(input);
-    while (i < len && o < output_len) {
-        int a = b64_rev(input[i]);      if (a < 0) break;
-        int b = b64_rev(input[i + 1]);  if (b < 0) break;
-        int c = b64_rev(input[i + 2]);
-        int d = b64_rev(input[i + 3]);
-
-        output[o++] = (unsigned char)((a << 2) | (b >> 4));
-        if (c >= 0 && o < output_len) {
-            output[o++] = (unsigned char)(((b & 0x0f) << 4) | (c >> 2));
-        }
-        if (d >= 0 && o < output_len) {
-            output[o++] = (unsigned char)(((c & 0x03) << 6) | d);
-        }
-        i += 4;
-    }
-    return o;
 }
 
 /* ---- Base64url (RFC 4648 §5): URL-safe, no padding ---- */
@@ -125,7 +74,7 @@ size_t base64url_decode(const char *input, unsigned char *output, size_t output_
     size_t len = strlen(input);
     while (i < len && o < output_len) {
         int a = b64url_rev(input[i]);      if (a < 0) break;
-        int b = b64url_rev(input[i + 1]);  if (b < 0) break;
+        int b = (i + 1 < len) ? b64url_rev(input[i + 1]) : -1; if (b < 0) break;
         int c = (i + 2 < len) ? b64url_rev(input[i + 2]) : -1;
         int d = (i + 3 < len) ? b64url_rev(input[i + 3]) : -1;
 
@@ -150,9 +99,9 @@ static bool is_hex_str(const char *s) {
     return true;
 }
 
-/* ========================================================================
+/*           ==
  * Lifecycle
- * ======================================================================== */
+ *           == */
 sso_error_t token_manager_init(token_manager_t *mgr, const unsigned char *secret,
                                size_t secret_len, sso_timestamp_t default_ttl_ms) {
     if (!mgr || !secret || secret_len == 0) return SSO_ERR_INVALID_PARAM;
@@ -270,9 +219,9 @@ void token_destroy(token_t *token) {
     token->group_count = 0;
 }
 
-/* ========================================================================
+/*           ==
  * Token operations
- * ======================================================================== */
+ *           == */
 sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
                         const sso_id_t *role_ids, size_t role_count,
                         const sso_id_t *group_ids, size_t group_count,
@@ -321,7 +270,9 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     cJSON_AddStringToObject(header, "typ", "JWT");
     char *header_str = cJSON_PrintUnformatted(header);
     cJSON_Delete(header);
+ 
     char b64_header[256];
+ 
     base64url_encode((unsigned char *)header_str, strlen(header_str), b64_header, sizeof(b64_header));
     free(header_str);
 
@@ -632,11 +583,9 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         if (v_err != SSO_OK) return v_err;
     }
 
-    /* Decode payload (accept both base64 and base64url) */
+    /* Decode payload */
     unsigned char decoded[4096];
-    size_t decoded_len = base64_decode(b64_payload, decoded, sizeof(decoded) - 1);
-    if (decoded_len == 0)
-        decoded_len = base64url_decode(b64_payload, decoded, sizeof(decoded) - 1);
+    size_t decoded_len = base64url_decode(b64_payload, decoded, sizeof(decoded) - 1);
     if (decoded_len == 0) return SSO_ERR_TOKEN_INVALID;
     decoded[decoded_len] = '\0';
 
@@ -669,9 +618,9 @@ sso_error_t token_refresh(token_manager_t *mgr, const token_t *old_token,
                        out);
 }
 
-/* ========================================================================
+/*           ==
  * Revocation (dynamic growing blocklist) — per token_manager instance
- * ======================================================================== */
+ *           == */
 #define REVOCATIONS_INIT_CAP 64
 
 static int compare_jtis(const void *a, const void *b) {
@@ -734,9 +683,9 @@ bool token_is_revoked(token_manager_t *mgr, const char *jti) {
     return found;
 }
 
-/* ========================================================================
+/*           ==
  * User token nonces (for "logout all sessions")
- * ======================================================================== */
+ *           == */
 sso_error_t token_set_nonce(token_manager_t *mgr, sso_id_t user_id, uint64_t nonce) {
     if (!mgr) return SSO_ERR_INVALID_PARAM;
     pthread_mutex_lock(&mgr->nonce_lock);

@@ -486,7 +486,7 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
             goto cleanup;
         }
 
-        char buf[2048];
+        char buf[8192];
         snprintf(buf, sizeof(buf),
             "{"
             "\"access_token\":\"%s\","

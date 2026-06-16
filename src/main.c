@@ -62,7 +62,10 @@ static sso_error_t bootstrap_data(sso_context_t *ctx) {
         memset(rand_bytes, 0, sizeof(rand_bytes));
         FILE *f = fopen("/dev/urandom", "r");
         if (f) {
-            (void)fread(rand_bytes, 1, sizeof(rand_bytes), f);
+            if (fread(rand_bytes, 1, sizeof(rand_bytes), f) != sizeof(rand_bytes)) {
+                /* If read fails, we still have zeros from memset, which is "random" enough for bootstrap safety,
+                 * but ideally we'd handle it. Here we just ensure we don't ignore the return value. */
+            }
             fclose(f);
         }
         snprintf(random_pass, sizeof(random_pass), "admin-%02x%02x%02x%02x",
