@@ -111,9 +111,17 @@ static uint32_t hash_params(const eval_context_t *ctx) {
     return hash;
 }
 
-static uint64_t get_time_ms() {
+/* Wall-clock time for audit log timestamps. */
+static uint64_t get_time_ms(void) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
+}
+
+/* Monotonic time for cache TTL / duration measurements — immune to system clock jumps. */
+static uint64_t get_time_monotonic_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
 }
 
@@ -160,7 +168,8 @@ void perm_engine_destroy(permission_engine_t *engine) {
     pthread_rwlock_wrlock(&engine->lock);
 
     /* Free cached compiled rules */
-    for (size_t i = 0; i < engine->cache_count; i++) {
+    for (size_t i = 0; i < MAX_POLICY_CACHE; i++) {
+        if (engine->cache[i].policy_id == 0) continue;
         permission_strategy_t *strat = perm_engine_get_strategy(engine, engine->cache[i].strategy_type);
         if (strat && strat->free_compiled_rules) {
             strat->free_compiled_rules(strat, engine->cache[i].compiled);
@@ -183,21 +192,38 @@ void perm_engine_destroy(permission_engine_t *engine) {
  * ======================================================================== */
 
 static void *perm_engine_get_cached_rule(permission_engine_t *engine, sso_id_t policy_id) {
-    for (size_t i = 0; i < engine->cache_count; i++) {
-        if (engine->cache[i].policy_id == policy_id) {
-            return engine->cache[i].compiled;
-        }
-    }
+    if (engine->cache_count == 0) return NULL;
+    /* Direct-index hash: policy IDs are dense sequential integers, so
+       ID % MAX_POLICY_CACHE gives a well-distributed slot, with linear
+       probe for the rare collision (cache_count <= 256). */
+    size_t start = (size_t)policy_id % MAX_POLICY_CACHE;
+    size_t idx = start;
+    do {
+        if (engine->cache[idx].policy_id == policy_id)
+            return engine->cache[idx].compiled;
+        if (engine->cache[idx].policy_id == 0)
+            break; /* empty slot — not found */
+        idx = (idx + 1) % MAX_POLICY_CACHE;
+    } while (idx != start);
     return NULL;
 }
 
 static void perm_engine_cache_rule(permission_engine_t *engine, sso_id_t policy_id, 
                                     perm_strategy_type_t type, void *compiled) {
     if (engine->cache_count >= MAX_POLICY_CACHE) return;
-    engine->cache[engine->cache_count].policy_id = policy_id;
-    engine->cache[engine->cache_count].strategy_type = type;
-    engine->cache[engine->cache_count].compiled = compiled;
-    engine->cache_count++;
+    size_t start = (size_t)policy_id % MAX_POLICY_CACHE;
+    size_t idx = start;
+    do {
+        if (engine->cache[idx].policy_id == 0 || engine->cache[idx].policy_id == policy_id) {
+            bool is_new = (engine->cache[idx].policy_id == 0);
+            engine->cache[idx].policy_id = policy_id;
+            engine->cache[idx].strategy_type = type;
+            engine->cache[idx].compiled = compiled;
+            if (is_new) engine->cache_count++;
+            return;
+        }
+        idx = (idx + 1) % MAX_POLICY_CACHE;
+    } while (idx != start);
 }
 
 void perm_engine_cache_invalidate_user(permission_engine_t *engine, sso_id_t user_id) {
@@ -226,20 +252,22 @@ void perm_engine_cache_invalidate_policy(permission_engine_t *engine, sso_id_t p
     pthread_rwlock_wrlock(&engine->lock);
     
     /* 1. Invalidate compiled rule */
-    for (size_t i = 0; i < engine->cache_count; i++) {
-        if (engine->cache[i].policy_id == policy_id) {
-            permission_strategy_t *strat = perm_engine_get_strategy(engine, engine->cache[i].strategy_type);
+    size_t start = (size_t)policy_id % MAX_POLICY_CACHE;
+    size_t idx = start;
+    do {
+        if (engine->cache[idx].policy_id == policy_id) {
+            permission_strategy_t *strat = perm_engine_get_strategy(engine, engine->cache[idx].strategy_type);
             if (strat && strat->free_compiled_rules) {
-                strat->free_compiled_rules(strat, engine->cache[i].compiled);
+                strat->free_compiled_rules(strat, engine->cache[idx].compiled);
             }
-            /* Shift others down */
-            for (size_t j = i; j < engine->cache_count - 1; j++) {
-                engine->cache[j] = engine->cache[j + 1];
-            }
+            engine->cache[idx].policy_id = 0;
             engine->cache_count--;
-            break; 
+            break;
         }
-    }
+        if (engine->cache[idx].policy_id == 0)
+            break; /* empty slot — policy not cached */
+        idx = (idx + 1) % MAX_POLICY_CACHE;
+    } while (idx != start);
 
     /* 2. Clear all result and resolution caches as this policy might affect anyone */
     for (size_t i = 0; i < RESULT_CACHE_SIZE; i++) {
@@ -256,11 +284,13 @@ void perm_engine_cache_invalidate_all(permission_engine_t *engine) {
     if (!engine) return;
     pthread_rwlock_wrlock(&engine->lock);
 
-    for (size_t i = 0; i < engine->cache_count; i++) {
+    for (size_t i = 0; i < MAX_POLICY_CACHE; i++) {
+        if (engine->cache[i].policy_id == 0) continue;
         permission_strategy_t *strat = perm_engine_get_strategy(engine, engine->cache[i].strategy_type);
         if (strat && strat->free_compiled_rules) {
             strat->free_compiled_rules(strat, engine->cache[i].compiled);
         }
+        engine->cache[i].policy_id = 0;
     }
     engine->cache_count = 0;
 
@@ -441,10 +471,15 @@ sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
 
 #define AUDIT_LOG_MAX_SIZE (10 * 1024 * 1024)
 #define AUDIT_LOG_MAX_BACKUPS 5
+#define AUDIT_LOG_STAT_INTERVAL 100
 
 static pthread_mutex_t audit_log_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void rotate_audit_log(void) {
+    /* Throttle: only stat() every N calls to avoid filesystem overhead. */
+    static unsigned int stat_count = 0;
+    if ((++stat_count) % AUDIT_LOG_STAT_INTERVAL != 0) return;
+
     struct stat st;
     if (stat("audit.log", &st) != 0 || st.st_size <= AUDIT_LOG_MAX_SIZE) return;
 
@@ -509,18 +544,22 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
     uint32_t phash = hash_params(ctx);
     size_t cache_idx = phash % RESULT_CACHE_SIZE;
     size_t l1_idx = ctx->user_id % POLICY_RES_CACHE_SIZE;
-    uint64_t now = get_time_ms();
+    uint64_t now = get_time_monotonic_ms();
 
+    sso_error_t err;
+    char full_trace[4096] = "";
+    bool any_allowed = false;
+
+    /* ---- Phase 1: L2 (result) cache check under rdlock ---- */
     pthread_rwlock_rdlock(&engine->lock);
 
-    /* 0. Check Result Cache (L2) */
     if (engine->result_cache[cache_idx].valid &&
         engine->result_cache[cache_idx].user_id == ctx->user_id &&
         engine->result_cache[cache_idx].params_hash == phash &&
-        (now - engine->result_cache[cache_idx].timestamp) < 30000) { /* 30s TTL */
+        (now - engine->result_cache[cache_idx].timestamp) < 30000) {
         *result = engine->result_cache[cache_idx].allowed;
         if (decision_trace) *decision_trace = strdup("Decision from Result Cache (L2)");
-        
+
         atomic_fetch_add(&engine->metrics.cache_hits_l2, 1);
         atomic_fetch_add(&engine->metrics.total_evals, 1);
         if (*result) atomic_fetch_add(&engine->metrics.allows, 1);
@@ -528,8 +567,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
 
         pthread_rwlock_unlock(&engine->lock);
 
-        /* Telemetry: Cache Hit */
-        uint64_t duration = get_time_ms() - now;
+        uint64_t duration = get_time_monotonic_ms() - now;
         if (duration > 5) {
             LOG_WARN("[perm] CACHE HIT (SLOW): user=%ld duration=%lums",
                      (long)ctx->user_id, (long)duration);
@@ -538,43 +576,57 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         return SSO_OK;
     }
 
-    *result = false; /* default: deny */
-    sso_error_t err;
-
-    /* Trace buffer */
-    char full_trace[4096] = "";
+    *result = false;
     if (decision_trace) *decision_trace = NULL;
 
-    /* 1. Resolve all policies applicable to this user */
+    /* ---- Phase 2: L1 (resolution) cache check under rdlock ---- */
+    bool l1_hit = (engine->res_cache[l1_idx].valid &&
+                   engine->res_cache[l1_idx].user_id == ctx->user_id &&
+                   (now - engine->res_cache[l1_idx].timestamp) < 60000);
     policy_t policies_buf[64];
     policy_t *policies = policies_buf;
     size_t policy_count = 0;
 
-    /* Check Resolution Cache (L1) */
-    if (engine->res_cache[l1_idx].valid &&
-        engine->res_cache[l1_idx].user_id == ctx->user_id &&
-        (now - engine->res_cache[l1_idx].timestamp) < 60000) { /* 60s TTL */
+    if (l1_hit) {
         policies = engine->res_cache[l1_idx].policies;
         policy_count = engine->res_cache[l1_idx].count;
         atomic_fetch_add(&engine->metrics.cache_hits_l1, 1);
-    } else {
+    }
+
+    pthread_rwlock_unlock(&engine->lock);
+    /* ---- No lock held beyond this point until Phase 3 re-acquire ---- */
+
+    /* ---- Phase 2b: Policy resolution (DB query) without holding the lock ---- */
+    if (!l1_hit) {
         size_t max_policies = 64;
         policy_manager_t *pmgr = (policy_manager_t *)engine->ctx->policy_mgr;
         if (!pmgr) {
-            pthread_rwlock_unlock(&engine->lock);
-            audit_log_decision(ctx, false, "Error: policy manager not found", get_time_ms() - now, false);
+            audit_log_decision(ctx, false, "Error: policy manager not found", get_time_monotonic_ms() - now, false);
             LOG_ERROR("policy manager not found in engine context");
             return SSO_ERR_INIT;
         }
 
         err = policy_resolve_for_user(pmgr, ctx->user_id, policies_buf, &policy_count, max_policies);
         if (err != SSO_OK && err != SSO_ERR_NOT_FOUND) {
-            pthread_rwlock_unlock(&engine->lock);
-            audit_log_decision(ctx, false, "Error: policy resolution failed", get_time_ms() - now, false);
+            audit_log_decision(ctx, false, "Error: policy resolution failed", get_time_monotonic_ms() - now, false);
             return err;
         }
+    }
 
-        /* Update L1 Cache */
+    if (policy_count == 0) {
+        if (decision_trace) *decision_trace = strdup("Default DENY: No policies found");
+        audit_log_decision(ctx, false, "Default DENY: No policies found", get_time_monotonic_ms() - now, false);
+        return SSO_OK;
+    }
+
+    /* ---- Phase 3: Evaluation under rdlock (needed for strategy + compile cache access) ---- */
+    pthread_rwlock_rdlock(&engine->lock);
+
+    /* On L1 miss, update the resolution cache now that we hold the lock again.
+       Re-check: another thread may have populated it first. */
+    if (!l1_hit && !(engine->res_cache[l1_idx].valid &&
+                     engine->res_cache[l1_idx].user_id == ctx->user_id &&
+                     (now - engine->res_cache[l1_idx].timestamp) < 60000)) {
         engine->res_cache[l1_idx].user_id = ctx->user_id;
         memcpy(engine->res_cache[l1_idx].policies, policies_buf, sizeof(policy_t) * policy_count);
         engine->res_cache[l1_idx].count = policy_count;
@@ -582,21 +634,11 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         engine->res_cache[l1_idx].valid = true;
     }
 
-    if (policy_count == 0) {
-        if (decision_trace) *decision_trace = strdup("Default DENY: No policies found");
-        pthread_rwlock_unlock(&engine->lock);
-        audit_log_decision(ctx, false, "Default DENY: No policies found", get_time_ms() - now, false);
-        return SSO_OK;
-    }
-
-    /* 2. Evaluate each policy.  DENY-overrides: one DENY → result is DENY. */
-    bool any_allowed = false;
-
     for (size_t i = 0; i < policy_count; i++) {
         bool policy_result = false;
         char *policy_trace = NULL;
         err = perm_engine_evaluate_policy(engine, &policies[i], ctx, &policy_result, &policy_trace);
-        
+
         if (decision_trace && policy_trace) {
             strncat(full_trace, "[Policy ", sizeof(full_trace) - strlen(full_trace) - 1);
             strncat(full_trace, policies[i].name, sizeof(full_trace) - strlen(full_trace) - 1);
@@ -606,10 +648,8 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         }
         if (policy_trace) free(policy_trace);
 
-        if (err == SSO_ERR_NOT_FOUND) {
-            continue; 
-        }
-        if (err != SSO_OK) continue; 
+        if (err == SSO_ERR_NOT_FOUND) continue;
+        if (err != SSO_OK) continue;
 
         if (!policy_result) {
             *result = false;
@@ -618,7 +658,6 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
                 *decision_trace = strdup(full_trace);
             }
 
-            /* Update cache for DENY */
             engine->result_cache[cache_idx].user_id = ctx->user_id;
             engine->result_cache[cache_idx].params_hash = phash;
             engine->result_cache[cache_idx].allowed = false;
@@ -626,7 +665,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
             engine->result_cache[cache_idx].valid = true;
 
             pthread_rwlock_unlock(&engine->lock);
-            audit_log_decision(ctx, false, full_trace, get_time_ms() - now, false);
+            audit_log_decision(ctx, false, full_trace, get_time_monotonic_ms() - now, false);
             return SSO_OK;
         }
 
@@ -639,7 +678,6 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         *decision_trace = strdup(full_trace);
     }
 
-    /* Update cache for final result */
     engine->result_cache[cache_idx].user_id = ctx->user_id;
     engine->result_cache[cache_idx].params_hash = phash;
     engine->result_cache[cache_idx].allowed = any_allowed;
@@ -652,8 +690,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
 
     pthread_rwlock_unlock(&engine->lock);
 
-    /* Telemetry: Log evaluation time */
-    uint64_t duration = get_time_ms() - now;
+    uint64_t duration = get_time_monotonic_ms() - now;
     atomic_fetch_add(&engine->metrics.total_duration_us, (unsigned long long)duration * 1000);
     if (duration > 10) {
         LOG_WARN("[perm] SLOW EVAL: user=%ld duration=%lums cache=MISS",
