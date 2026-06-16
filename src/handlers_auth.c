@@ -326,6 +326,16 @@ sso_error_t handle_login_by_sms(sso_context_t *ctx, const http_request_t *req,
         return SSO_OK;
     }
 
+    /* Rate limiting: IP-based (5 attempts/min/IP) to prevent brute-force */
+    if (ctx->rate_limiter) {
+        sso_error_t rerr = rate_limiter_check((rate_limiter_t *)ctx->rate_limiter,
+                                               req->client_ip, 60000, 5);
+        if (rerr != SSO_OK) {
+            sso_response_error(resp, 429, "Too many SMS login attempts. Please wait.");
+            return SSO_OK;
+        }
+    }
+
     char *phone = json_str_value(req->body, "phone");
     char *code  = json_str_value(req->body, "code");
 
@@ -334,6 +344,19 @@ sso_error_t handle_login_by_sms(sso_context_t *ctx, const http_request_t *req,
         if (code) free(code);
         sso_response_error(resp, 400, "phone and code required");
         return SSO_OK;
+    }
+
+    /* Phone-level rate limiting (3 attempts/min/phone) to prevent targeted brute-force */
+    if (ctx->rate_limiter) {
+        char phone_key[128];
+        snprintf(phone_key, sizeof(phone_key), "sms_login:%s", phone);
+        sso_error_t rerr = rate_limiter_check((rate_limiter_t *)ctx->rate_limiter,
+                                               phone_key, 60000, 3);
+        if (rerr != SSO_OK) {
+            free(phone); free(code);
+            sso_response_error(resp, 429, "Too many attempts for this phone number. Please wait.");
+            return SSO_OK;
+        }
     }
 
     storage_backend_t *sb = (storage_backend_t *)ctx->storage_backend;
