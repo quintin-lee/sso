@@ -36,7 +36,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, defineExpose } from 'vue';
+import { ref, onMounted } from 'vue';
 import { adminService, type Group } from '../../services/api';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
