@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { authService } from '../services/api';
 import Login from '../views/Login.vue';
+import Admin from '../views/Admin.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -12,6 +13,12 @@ const router = createRouter({
       meta: { guest: true }
     },
     {
+      path: '/admin',
+      name: 'admin',
+      component: Admin,
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/',
       name: 'home',
       component: () => import('../components/HelloWorld.vue'),
@@ -20,7 +27,7 @@ const router = createRouter({
   ]
 });
 
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const isAuthenticated = authService.isAuthenticated();
 
   if (to.meta.requiresAuth && !isAuthenticated) {

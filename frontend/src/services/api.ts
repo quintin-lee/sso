@@ -47,6 +47,62 @@ export interface User {
   username: string;
   email: string;
   display_name: string;
+  phone?: string;
+  status: number;
+  roles?: Role[];
+  groups?: Group[];
+  created_at: number;
+}
+
+export interface Role {
+  id: number;
+  name: string;
+  description: string;
+  parent_role_id?: number;
+  parent_name?: string;
+  status: number;
+  created_at: number;
+}
+
+export interface Group {
+  id: number;
+  name: string;
+  description: string;
+  parent_group_id?: number;
+  parent_name?: string;
+  status: number;
+  created_at: number;
+}
+
+export interface Policy {
+  id: number;
+  name: string;
+  strategy_type: number;
+  strategy_name: string;
+  effect: number;
+  priority: number;
+  status: number;
+  rules: string;
+  created_at: number;
+}
+
+export interface AuditLog {
+  id: number;
+  timestamp: number;
+  user_id?: number;
+  username?: string;
+  action: string;
+  resource: string;
+  status: string;
+  ip_address: string;
+  details: string;
+}
+
+export interface PaginatedResponse<T> {
+  total: number;
+  page: number;
+  limit: number;
+  items: T[];
 }
 
 export const authService = {
@@ -91,6 +147,105 @@ export const authService = {
 
   isAuthenticated(): boolean {
     return !!localStorage.getItem('access_token');
+  }
+};
+
+export const adminService = {
+  // Users
+  async listUsers(page = 1, limit = 10, q = ''): Promise<PaginatedResponse<User>> {
+    const { data } = await api.get<PaginatedResponse<User>>(`/users?page=${page}&limit=${limit}&q=${q}`);
+    return data;
+  },
+  async createUser(user: Partial<User>) {
+    const { data } = await api.post('/users', user);
+    return data;
+  },
+  async updateUser(id: number, user: Partial<User>) {
+    const { data } = await api.put(`/users/${id}`, user);
+    return data;
+  },
+  async deleteUser(id: number) {
+    const { data } = await api.delete(`/users/${id}`);
+    return data;
+  },
+
+  // Roles
+  async listRoles(page = 1, limit = 10, q = ''): Promise<PaginatedResponse<Role>> {
+    const { data } = await api.get<PaginatedResponse<Role>>(`/roles?page=${page}&limit=${limit}&q=${q}`);
+    return data;
+  },
+  async createRole(role: Partial<Role>) {
+    const { data } = await api.post('/roles', role);
+    return data;
+  },
+  async updateRole(id: number, role: Partial<Role>) {
+    const { data } = await api.put(`/roles/${id}`, role);
+    return data;
+  },
+  async deleteRole(id: number) {
+    const { data } = await api.delete(`/roles/${id}`);
+    return data;
+  },
+  async assignRole(roleId: number, userId: number) {
+    const { data } = await api.post(`/roles/${roleId}/assign`, { user_id: userId });
+    return data;
+  },
+
+  // Groups
+  async listGroups(page = 1, limit = 10, q = ''): Promise<PaginatedResponse<Group>> {
+    const { data } = await api.get<PaginatedResponse<Group>>(`/groups?page=${page}&limit=${limit}&q=${q}`);
+    return data;
+  },
+  async createGroup(group: Partial<Group>) {
+    const { data } = await api.post('/groups', group);
+    return data;
+  },
+  async updateGroup(id: number, group: Partial<Group>) {
+    const { data } = await api.put(`/groups/${id}`, group);
+    return data;
+  },
+  async deleteGroup(id: number) {
+    const { data } = await api.delete(`/groups/${id}`);
+    return data;
+  },
+
+  // Policies
+  async listPolicies(page = 1, limit = 10, q = ''): Promise<PaginatedResponse<Policy>> {
+    const { data } = await api.get<PaginatedResponse<Policy>>(`/policies?page=${page}&limit=${limit}&q=${q}`);
+    return data;
+  },
+  async createPolicy(policy: Partial<Policy>) {
+    const { data } = await api.post('/policies', policy);
+    return data;
+  },
+  async updatePolicy(id: number, policy: Partial<Policy>) {
+    const { data } = await api.put(`/policies/${id}`, policy);
+    return data;
+  },
+  async deletePolicy(id: number) {
+    const { data } = await api.delete(`/policies/${id}`);
+    return data;
+  },
+  async assignPolicy(policyId: number, targetType: number, targetId: number) {
+    const { data } = await api.post(`/policies/${policyId}/assign`, {
+      target_type: targetType,
+      target_id: targetId
+    });
+    return data;
+  }
+};
+
+export const auditService = {
+  async listLogs(page = 1, limit = 20): Promise<PaginatedResponse<AuditLog>> {
+    const { data } = await api.get<PaginatedResponse<AuditLog>>(`/audit/logs?page=${page}&limit=${limit}`);
+    return data;
+  }
+};
+
+export const systemService = {
+  async getStatus() {
+    const { data } = await api.get('/admin/status');
+    return data;
   }
 };
 
