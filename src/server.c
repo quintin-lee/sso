@@ -308,25 +308,6 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
     return 0;
 }
 
-/* ========================================================================
- * Response helpers
- * ======================================================================== */
-void sso_response_ok(http_response_t *resp, const char *body_json) {
-    resp->status_code = 200;
-    resp->body = strdup(body_json);
-    resp->body_len = resp->body ? strlen(body_json) : 0;
-    strcpy(resp->content_type, "application/json");
-}
-
-void sso_response_error(http_response_t *resp, int status_code, const char *message) {
-    resp->status_code = status_code;
-    char buf[1024];
-    snprintf(buf, sizeof(buf), "{\"error\":\"%s\"}", message);
-    resp->body = strdup(buf);
-    resp->body_len = resp->body ? strlen(buf) : 0;
-    strcpy(resp->content_type, "application/json");
-}
-
 static ssize_t conn_write_all(conn_t *c, const void *buf, size_t n) {
     const char *p = (const char *)buf;
     size_t remaining = n;
@@ -390,64 +371,6 @@ static void send_response(conn_t *c, const http_response_t *resp) {
     if (resp->body && resp->body_len > 0) {
         conn_write_all(c, resp->body, resp->body_len);
     }
-}
-
-/* ========================================================================
- * Route matching
- * ======================================================================== */
-bool match_route(const char *pattern, const char *path, char **params) {
-    if (!pattern || !path) return false;
-
-    while (*pattern && *path) {
-        if (*pattern == ':') {
-            pattern++;
-            while (*pattern && *pattern != '/') pattern++;
-            while (*path && *path != '/') path++;
-            if (params) { }
-        } else if (*pattern == '*') {
-            pattern++;
-            while (*path && *path != '/') path++;
-            if (*pattern) {
-                return match_route(pattern, path, params);
-            }
-            return true;
-        } else {
-            if (*pattern != *path) return false;
-            pattern++;
-            path++;
-        }
-    }
-
-    if (*pattern == '/' && *path == '\0') pattern++;
-    if (*path == '/' && *pattern == '\0') path++;
-
-    return *pattern == '\0' && *path == '\0';
-}
-
-/* ========================================================================
- * Auth middleware
- * ======================================================================== */
-static sso_error_t authenticate_request(sso_server_t *server, const http_request_t *req,
-                                        user_t *user, token_t *tok) {
-    if (!server || !req || !user || !tok) return SSO_ERR_INVALID_PARAM;
-
-    if (req->auth_token[0] == '\0') return SSO_ERR_AUTH_FAILED;
-
-    token_manager_t *tmgr = (token_manager_t *)server->sso_ctx->token_mgr;
-    sso_error_t err = token_verify(tmgr, req->auth_token, tok);
-    if (err != SSO_OK) return err;
-
-    if (token_is_revoked(tmgr, tok->jti)) return SSO_ERR_TOKEN_INVALID;
-
-    user_manager_t *umgr = (user_manager_t *)server->sso_ctx->user_mgr;
-    sso_error_t uerr = user_get_by_id(umgr, tok->user_id, user);
-    if (uerr != SSO_OK) return uerr;
-
-    /* Check user token nonce (supports "logout all sessions") */
-    uint64_t expected_nonce = token_get_nonce(tmgr, user->id);
-    if (tok->nonce < expected_nonce) return SSO_ERR_TOKEN_INVALID;
-
-    return SSO_OK;
 }
 
 /* ========================================================================

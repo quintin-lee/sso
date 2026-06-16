@@ -145,6 +145,14 @@ void sso_response_ok(http_response_t *resp, const char *body_json);
 /* Fill a JSON error response with the given status code and message. */
 void sso_response_error(http_response_t *resp, int status_code, const char *message);
 
+/* -----------------------------------------------------------------------
+ * Auth middleware
+ * ----------------------------------------------------------------------- */
+
+/* Authenticate a request: verify token, look up user, check nonce. */
+sso_error_t authenticate_request(sso_server_t *server, const http_request_t *req,
+                                 user_t *user, token_t *tok);
+
 #ifdef __cplusplus
 }
 #endif
