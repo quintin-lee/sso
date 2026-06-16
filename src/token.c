@@ -166,6 +166,7 @@ sso_error_t token_manager_init(token_manager_t *mgr, const unsigned char *secret
     }
     mgr->default_ttl_ms = default_ttl_ms;
     pthread_mutex_init(&mgr->nonce_lock, NULL);
+    pthread_mutex_init(&mgr->rev_lock, NULL);
     return SSO_OK;
 }
 
@@ -179,6 +180,7 @@ sso_error_t token_manager_init_rs256(token_manager_t *mgr,
     mgr->mode = SSO_TOKEN_MODE_RS256;
     mgr->default_ttl_ms = default_ttl_ms;
     pthread_mutex_init(&mgr->nonce_lock, NULL);
+    pthread_mutex_init(&mgr->rev_lock, NULL);
 
     /* Load private key */
     BIO *priv_bio = BIO_new_mem_buf(priv_key_pem, -1);
@@ -249,6 +251,11 @@ void token_manager_destroy(token_manager_t *mgr) {
     free(mgr->nonces);
     mgr->nonces = NULL;
     pthread_mutex_destroy(&mgr->nonce_lock);
+
+    /* Free revocation blocklist */
+    free(mgr->jtis);
+    mgr->jtis = NULL;
+    pthread_mutex_destroy(&mgr->rev_lock);
 
     free(mgr);
 }
@@ -593,78 +600,67 @@ sso_error_t token_refresh(token_manager_t *mgr, const token_t *old_token,
 }
 
 /* ========================================================================
- * Revocation (dynamic growing blocklist)
+ * Revocation (dynamic growing blocklist) — per token_manager instance
  * ======================================================================== */
-#define REVOCATION_STR_LEN 64
 #define REVOCATIONS_INIT_CAP 64
-
-static struct {
-    char (*jtis)[REVOCATION_STR_LEN];
-    size_t count;
-    size_t capacity;
-    bool   sorted;
-    pthread_mutex_t lock;
-} revocations = {NULL, 0, 0, true, PTHREAD_MUTEX_INITIALIZER};
 
 static int compare_jtis(const void *a, const void *b) {
     return strcmp((const char *)a, (const char *)b);
 }
 
 sso_error_t token_revoke(token_manager_t *mgr, const char *jti) {
-    (void)mgr;
-    if (!jti) return SSO_ERR_INVALID_PARAM;
+    if (!mgr || !jti) return SSO_ERR_INVALID_PARAM;
 
-    pthread_mutex_lock(&revocations.lock);
+    pthread_mutex_lock(&mgr->rev_lock);
 
-    if (revocations.jtis == NULL) {
-        revocations.jtis = (char (*)[REVOCATION_STR_LEN])calloc(
-            REVOCATIONS_INIT_CAP, REVOCATION_STR_LEN);
-        if (!revocations.jtis) {
-            pthread_mutex_unlock(&revocations.lock);
+    if (mgr->jtis == NULL) {
+        mgr->jtis = (char (*)[TOKEN_REVOCATION_STR_LEN])calloc(
+            REVOCATIONS_INIT_CAP, TOKEN_REVOCATION_STR_LEN);
+        if (!mgr->jtis) {
+            pthread_mutex_unlock(&mgr->rev_lock);
             return SSO_ERR_OUT_OF_MEMORY;
         }
-        revocations.capacity = REVOCATIONS_INIT_CAP;
+        mgr->rev_capacity = REVOCATIONS_INIT_CAP;
     }
 
-    if (revocations.count >= revocations.capacity) {
-        size_t new_cap = revocations.capacity * 2;
-        char (*new_jtis)[REVOCATION_STR_LEN] = (char (*)[REVOCATION_STR_LEN])realloc(
-            revocations.jtis, new_cap * REVOCATION_STR_LEN);
+    if (mgr->rev_count >= mgr->rev_capacity) {
+        size_t new_cap = mgr->rev_capacity * 2;
+        char (*new_jtis)[TOKEN_REVOCATION_STR_LEN] = (char (*)[TOKEN_REVOCATION_STR_LEN])realloc(
+            mgr->jtis, new_cap * TOKEN_REVOCATION_STR_LEN);
         if (!new_jtis) {
-            pthread_mutex_unlock(&revocations.lock);
+            pthread_mutex_unlock(&mgr->rev_lock);
             return SSO_ERR_OUT_OF_MEMORY;
         }
-        revocations.jtis = new_jtis;
-        revocations.capacity = new_cap;
+        mgr->jtis = new_jtis;
+        mgr->rev_capacity = new_cap;
     }
 
-    strncpy(revocations.jtis[revocations.count], jti, REVOCATION_STR_LEN - 1);
-    revocations.jtis[revocations.count][REVOCATION_STR_LEN - 1] = '\0';
-    revocations.count++;
-    revocations.sorted = false;
+    strncpy(mgr->jtis[mgr->rev_count], jti, TOKEN_REVOCATION_STR_LEN - 1);
+    mgr->jtis[mgr->rev_count][TOKEN_REVOCATION_STR_LEN - 1] = '\0';
+    mgr->rev_count++;
+    mgr->rev_sorted = false;
 
-    pthread_mutex_unlock(&revocations.lock);
+    pthread_mutex_unlock(&mgr->rev_lock);
     return SSO_OK;
 }
 
 bool token_is_revoked(token_manager_t *mgr, const char *jti) {
-    (void)mgr;
-    if (!jti) return false;
+    if (!mgr || !jti) return false;
 
-    pthread_mutex_lock(&revocations.lock);
+    pthread_mutex_lock(&mgr->rev_lock);
 
-    if (!revocations.jtis || revocations.count == 0) {
-        pthread_mutex_unlock(&revocations.lock);
+    if (!mgr->jtis || mgr->rev_count == 0) {
+        pthread_mutex_unlock(&mgr->rev_lock);
         return false;
     }
 
-    if (!revocations.sorted) {
-        qsort(revocations.jtis, revocations.count, REVOCATION_STR_LEN, compare_jtis);
-        revocations.sorted = true;
+    if (!mgr->rev_sorted) {
+        qsort(mgr->jtis, mgr->rev_count, TOKEN_REVOCATION_STR_LEN, compare_jtis);
+        mgr->rev_sorted = true;
     }
 
-    bool found = bsearch(jti, revocations.jtis, revocations.count, REVOCATION_STR_LEN, compare_jtis) != NULL;
-    pthread_mutex_unlock(&revocations.lock);
+    bool found = bsearch(jti, mgr->jtis, mgr->rev_count, TOKEN_REVOCATION_STR_LEN, compare_jtis) != NULL;
+    pthread_mutex_unlock(&mgr->rev_lock);
     return found;
 }
 

@@ -58,6 +58,8 @@ typedef enum {
 
 typedef struct { sso_id_t uid; uint64_t nonce; } nonce_pair_t;
 
+#define TOKEN_REVOCATION_STR_LEN 64
+
 struct token_manager {
     sso_token_mode_t  mode;
     union {
@@ -72,6 +74,13 @@ struct token_manager {
     size_t            nonce_count;
     size_t            nonce_cap;
     pthread_mutex_t   nonce_lock;
+
+    /* Per-instance revocation blocklist (was process-global) */
+    char    (*jtis)[TOKEN_REVOCATION_STR_LEN]; /* dynamic array of JTI strings */
+    size_t   rev_count;
+    size_t   rev_capacity;
+    bool     rev_sorted;
+    pthread_mutex_t rev_lock;
 };
 
 /* -----------------------------------------------------------------------
