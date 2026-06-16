@@ -27,6 +27,12 @@ token_secret = "your-super-secret-hmac-key-here-32chars"
 # Default token lifetime in milliseconds (3600000 = 1 hour)
 token_ttl_ms = 3600000
 
+# Argon2id password hashing parameters
+# Ops limit (default: 3 = crypto_pwhash_OPSLIMIT_MODERATE)
+# password_opslimit = 3
+# Memory limit in bytes (default: 268435456 = crypto_pwhash_MEMLIMIT_MODERATE, 256 MB)
+# password_memlimit = 268435456
+
 # Initial admin password (only used on first run to bootstrap admin user)
 admin_password = "admin_password_123"
 

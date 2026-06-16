@@ -409,8 +409,8 @@ All configuration can be set via environment, TOML config file (`sso.toml`), or 
 | `SSO_PRIVATE_KEY` | Yes (RS256) | RSA Private Key (PEM) for asymmetric signing |
 | `SSO_PUBLIC_KEY` | No (RS256) | RSA Public Key (PEM); derived from private key if unset |
 | `SSO_ADMIN_PASSWORD` | Recommended | Initial admin password; random generated if unset |
-| `SSO_PASSWORD_OPSLIMIT` | `4` | Argon2id ops limit (log2 scale) |
-| `SSO_PASSWORD_MEMLIMIT` | `16` | Argon2id memory limit (log2 MiB) |
+| `SSO_PASSWORD_OPSLIMIT` | `3` | Argon2id ops limit (libsodium constant, default = `crypto_pwhash_OPSLIMIT_MODERATE`) |
+| `SSO_PASSWORD_MEMLIMIT` | `268435456` | Argon2id memory limit in bytes (default = `crypto_pwhash_MEMLIMIT_MODERATE`, 256 MB) |
 
 ### OAuth 2.0 / OIDC
 
