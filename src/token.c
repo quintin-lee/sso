@@ -321,8 +321,8 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     cJSON_AddStringToObject(header, "typ", "JWT");
     char *header_str = cJSON_PrintUnformatted(header);
     cJSON_Delete(header);
-    char b64_header[128];
-    base64_encode((unsigned char *)header_str, strlen(header_str), b64_header, sizeof(b64_header));
+    char b64_header[256];
+    base64url_encode((unsigned char *)header_str, strlen(header_str), b64_header, sizeof(b64_header));
     free(header_str);
 
     /* JWT Payload */
@@ -354,10 +354,13 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
 
     char *payload_str = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
-    if (!payload_str) return SSO_ERR_OUT_OF_MEMORY;
+    if (!payload_str) {
+        token_destroy(out);
+        return SSO_ERR_OUT_OF_MEMORY;
+    }
 
     char b64_payload[2048];
-    base64_encode((unsigned char *)payload_str, strlen(payload_str), b64_payload, sizeof(b64_payload));
+    base64url_encode((unsigned char *)payload_str, strlen(payload_str), b64_payload, sizeof(b64_payload));
     free(payload_str);
 
     /* signing_input = header.payload */
@@ -406,6 +409,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
         return SSO_OK;
 
     rs_fail:
+        token_destroy(out);
         if (md_ctx) EVP_MD_CTX_free(md_ctx);
         return SSO_ERR_INIT;
     }
