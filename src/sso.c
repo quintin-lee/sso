@@ -246,6 +246,14 @@ sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
         /* Securely wipe the stack copy of the key after use. */
         sodium_memzero(secret, SSO_SECRET_BYTES);
     }
+
+    /* P0: wipe token_secret in config now that token_manager has a copy */
+    if (config) {
+        sodium_memzero(config->token_secret, sizeof(config->token_secret));
+        /* Also wipe private_key_pem after token_manager consumed it */
+        sodium_memzero(config->private_key_pem, sizeof(config->private_key_pem));
+    }
+
     ctx->token_mgr = tmgr;
 
     /* 3. Managers */

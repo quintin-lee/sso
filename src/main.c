@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <curl/curl.h>
+#include <sodium.h>
 
 static sso_config_t g_config;
 
@@ -158,6 +159,9 @@ static int run_server(sso_config_t *cfg) {
 
     /* Bootstrap default data on first run */
     bootstrap_data(&ctx);
+
+    /* P0: wipe admin_password from config now that bootstrap is done */
+    sodium_memzero(g_config.admin_password, sizeof(g_config.admin_password));
 
     /* Define API routes */
     route_t routes[] = {
