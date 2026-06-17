@@ -1,6 +1,13 @@
-FROM alpine:3.18 AS builder
+# Stage 1: Build Vue app
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend/ .
+RUN npm run build
 
-# Install build dependencies
+# Stage 2: Compile C backend
+FROM alpine:3.18 AS backend-builder
 RUN apk add --no-cache \
     gcc \
     musl-dev \
@@ -9,48 +16,47 @@ RUN apk add --no-cache \
     libsodium-dev \
     openssl-dev \
     curl-dev \
-    libmicrohttpd-dev
+    libmicrohttpd-dev \
+    postgresql-dev \
+    pkgconfig
 
 WORKDIR /app
-
-# Copy source code
 COPY . .
-
-# Build the application
 RUN make clean && make
 
-# ---------------------------------------------------------
-# Production image
+# Stage 3: Final image
 FROM alpine:3.18
-
-# Install runtime dependencies only
 RUN apk add --no-cache \
+    nginx \
     sqlite-libs \
     libsodium \
     openssl \
     libcurl \
-    libmicrohttpd
+    libmicrohttpd \
+    libpq \
+    supervisor
 
-WORKDIR /app
+# Copy Nginx config
+COPY nginx.conf /etc/nginx/nginx.conf
 
-# Copy the compiled binary from the builder stage
-COPY --from=builder /app/sso_system /usr/local/bin/sso_system
+# Copy frontend assets
+COPY --from=frontend-builder /app/frontend/dist /usr/share/nginx/html
 
-# Create directory for SQLite database
-RUN mkdir -p /app/data && chown -R nobody:nobody /app
+# Copy backend binary
+COPY --from=backend-builder /app/sso_system /usr/local/bin/sso_system
 
-# Switch to non-root user for security
-USER nobody
+# Copy supervisor config
+RUN mkdir -p /etc/supervisor.d/
+COPY sso.ini /etc/supervisor.d/sso.ini
 
-# Expose the API port
-EXPOSE 8080
+# Setup directories and permissions
+RUN mkdir -p /app/data && chown -R nobody:nobody /app /var/lib/nginx /var/log/nginx /run/nginx
 
-# Health check — verifies the HTTP API is responding
+# Expose HTTP port (Nginx)
+EXPOSE 80
+
+# Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO- http://127.0.0.1:8080/api/v1/health || exit 1
+    CMD wget -qO- http://127.0.0.1/api/v1/health || exit 1
 
-# Configure volumes for persistent data
-VOLUME /app/data
-
-# Run the system in server mode on port 8080
-CMD ["sso_system", "--server"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]

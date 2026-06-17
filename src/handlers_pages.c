@@ -6,23 +6,10 @@
 #include "storage.h"
 #include "user.h"
 #include "role.h"
-#include "login_page.h"
-#include "admin_page.h"
 
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-
-sso_error_t handle_login_page(sso_context_t *ctx,
-                                      const http_request_t *req,
-                                      http_response_t *resp) {
-    (void)ctx; (void)req;
-    resp->status_code = 200;
-    resp->body = strdup(LOGIN_PAGE_HTML);
-    resp->body_len = strlen(LOGIN_PAGE_HTML);
-    strcpy(resp->content_type, "text/html; charset=utf-8");
-    return SSO_OK;
-}
 
 sso_error_t handle_health(sso_context_t *ctx, const http_request_t *req,
                                   http_response_t *resp) {
@@ -138,40 +125,5 @@ sso_error_t handle_list_audit_logs(sso_context_t *ctx, const http_request_t *req
 
     sso_response_ok(resp, json);
     free(json);
-    return SSO_OK;
-}
-
-sso_error_t handle_admin_page(sso_context_t *ctx, const http_request_t *req,
-                                       http_response_t *resp) {
-    (void)ctx;
-    auth_context_t *auth = (auth_context_t *)req->userdata;
-    
-    /* If auth header was provided but role is not admin, reject immediately.
-     * If no auth header, we serve the HTML and let JS handle the initial login redirect. */
-    if (auth) {
-        user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
-        role_manager_t *rmgr = (role_manager_t *)ctx->role_mgr;
-        sso_id_t roles[16];
-        size_t count = 0;
-        user_get_roles(umgr, auth->user.id, roles, &count, 16);
-
-        bool is_admin = false;
-        for (size_t i = 0; i < count; i++) {
-            role_t r;
-            if (role_get_by_id(rmgr, roles[i], &r) == SSO_OK) {
-                if (strcmp(r.name, "admin") == 0) { is_admin = true; break; }
-            }
-        }
-
-        if (!is_admin) {
-            sso_response_error(resp, 403, "Access denied: Admin role required");
-            return SSO_OK;
-        }
-    }
-
-    resp->status_code = 200;
-    resp->body = strdup(ADMIN_PAGE_HTML);
-    resp->body_len = strlen(ADMIN_PAGE_HTML);
-    strcpy(resp->content_type, "text/html; charset=utf-8");
     return SSO_OK;
 }

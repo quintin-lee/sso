@@ -27,10 +27,11 @@ const char *validate_password(const char *password);
 /* -----------------------------------------------------------------------
  * Page / monitoring handlers
  * ----------------------------------------------------------------------- */
-sso_error_t handle_login_page(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
-sso_error_t handle_admin_page(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
-sso_error_t handle_health(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
-sso_error_t handle_metrics(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
+sso_error_t handle_health(sso_context_t *ctx, const http_request_t *req,
+                                  http_response_t *resp);
+
+sso_error_t handle_metrics(sso_context_t *ctx, const http_request_t *req,
+ http_response_t *resp);
 sso_error_t handle_admin_status(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
 sso_error_t handle_list_audit_logs(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
 

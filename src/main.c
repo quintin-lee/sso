@@ -172,13 +172,6 @@ static int run_server(sso_config_t *cfg) {
 
     /* Define API routes */
     route_t routes[] = {
-        /* Public — login page */
-        {"/",                       HTTP_GET,  handle_login_page,       false},
-        {"/login",                  HTTP_GET,  handle_login_page,       false},
-
-        /* Admin page — serve HTML publicly; JS handles auth/role check */
-        {"/admin",                  HTTP_GET,  handle_admin_page,       false},
-
         /* Public — API */
         {"/metrics",                HTTP_GET,  handle_metrics,          false},
         {"/api/v1/health",          HTTP_GET,  handle_health,          false},
