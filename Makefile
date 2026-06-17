@@ -27,6 +27,7 @@ BUILDDIR = build
 
 # Common sources (always compiled)
 SRCS_BASE = $(SRCDIR)/logger.c        \
+       $(SRCDIR)/arena.c         \
        $(SRCDIR)/sso.c           \
        $(SRCDIR)/permission.c    \
        $(SRCDIR)/user.c          \

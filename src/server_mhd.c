@@ -10,6 +10,7 @@
 
 #include "sso.h"
 #include "storage.h"
+#include "arena.h"
 #include "server.h"
 #include "logger.h"
 #include "token.h"
@@ -35,6 +36,7 @@
  *   4. Completion  (MHD_OPTION_NOTIFY_COMPLETED) — free state
  * ======================================================================== */
 typedef struct {
+    arena_t arena;          /* Arena memory pool for request-scoped allocations */
     char   *body;
     size_t  body_size;
     size_t  body_capacity;
@@ -128,17 +130,17 @@ query_param_iterator(void *cls, enum MHD_ValueKind kind, const char *key, const 
     if (state->query_params) {
         while (state->query_params[count]) count++;
     }
-    char **new_params = (char **)realloc(state->query_params, (count + 2) * sizeof(char *));
+    char **new_params = (char **)arena_realloc(&state->arena, state->query_params, count * sizeof(char *), (count + 2) * sizeof(char *));
     if (!new_params) return MHD_NO;
     state->query_params = new_params;
 
     if (value) {
         size_t len = strlen(key) + strlen(value) + 2;
-        state->query_params[count] = (char *)malloc(len);
+        state->query_params[count] = (char *)arena_alloc(&state->arena, len);
         if (!state->query_params[count]) return MHD_NO;
         snprintf(state->query_params[count], len, "%s=%s", key, value);
     } else {
-        state->query_params[count] = strdup(key);
+        state->query_params[count] = arena_strdup(&state->arena, key);
         if (!state->query_params[count]) return MHD_NO;
     }
     state->query_params[count + 1] = NULL;
@@ -165,6 +167,7 @@ mhd_access_handler(void *cls,
     if (state == NULL) {
         state = (mhd_conn_state_t *)calloc(1, sizeof(mhd_conn_state_t));
         if (!state) return MHD_NO;
+        arena_init(&state->arena, 4096);
         *req_cls = state;
         return MHD_YES;
     }
@@ -172,7 +175,7 @@ mhd_access_handler(void *cls,
     /* ---- Phase 2: accumulate request body ---- */
     if (*upload_data_size > 0) {
         size_t new_size = state->body_size + *upload_data_size;
-        char *new_body = (char *)realloc(state->body, new_size + 1);
+        char *new_body = (char *)arena_realloc(&state->arena, state->body, state->body_size + 1, new_size + 1);
         if (!new_body) return MHD_NO;
         memcpy(new_body + state->body_size, upload_data, *upload_data_size);
         state->body = new_body;
@@ -258,7 +261,7 @@ mhd_access_handler(void *cls,
     /* Authentication middleware */
     req.userdata = NULL;
     if (matched->require_auth) {
-        auth_context_t *auth = (auth_context_t *)malloc(sizeof(auth_context_t));
+        auth_context_t *auth = (auth_context_t *)arena_alloc(&state->arena, sizeof(auth_context_t));
         if (!auth) {
             sso_response_error(&resp, 500, "Internal server error");
             goto send_response;
@@ -268,7 +271,6 @@ mhd_access_handler(void *cls,
             const char *msg = "Authentication failed";
             if (aerr == SSO_ERR_TOKEN_EXPIRED) msg = "Token expired";
             sso_response_error(&resp, 401, msg);
-            free(auth);
             goto send_response;
         }
         req.userdata = auth;
@@ -361,22 +363,13 @@ mhd_completed_cb(void *cls, struct MHD_Connection *connection,
     mhd_conn_state_t *state = (mhd_conn_state_t *)*req_cls;
     if (!state) return;
 
-    /* Free accumulated body */
-    free(state->body);
-
-    /* Free query_params */
-    if (state->query_params) {
-        for (size_t i = 0; state->query_params[i]; i++) {
-            free(state->query_params[i]);
-        }
-        free(state->query_params);
-    }
-
-    /* Free auth context (if any) */
+    /* Free token's inner role_ids/group_ids arrays if allocated */
     if (state->userdata) {
         token_destroy(&((auth_context_t *)state->userdata)->token);
-        free(state->userdata);
     }
+
+    /* Destroy the request arena pool freeing all blocks at once */
+    arena_destroy(&state->arena);
 
     free(state);
     *req_cls = NULL;

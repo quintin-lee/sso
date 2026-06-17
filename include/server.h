@@ -33,6 +33,7 @@
 #include "sso.h"
 #include "user.h"
 #include "token.h"
+#include "arena.h"
 
 typedef struct ssl_ctx_st SSL_CTX;
 
@@ -64,6 +65,7 @@ typedef enum {
  * HTTP request / response (minimal)
  * ======================================================================== */
 typedef struct {
+    arena_t          arena;             /* Arena memory pool for request-scoped allocations */
     http_method_t    method;
     char             path[1024];
     char             client_ip[64];     /* requester IP address */

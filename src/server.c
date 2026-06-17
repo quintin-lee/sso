@@ -229,19 +229,29 @@ static void pool_shutdown(void) {
 
 static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_size) {
     memset(req, 0, sizeof(*req));
+    arena_init(&req->arena, 4096);
 
     char line[4096];
-    if (br_read_line(br, line, sizeof(line)) <= 0) return -1;
+    if (br_read_line(br, line, sizeof(line)) <= 0) {
+        arena_destroy(&req->arena);
+        return -1;
+    }
 
     char method[16], path[SSO_MAX_PATH], version[16];
-    if (sscanf(line, "%15s %1023s %15s", method, path, version) < 2) return -1;
+    if (sscanf(line, "%15s %1023s %15s", method, path, version) < 2) {
+        arena_destroy(&req->arena);
+        return -1;
+    }
 
     if (strcmp(method, "GET") == 0)        req->method = HTTP_GET;
     else if (strcmp(method, "POST") == 0)  req->method = HTTP_POST;
     else if (strcmp(method, "PUT") == 0)   req->method = HTTP_PUT;
     else if (strcmp(method, "DELETE") == 0) req->method = HTTP_DELETE;
     else if (strcmp(method, "PATCH") == 0) req->method = HTTP_PATCH;
-    else return -1;
+    else {
+        arena_destroy(&req->arena);
+        return -1;
+    }
 
     memcpy(req->path, path, SSO_MAX_PATH - 1);
     req->path[SSO_MAX_PATH - 1] = '\0';
@@ -253,13 +263,13 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
         for (char *p = qmark; *p; p++) {
             if (*p == '&') count++;
         }
-        req->query_params = (char **)calloc((size_t)(count + 1), sizeof(char *));
+        req->query_params = (char **)arena_calloc(&req->arena, (size_t)(count + 1), sizeof(char *));
         if (req->query_params) {
             size_t idx = 0;
             char *save;
             const char *token = strtok_r(qmark, "&", &save);
             while (token) {
-                req->query_params[idx++] = strdup(token);
+                req->query_params[idx++] = arena_strdup(&req->arena, token);
                 token = strtok_r(NULL, "&", &save);
             }
             req->query_params[idx] = NULL;
@@ -294,8 +304,11 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
     }
 
     if (content_length > 0) {
-        if (max_body_size > 0 && content_length > max_body_size) { return -1; }
-        req->body = (char *)malloc((size_t)content_length + 1);
+        if (max_body_size > 0 && content_length > max_body_size) {
+            arena_destroy(&req->arena);
+            return -1;
+        }
+        req->body = (char *)arena_alloc(&req->arena, (size_t)content_length + 1);
         if (req->body) {
             ssize_t total = br_read(br, req->body, (size_t)content_length);
             if (total > 0) {
@@ -416,11 +429,7 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
         resp.body_len = 0;
         send_response(conn, &resp);
         free(resp.body);
-        if (req.query_params) {
-            for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
-            free(req.query_params);
-        }
-        free(req.body);
+        arena_destroy(&req.arena);
         conn_close(conn);
         return;
     }
@@ -439,27 +448,19 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
         sso_response_error(&resp, 404, "Not found");
         send_response(conn, &resp);
         free(resp.body);
-        if (req.query_params) {
-            for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
-            free(req.query_params);
-        }
-        free(req.body);
+        arena_destroy(&req.arena);
         conn_close(conn);
         return;
     }
 
     req.userdata = NULL;
     if (matched->require_auth) {
-        auth_context_t *auth = (auth_context_t *)malloc(sizeof(auth_context_t));
+        auth_context_t *auth = (auth_context_t *)arena_alloc(&req.arena, sizeof(auth_context_t));
         if (!auth) {
             sso_response_error(&resp, 500, "Internal server error");
             send_response(conn, &resp);
             free(resp.body);
-            if (req.query_params) {
-                for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
-                free(req.query_params);
-            }
-            free(req.body);
+            arena_destroy(&req.arena);
             conn_close(conn);
             return;
         }
@@ -469,14 +470,9 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
             if (aerr == SSO_ERR_TOKEN_EXPIRED) msg = "Token expired";
             sso_response_error(&resp, 401, msg);
             token_destroy(&auth->token);
-            free(auth);
             send_response(conn, &resp);
             free(resp.body);
-            if (req.query_params) {
-                for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
-                free(req.query_params);
-            }
-            free(req.body);
+            arena_destroy(&req.arena);
             conn_close(conn);
             return;
         }
@@ -487,7 +483,6 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
 
     if (req.userdata) {
         token_destroy(&((auth_context_t *)req.userdata)->token);
-        free(req.userdata);
         req.userdata = NULL;
     }
     if (err != SSO_OK && resp.body == NULL) {
@@ -496,11 +491,7 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
 
     send_response(conn, &resp);
     free(resp.body);
-    if (req.query_params) {
-        for (size_t i = 0; req.query_params[i]; i++) free(req.query_params[i]);
-        free(req.query_params);
-    }
-    free(req.body);
+    arena_destroy(&req.arena);
     conn_close(conn);
 }
 
