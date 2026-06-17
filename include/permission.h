@@ -28,38 +28,66 @@
 extern "C" {
 #endif
 
-/* ========================================================================
- * Permission engine (opaque)
- * ======================================================================== */
+/**
+ * @brief Permission engine structure (opaque).
+ */
 typedef struct permission_engine permission_engine_t;
 
 /* -----------------------------------------------------------------------
  * Lifecycle
  * ----------------------------------------------------------------------- */
 
-/* Create the permission engine.  Strategies must be registered after creation
- * and before any evaluate calls. */
+/**
+ * @brief Creates a new permission engine instance.
+ * 
+ * Strategies must be registered after creation and before evaluating.
+ * 
+ * @param engine Out-pointer to hold the address of the created engine.
+ * @param ctx Context back-pointer.
+ * @return SSO_OK on success, or error code on failure.
+ */
 sso_error_t perm_engine_create(permission_engine_t **engine, sso_context_t *ctx);
 
-/* Destroy the engine and all registered strategies. */
+/**
+ * @brief Destroys the permission engine.
+ * 
+ * Unregisters and cleans up all active strategies and caches.
+ * 
+ * @param engine Engine instance to destroy.
+ */
 void        perm_engine_destroy(permission_engine_t *engine);
 
 /* -----------------------------------------------------------------------
  * Strategy registry
  * ----------------------------------------------------------------------- */
 
-/* Register a strategy.  Ownership remains with the caller — the engine
- * holds a pointer.  Returns SSO_ERR_STRATEGY_CONFLICT if a strategy with
- * the same type is already registered. */
+/**
+ * @brief Registers a permission evaluation strategy.
+ * 
+ * @param engine Engine instance.
+ * @param strategy Pointer to strategy object.
+ * @return SSO_OK, or SSO_ERR_STRATEGY_CONFLICT if type already registered.
+ */
 sso_error_t perm_engine_register_strategy(permission_engine_t *engine,
                                           permission_strategy_t *strategy);
 
-/* Unregister a strategy by type.  Returns SSO_ERR_STRATEGY_NOT_FOUND if
- * the strategy is not registered. */
+/**
+ * @brief Unregisters a strategy by its type.
+ * 
+ * @param engine Engine instance.
+ * @param type Strategy type.
+ * @return SSO_OK, or SSO_ERR_STRATEGY_NOT_FOUND.
+ */
 sso_error_t perm_engine_unregister_strategy(permission_engine_t *engine,
                                             perm_strategy_type_t type);
 
-/* Look up a registered strategy by type. */
+/**
+ * @brief Looks up a registered strategy by type.
+ * 
+ * @param engine Engine instance.
+ * @param type Strategy type.
+ * @return Pointer to registered strategy, or NULL if not found.
+ */
 permission_strategy_t *perm_engine_get_strategy(permission_engine_t *engine,
                                                 perm_strategy_type_t type);
 
@@ -67,44 +95,79 @@ permission_strategy_t *perm_engine_get_strategy(permission_engine_t *engine,
  * Cache management
  * ----------------------------------------------------------------------- */
 
-/* Clear the decision cache for a specific user. Call this when a user's roles
- * or groups change to ensure immediate consistency. */
+/**
+ * @brief Invalidates cached evaluation results for a specific user.
+ * 
+ * Call this immediately when a user's role/group assignments are modified.
+ * 
+ * @param engine Engine instance.
+ * @param user_id User ID.
+ */
 void        perm_engine_cache_invalidate_user(permission_engine_t *engine, sso_id_t user_id);
 
-/* Clear the compiled rule cache for a specific policy. Call this when
- * a policy's rules JSON is updated. */
+/**
+ * @brief Invalidates cached compiled AST/objects for a specific policy.
+ * 
+ * Call this immediately when a policy's rules configuration is updated.
+ * 
+ * @param engine Engine instance.
+ * @param policy_id Policy ID.
+ */
 void        perm_engine_cache_invalidate_policy(permission_engine_t *engine, sso_id_t policy_id);
 
-/* Clear all caches (compiled rules and results). */
+/**
+ * @brief Invalidates all caches (compiled rules and resolved results).
+ * 
+ * @param engine Engine instance.
+ */
 void        perm_engine_cache_invalidate_all(permission_engine_t *engine);
 
 /* -----------------------------------------------------------------------
  * Metrics
  * ----------------------------------------------------------------------- */
 
-/* Retrieve Prometheus-compatible metrics. */
+/**
+ * @brief Retrieves Prometheus-compatible evaluation engine metrics.
+ * 
+ * @param engine Engine instance.
+ * @param buf Output string buffer.
+ * @param max Buffer capacity.
+ */
 sso_error_t perm_engine_get_metrics(permission_engine_t *engine, char *buf, size_t max);
 
 /* -----------------------------------------------------------------------
  * Evaluation
  * ----------------------------------------------------------------------- */
 
-/* High-level evaluation: given an eval_context, resolve every applicable
- * policy and run each through its strategy.  Returns:
- *   SSO_OK           → *result is valid (true = ALLOW, false = DENY)
- *   SSO_ERR_*        → evaluation failed; result is DENY
- *
- * Semantics: DENY-overrides — if ANY evaluated policy denies, the result
- * is DENY, regardless of how many ALLOWs exist.  If no policy matches,
- * the result is DENY (default-deny / fail-closed).
+/**
+ * @brief High-level permission check for an evaluation context.
+ * 
+ * Resolves all policies applicable to the user (via direct, role, group hierarchies),
+ * compiles/validates them, executes them through respective strategies in priority order,
+ * and enforces DENY-overrides semantics. Defaults to DENY if no policies match.
+ * 
+ * @param engine Engine instance.
+ * @param ctx Evaluation parameters (subject, resource, action, env attributes).
+ * @param result Output decision value (true = ALLOW, false = DENY).
+ * @param decision_trace Output trace path explanation, caller must free.
+ * @return SSO_OK on successful evaluation, or error code on failure.
  */
 sso_error_t perm_engine_evaluate(permission_engine_t *engine,
                                  eval_context_t *ctx,
                                  bool *result,
                                  char **decision_trace);
 
-/* Fine-grained: evaluate only a single policy through its strategy.
- * Useful for policy-testing UIs and dry-run scenarios. */
+/**
+ * @brief Fine-grained check: evaluate a single policy against the context.
+ * 
+ * bypasses normal policy resolution. Useful for testing policy rules.
+ * 
+ * @param engine Engine instance.
+ * @param policy Policy to evaluate.
+ * @param ctx Evaluation context.
+ * @param result Output decision.
+ * @param decision_trace Output trace description, caller must free.
+ */
 sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
                                         const policy_t *policy,
                                         eval_context_t *ctx,
@@ -115,34 +178,95 @@ sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
  * Convenience: one-shot check for common cases
  * ----------------------------------------------------------------------- */
 
-/* Functional permission check — does user have function "user:create"? */
+/**
+ * @brief One-shot functional permission check.
+ * 
+ * Checks whether user has permission to execute code block (e.g. "user:create").
+ * 
+ * @param ctx SSO context.
+ * @param user_id User ID.
+ * @param function_code Code identifier string.
+ * @param allowed Output decision.
+ */
 sso_error_t perm_check_function(sso_context_t *ctx, sso_id_t user_id,
                                 const char *function_code, bool *allowed);
 
-/* API permission check — can the user call POST /api/v1/users? */
+/**
+ * @brief One-shot API path matching check.
+ * 
+ * @param ctx SSO context.
+ * @param user_id User ID.
+ * @param method HTTP method (GET, POST, etc.).
+ * @param path Request path (e.g. "/api/v1/users").
+ * @param allowed Output decision.
+ */
 sso_error_t perm_check_api(sso_context_t *ctx, sso_id_t user_id,
                            const char *method, const char *path, bool *allowed);
 
-/* Data permission check — what data access does the user have for "order"? */
+/**
+ * @brief One-shot data filtering scope check.
+ * 
+ * Evaluates row/column filters on a record, returning allowed status and field filters.
+ * 
+ * @param ctx SSO context.
+ * @param user_id User ID.
+ * @param resource_type Resource name.
+ * @param record_json Record data JSON.
+ * @param allowed Output decision.
+ * @param field_filter Output list of blacklisted column/field name strings.
+ * @param field_count Size of field_filter array.
+ */
 sso_error_t perm_check_data(sso_context_t *ctx, sso_id_t user_id,
                             const char *resource_type, const char *record_json,
                             bool *allowed, char ***field_filter, size_t *field_count);
 
-/* RBAC permission check — does the user hold the named role? */
+/**
+ * @brief One-shot Role-membership check.
+ * 
+ * @param ctx SSO context.
+ * @param user_id User ID.
+ * @param role_name Role name string.
+ * @param allowed Output decision.
+ */
 sso_error_t perm_check_rbac(sso_context_t *ctx, sso_id_t user_id,
                             const char *role_name, bool *allowed);
 
-/* LOCATION permission check — does the source IP match allowed location rules? */
+/**
+ * @brief One-shot Location/IP scope check.
+ * 
+ * @param ctx SSO context.
+ * @param user_id User ID.
+ * @param source_ip Requester IP address.
+ * @param geo_country Geolocation country name.
+ * @param allowed Output decision.
+ */
 sso_error_t perm_check_location(sso_context_t *ctx, sso_id_t user_id,
                                 const char *source_ip, const char *geo_country,
                                 bool *allowed);
 
-/* LBAC (Label-Based) permission check — check security labels */
+/**
+ * @brief One-shot Label-Based Access Control (LBAC) check.
+ * 
+ * @param ctx SSO context.
+ * @param user_id User ID.
+ * @param user_labels User clearance labels.
+ * @param resource_label Resource sensitivity label.
+ * @param allowed Output decision.
+ */
 sso_error_t perm_check_lbac(sso_context_t *ctx, sso_id_t user_id,
                             const char *user_labels, const char *resource_label,
                             bool *allowed);
 
-/* ABAC permission check — evaluate attribute-based conditions */
+/**
+ * @brief One-shot Attribute-Based Access Control (ABAC) check.
+ * 
+ * @param ctx SSO context.
+ * @param user_id User ID.
+ * @param subject_attrs Subject attributes JSON.
+ * @param resource_attrs Resource attributes JSON.
+ * @param action Action string.
+ * @param allowed Output decision.
+ */
 sso_error_t perm_check_abac(sso_context_t *ctx, sso_id_t user_id,
                             const char *subject_attrs,
                             const char *resource_attrs,
