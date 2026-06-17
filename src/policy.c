@@ -177,10 +177,12 @@ static sso_error_t collect_policies_for_target(policy_manager_t *mgr,
 
     sso_id_t policy_ids[64];
     size_t pcount = 0;
+    /* Fetch all policy IDs bound to this target from the database storage backend */
     sso_error_t err = sb->get_target_policies(sb, target_type, target_id,
                                               policy_ids, &pcount, 64);
     if (err != SSO_OK) return err;
 
+    /* Loop through resolved policy IDs and load full policy records */
     for (size_t i = 0; i < pcount && *count < max; i++) {
         if (policy_get_by_id(mgr, policy_ids[i], &policies[*count]) == SSO_OK) {
             (*count)++;
@@ -189,6 +191,15 @@ static sso_error_t collect_policies_for_target(policy_manager_t *mgr,
     return SSO_OK;
 }
 
+/**
+ * @brief Resolves all active policies applicable to a user.
+ * 
+ * Aggregates policies from:
+ * 1. User level (direct assignments).
+ * 2. Role level (direct roles + entire ancestor role hierarchy tree).
+ * 3. Group level (direct groups + entire ancestor group hierarchy tree).
+ * Finally, sorts all resolved policies by their priority in descending order.
+ */
 sso_error_t policy_resolve_for_user(policy_manager_t *mgr, sso_id_t user_id,
                                     policy_t *policies, size_t *count, size_t max) {
     if (!mgr || !policies || !count) return SSO_ERR_INVALID_PARAM;
@@ -197,20 +208,20 @@ sso_error_t policy_resolve_for_user(policy_manager_t *mgr, sso_id_t user_id,
     user_manager_t *umgr = (user_manager_t *)mgr->ctx->user_mgr;
     if (!umgr) { return SSO_ERR_NOT_FOUND; }
 
-    /* 1. Policies assigned directly to the user */
+    /* --- STEP 1: Collect policies assigned directly to the user --- */
     collect_policies_for_target(mgr, POLICY_TARGET_USER, user_id,
                                 policies, count, max);
 
-    /* 2. Policies via roles (including ancestor roles) */
+    /* --- STEP 2: Collect policies via assigned roles and their ancestors --- */
     sso_id_t role_ids[64];
     size_t rcount = 0;
     if (user_get_roles(umgr, user_id, role_ids, &rcount, 64) == SSO_OK) {
         for (size_t i = 0; i < rcount && *count < max; i++) {
-            /* Direct role */
+            /* Collect from the direct role assignment */
             collect_policies_for_target(mgr, POLICY_TARGET_ROLE, role_ids[i],
                                         policies, count, max);
 
-            /* Ancestor roles */
+            /* Traverse the inheritance hierarchy to collect parent/ancestor roles */
             role_manager_t *rmgr = (role_manager_t *)mgr->ctx->role_mgr;
             if (rmgr) {
                 sso_id_t ancestors[16];
@@ -225,16 +236,16 @@ sso_error_t policy_resolve_for_user(policy_manager_t *mgr, sso_id_t user_id,
         }
     }
 
-    /* 3. Policies via groups (including ancestor groups) */
+    /* --- STEP 3: Collect policies via group memberships and group hierarchies --- */
     sso_id_t group_ids[64];
     size_t gcount = 0;
     if (user_get_groups(umgr, user_id, group_ids, &gcount, 64) == SSO_OK) {
         for (size_t i = 0; i < gcount && *count < max; i++) {
-            /* Direct group */
+            /* Collect from the direct group membership */
             collect_policies_for_target(mgr, POLICY_TARGET_GROUP, group_ids[i],
                                         policies, count, max);
 
-            /* Ancestor groups */
+            /* Traverse group inheritance hierarchy to collect parent groups */
             group_manager_t *gmgr = (group_manager_t *)mgr->ctx->group_mgr;
             if (gmgr) {
                 sso_id_t ancestors[16];
@@ -249,7 +260,8 @@ sso_error_t policy_resolve_for_user(policy_manager_t *mgr, sso_id_t user_id,
         }
     }
 
-    /* 4. Sort by priority descending (simple insertion sort) */
+    /* --- STEP 4: Sort policies in-place by priority in descending order --- */
+    /* Using a stable insertion sort which is optimal for small arrays of policies */
     if (*count > 1) {
         for (size_t i = 1; i < *count; i++) {
             policy_t key;
