@@ -1,8 +1,8 @@
 <template>
   <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
     <DataTable :value="users" paginator :rows="10" :totalRecords="totalUsers" lazy @page="onUserPage" :loading="loading" class="p-datatable-sm">
-      <Column field="id" header="ID" class="w-20 font-mono text-xs"></Column>
-      <Column field="username" header="User" class="font-semibold">
+      <Column field="id" :header="$t('common.id')" class="w-20 font-mono text-xs"></Column>
+      <Column field="username" :header="$t('users.username')" class="font-semibold">
         <template #body="slotProps">
           <div class="flex items-center gap-3">
             <div class="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-xs font-bold text-indigo-600">
@@ -15,22 +15,22 @@
           </div>
         </template>
       </Column>
-      <Column field="display_name" header="Display Name"></Column>
-      <Column field="status" header="Status">
+      <Column field="display_name" :header="$t('users.displayName')"></Column>
+      <Column field="status" :header="$t('common.status')">
         <template #body="slotProps">
           <span :class="statusBadgeClass(slotProps.data.status)">
-            {{ slotProps.data.status === 1 ? 'Active' : 'Disabled' }}
+            {{ slotProps.data.status === 1 ? $t('common.active') : $t('common.disabled') }}
           </span>
         </template>
       </Column>
-      <Column field="created_at" header="Joined">
+      <Column field="created_at" :header="$t('common.created')">
         <template #body="slotProps">
           <span class="text-gray-500 text-sm">
             {{ new Date(slotProps.data.created_at * 1000).toLocaleDateString() }}
           </span>
         </template>
       </Column>
-      <Column header="Actions" class="w-32">
+      <Column :header="$t('common.actions')" class="w-32">
         <template #body="slotProps">
           <div class="flex gap-1 justify-end">
             <Button icon="pi pi-pencil" text rounded severity="secondary" @click="editUser(slotProps.data)" />
@@ -40,29 +40,29 @@
       </Column>
     </DataTable>
 
-    <Dialog v-model:visible="userDialog" header="User Details" modal class="w-full max-w-lg" :pt="{ mask: { style: 'backdrop-filter: blur(4px)' } }">
+    <Dialog v-model:visible="userDialog" :header="user.id ? $t('users.update') : $t('users.create')" modal class="w-full max-w-lg" :pt="{ mask: { style: 'backdrop-filter: blur(4px)' } }">
        <div class="space-y-4 py-4">
          <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">Username</label>
+            <label class="text-sm font-bold text-gray-700">{{ $t('users.username') }}</label>
             <InputText v-model.trim="user.username" class="rounded-xl border-gray-200" placeholder="johndoe" autofocus />
          </div>
          <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">Display Name</label>
+            <label class="text-sm font-bold text-gray-700">{{ $t('users.displayName') }}</label>
             <InputText v-model.trim="user.display_name" class="rounded-xl border-gray-200" placeholder="John Doe" />
          </div>
          <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">Email Address</label>
+            <label class="text-sm font-bold text-gray-700">{{ $t('users.email') }}</label>
             <InputText v-model.trim="user.email" class="rounded-xl border-gray-200" placeholder="john@example.com" />
          </div>
          <div class="flex items-center gap-2 mt-4">
             <Checkbox v-model="userStatus" :binary="true" inputId="userStatus" />
-            <label for="userStatus" class="text-sm font-semibold text-gray-700">Active Account</label>
+            <label for="userStatus" class="text-sm font-semibold text-gray-700">{{ $t('common.active') }}</label>
          </div>
        </div>
        <template #footer>
           <div class="flex gap-2 justify-end pt-4">
-            <Button label="Cancel" text severity="secondary" @click="userDialog = false" class="rounded-xl" />
-            <Button label="Save Changes" @click="saveUser" class="p-button-primary rounded-xl px-6" />
+            <Button :label="$t('common.cancel')" text severity="secondary" @click="userDialog = false" class="rounded-xl" />
+            <Button :label="$t('common.save')" @click="saveUser" class="p-button-primary rounded-xl px-6" />
           </div>
        </template>
     </Dialog>
@@ -71,6 +71,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { adminService, type User } from '../../services/api';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
@@ -80,6 +81,7 @@ import InputText from 'primevue/inputtext';
 import Checkbox from 'primevue/checkbox';
 import { useToast } from 'primevue/usetoast';
 
+const { t } = useI18n();
 const toast = useToast();
 const loading = ref(false);
 const users = ref<User[]>([]);
@@ -104,7 +106,7 @@ const loadUsers = async (page = 1) => {
     users.value = res.items;
     totalUsers.value = res.total;
   } catch (err) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load users', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to load users', life: 3000 });
   } finally {
     loading.value = false;
   }
@@ -128,26 +130,26 @@ const saveUser = async () => {
   try {
     if (user.value.id) {
       await adminService.updateUser(user.value.id, user.value);
-      toast.add({ severity: 'success', summary: 'Success', detail: 'User updated successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: 'User updated successfully', life: 3000 });
     } else {
       await adminService.createUser(user.value);
-      toast.add({ severity: 'success', summary: 'Success', detail: 'User created successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: 'User created successfully', life: 3000 });
     }
     userDialog.value = false;
     loadUsers();
   } catch (err) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to save user', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to save user', life: 3000 });
   }
 };
 
 const confirmDeleteUser = async (data: User) => {
-  if (confirm(`Delete user ${data.username}?`)) {
+  if (confirm(t('users.deleteConfirm', { name: data.username }))) {
     try {
       await adminService.deleteUser(data.id);
-      toast.add({ severity: 'success', summary: 'Success', detail: 'User deleted successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: 'User deleted successfully', life: 3000 });
       loadUsers();
     } catch (err) {
-      toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete user', life: 3000 });
+      toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete user', life: 3000 });
     }
   }
 };

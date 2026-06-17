@@ -20,9 +20,7 @@ const router = createRouter({
     },
     {
       path: '/',
-      name: 'home',
-      component: () => import('../components/HelloWorld.vue'),
-      meta: { requiresAuth: true }
+      redirect: '/admin'
     }
   ]
 });

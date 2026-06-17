@@ -1,14 +1,15 @@
 # Stage 1: Build Vue app
-FROM node:20-alpine AS frontend-builder
+FROM docker.1ms.run/library/node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-RUN npm install
+RUN npm config set registry https://registry.npmmirror.com/ && npm install
 COPY frontend/ .
 RUN npm run build
 
 # Stage 2: Compile C backend
-FROM alpine:3.18 AS backend-builder
-RUN apk add --no-cache \
+FROM docker.1ms.run/library/alpine:3.18 AS backend-builder
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    apk add --no-cache \
     gcc \
     musl-dev \
     make \
@@ -25,8 +26,9 @@ COPY . .
 RUN make clean && make
 
 # Stage 3: Final image
-FROM alpine:3.18
-RUN apk add --no-cache \
+FROM docker.1ms.run/library/alpine:3.18
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    apk add --no-cache \
     nginx \
     sqlite-libs \
     libsodium \

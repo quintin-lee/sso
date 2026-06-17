@@ -1,17 +1,17 @@
 <template>
   <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
     <DataTable :value="roles" paginator :rows="10" :loading="loading">
-      <Column field="id" header="ID" class="w-20 font-mono text-xs"></Column>
-      <Column field="name" header="Name" class="font-semibold"></Column>
-      <Column field="description" header="Description"></Column>
-      <Column field="status" header="Status">
+      <Column field="id" :header="$t('common.id')" class="w-20 font-mono text-xs"></Column>
+      <Column field="name" :header="$t('common.name')" class="font-semibold"></Column>
+      <Column field="description" :header="$t('common.description')"></Column>
+      <Column field="status" :header="$t('common.status')">
         <template #body="slotProps">
           <span :class="statusBadgeClass(slotProps.data.status)">
-            {{ slotProps.data.status === 1 ? 'Active' : 'Disabled' }}
+            {{ slotProps.data.status === 1 ? $t('common.active') : $t('common.disabled') }}
           </span>
         </template>
       </Column>
-      <Column header="Actions" class="w-32 text-right">
+      <Column :header="$t('common.actions')" class="w-32 text-right">
         <template #body="slotProps">
           <div class="flex gap-1 justify-end">
             <Button icon="pi pi-pencil" text rounded severity="secondary" @click="editRole(slotProps.data)" />
@@ -21,21 +21,21 @@
       </Column>
     </DataTable>
 
-    <Dialog v-model:visible="roleDialog" header="Role Details" modal class="w-full max-w-lg">
+    <Dialog v-model:visible="roleDialog" :header="role.id ? $t('roles.update') : $t('roles.create')" modal class="w-full max-w-lg">
        <div class="space-y-4 py-4">
          <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">Name</label>
+            <label class="text-sm font-bold text-gray-700">{{ $t('common.name') }}</label>
             <InputText v-model.trim="role.name" class="rounded-xl border-gray-200" placeholder="admin" />
          </div>
          <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">Description</label>
+            <label class="text-sm font-bold text-gray-700">{{ $t('common.description') }}</label>
             <InputText v-model.trim="role.description" class="rounded-xl border-gray-200" placeholder="Administrator role" />
          </div>
        </div>
        <template #footer>
           <div class="flex gap-2 justify-end pt-4">
-            <Button label="Cancel" text severity="secondary" @click="roleDialog = false" />
-            <Button label="Save" @click="saveRole" class="p-button-primary rounded-xl px-6" />
+            <Button :label="$t('common.cancel')" text severity="secondary" @click="roleDialog = false" />
+            <Button :label="$t('common.save')" @click="saveRole" class="p-button-primary rounded-xl px-6" />
           </div>
        </template>
     </Dialog>
@@ -44,6 +44,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { adminService, type Role } from '../../services/api';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
@@ -52,6 +53,7 @@ import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import { useToast } from 'primevue/usetoast';
 
+const { t } = useI18n();
 const toast = useToast();
 const loading = ref(false);
 const roles = ref<Role[]>([]);
@@ -69,7 +71,7 @@ const loadRoles = async () => {
     const res = await adminService.listRoles();
     roles.value = res.items;
   } catch (err) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load roles', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to load roles', life: 3000 });
   } finally {
     loading.value = false;
   }
@@ -89,26 +91,26 @@ const saveRole = async () => {
   try {
     if (role.value.id) {
       await adminService.updateRole(role.value.id, role.value);
-      toast.add({ severity: 'success', summary: 'Success', detail: 'Role updated successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Role updated successfully', life: 3000 });
     } else {
       await adminService.createRole(role.value);
-      toast.add({ severity: 'success', summary: 'Success', detail: 'Role created successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Role created successfully', life: 3000 });
     }
     roleDialog.value = false;
     loadRoles();
   } catch (err) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to save role', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to save role', life: 3000 });
   }
 };
 
 const confirmDeleteRole = async (data: Role) => {
-  if (confirm(`Delete role ${data.name}?`)) {
+  if (confirm(t('roles.deleteConfirm', { name: data.name }))) {
     try {
       await adminService.deleteRole(data.id);
-      toast.add({ severity: 'success', summary: 'Success', detail: 'Role deleted successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Role deleted successfully', life: 3000 });
       loadRoles();
     } catch (err) {
-      toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete role', life: 3000 });
+      toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete role', life: 3000 });
     }
   }
 };
