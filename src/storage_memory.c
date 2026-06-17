@@ -187,6 +187,7 @@ static sso_error_t mem_oauth_code_cleanup(storage_backend_t *self) {
 static void mem_close(storage_backend_t *self) {
     mem_priv_t *p = P; if (!p) return;
     da_free(&p->users); da_free(&p->roles); da_free(&p->groups); da_free(&p->policies);
+    da_free(&p->oauth_clients);
     pl_free(&p->user_roles); pl_free(&p->user_groups); pl_free(&p->role_groups);
     al_free(&p->policy_assignments); free(p->sms);
     free(p->oauth_codes); free(p->refresh_tokens);
