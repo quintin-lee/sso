@@ -9,6 +9,7 @@
  */
 
 #include "sso.h"
+#include "storage.h"
 #include "server.h"
 #include "logger.h"
 #include "token.h"
@@ -187,6 +188,10 @@ mhd_access_handler(void *cls,
     enum MHD_Result ret;
 
     memset(&req, 0, sizeof(req));
+    storage_backend_t *sb = (storage_backend_t *)server->sso_ctx->storage_backend;
+    if (sb && sb->thread_init) {
+        sb->thread_init(sb);
+    }
     req.method = parse_method(method);
     req.body = state->body;
     req.body_len = state->body_size;
@@ -345,9 +350,13 @@ send_response:
 static void
 mhd_completed_cb(void *cls, struct MHD_Connection *connection,
                  void **req_cls, enum MHD_RequestTerminationCode toe) {
-    (void)cls;
+    sso_server_t *server = (sso_server_t *)cls;
     (void)connection;
     (void)toe;
+    storage_backend_t *sb = server ? (storage_backend_t *)server->sso_ctx->storage_backend : NULL;
+    if (sb && sb->thread_cleanup) {
+        sb->thread_cleanup(sb);
+    }
 
     mhd_conn_state_t *state = (mhd_conn_state_t *)*req_cls;
     if (!state) return;

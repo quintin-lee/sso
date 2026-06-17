@@ -9,11 +9,103 @@
 #include <inttypes.h>
 
 /* ========================================================================
- * Backend private data
+ * Backend private data & connection pool
  * ======================================================================== */
+#include <pthread.h>
+
+#define POSTGRES_POOL_MAX 16
+
 typedef struct {
-    PGconn *conn;
+    PGconn *conn; /* default connection (fallback) */
+    char dsn[512];
+    PGconn *pool[POSTGRES_POOL_MAX];
+    int pool_in_use[POSTGRES_POOL_MAX];
+    int pool_size;
+    pthread_mutex_t pool_mutex;
+    pthread_cond_t pool_cond;
 } postgres_priv_t;
+
+static _Thread_local PGconn *tls_conn = NULL;
+
+static postgres_priv_t *postgres_get_priv(storage_backend_t *self) {
+    postgres_priv_t *global_priv = (postgres_priv_t *)(self->handle);
+    if (tls_conn) {
+        static _Thread_local postgres_priv_t tls_priv;
+        tls_priv = *global_priv;
+        tls_priv.conn = tls_conn;
+        return &tls_priv;
+    }
+    return global_priv;
+}
+
+static PGconn *postgres_pool_acquire(postgres_priv_t *priv) {
+    pthread_mutex_lock(&priv->pool_mutex);
+    while (1) {
+        // Find idle connection
+        for (int i = 0; i < priv->pool_size; i++) {
+            if (!priv->pool_in_use[i]) {
+                if (PQstatus(priv->pool[i]) != CONNECTION_OK) {
+                    PQfinish(priv->pool[i]);
+                    priv->pool[i] = PQconnectdb(priv->dsn);
+                }
+                priv->pool_in_use[i] = 1;
+                pthread_mutex_unlock(&priv->pool_mutex);
+                return priv->pool[i];
+            }
+        }
+        
+        // Open new connection if pool has capacity
+        if (priv->pool_size < POSTGRES_POOL_MAX) {
+            PGconn *conn = PQconnectdb(priv->dsn);
+            if (PQstatus(conn) == CONNECTION_OK) {
+                int idx = priv->pool_size++;
+                priv->pool[idx] = conn;
+                priv->pool_in_use[idx] = 1;
+                pthread_mutex_unlock(&priv->pool_mutex);
+                return conn;
+            } else {
+                PQfinish(conn);
+                pthread_mutex_unlock(&priv->pool_mutex);
+                return NULL;
+            }
+        }
+        
+        // Pool is full, wait
+        pthread_cond_wait(&priv->pool_cond, &priv->pool_mutex);
+    }
+}
+
+static void postgres_pool_release(postgres_priv_t *priv, PGconn *conn) {
+    if (!conn) return;
+    pthread_mutex_lock(&priv->pool_mutex);
+    for (int i = 0; i < priv->pool_size; i++) {
+        if (priv->pool[i] == conn) {
+            priv->pool_in_use[i] = 0;
+            pthread_cond_signal(&priv->pool_cond);
+            break;
+        }
+    }
+    pthread_mutex_unlock(&priv->pool_mutex);
+}
+
+static void postgres_thread_init(storage_backend_t *self) {
+    if (!self) return;
+    postgres_priv_t *priv = (postgres_priv_t *)(self->handle);
+    if (!priv) return;
+    if (!tls_conn) {
+        tls_conn = postgres_pool_acquire(priv);
+    }
+}
+
+static void postgres_thread_cleanup(storage_backend_t *self) {
+    if (!self) return;
+    postgres_priv_t *priv = (postgres_priv_t *)(self->handle);
+    if (!priv) return;
+    if (tls_conn) {
+        postgres_pool_release(priv, tls_conn);
+        tls_conn = NULL;
+    }
+}
 
 /* ========================================================================
  * Lifecycle
@@ -22,14 +114,31 @@ typedef struct {
 static sso_error_t postgres_open(storage_backend_t *self, const char *dsn) {
     if (!self || !dsn) return SSO_ERR_INVALID_PARAM;
 
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
+    
+    // Copy DSN
+    strncpy(priv->dsn, dsn, sizeof(priv->dsn) - 1);
+    priv->dsn[sizeof(priv->dsn) - 1] = '\0';
+    
+    // Init synchronization primitives
+    pthread_mutex_init(&priv->pool_mutex, NULL);
+    pthread_cond_init(&priv->pool_cond, NULL);
+    priv->pool_size = 0;
+    
+    // Connect default connection
     priv->conn = PQconnectdb(dsn);
-
     if (PQstatus(priv->conn) != CONNECTION_OK) {
         PQfinish(priv->conn);
         priv->conn = NULL;
+        pthread_mutex_destroy(&priv->pool_mutex);
+        pthread_cond_destroy(&priv->pool_cond);
         return SSO_ERR_STORAGE;
     }
+    
+    // Seed pool with default connection
+    priv->pool[0] = priv->conn;
+    priv->pool_in_use[0] = 0;
+    priv->pool_size = 1;
 
     /* Initialize schema */
     const char *schema = 
@@ -151,12 +260,18 @@ static sso_error_t postgres_open(storage_backend_t *self, const char *dsn) {
 
 static void postgres_close(storage_backend_t *self) {
     if (!self) return;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     if (priv) {
-        if (priv->conn) {
-            PQfinish(priv->conn);
-            priv->conn = NULL;
+        pthread_mutex_lock(&priv->pool_mutex);
+        for (int i = 0; i < priv->pool_size; i++) {
+            if (priv->pool[i]) {
+                PQfinish(priv->pool[i]);
+                priv->pool[i] = NULL;
+            }
         }
+        pthread_mutex_unlock(&priv->pool_mutex);
+        pthread_mutex_destroy(&priv->pool_mutex);
+        pthread_cond_destroy(&priv->pool_cond);
         free(priv);
         self->handle = NULL;
     }
@@ -164,7 +279,7 @@ static void postgres_close(storage_backend_t *self) {
 
 static sso_error_t postgres_begin(storage_backend_t *self) {
     if (!self) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     PGresult *res = PQexec(priv->conn, "BEGIN");
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
         PQclear(res);
@@ -176,7 +291,7 @@ static sso_error_t postgres_begin(storage_backend_t *self) {
 
 static sso_error_t postgres_commit(storage_backend_t *self) {
     if (!self) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     PGresult *res = PQexec(priv->conn, "COMMIT");
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
         PQclear(res);
@@ -188,7 +303,7 @@ static sso_error_t postgres_commit(storage_backend_t *self) {
 
 static sso_error_t postgres_rollback(storage_backend_t *self) {
     if (!self) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     PGresult *res = PQexec(priv->conn, "ROLLBACK");
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
         PQclear(res);
@@ -336,7 +451,7 @@ static void read_oauth_client(PGresult *res, int row, oauth_client_t *c) {
 
 static sso_error_t postgres_user_create(storage_backend_t *self, user_t *u) {
     if (!self || !u) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = 
         "INSERT INTO users (username, phone, password_hash, email, display_name, status, created_at, updated_at, attributes, mfa_enabled, mfa_secret) "
@@ -376,7 +491,7 @@ static sso_error_t postgres_user_create(storage_backend_t *self, user_t *u) {
 
 static sso_error_t postgres_user_get_by_id(storage_backend_t *self, sso_id_t id, user_t *u) {
     if (!self || !u) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "SELECT id, username, phone, password_hash, email, display_name, status, created_at, updated_at, attributes, mfa_enabled, mfa_secret FROM users WHERE id = $1";
     char id_str[32];
@@ -396,7 +511,7 @@ static sso_error_t postgres_user_get_by_id(storage_backend_t *self, sso_id_t id,
 
 static sso_error_t postgres_user_get_by_name(storage_backend_t *self, const char *name, user_t *u) {
     if (!self || !name || !u) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "SELECT id, username, phone, password_hash, email, display_name, status, created_at, updated_at, attributes, mfa_enabled, mfa_secret FROM users WHERE username = $1";
     const char *params[1] = { name };
@@ -414,7 +529,7 @@ static sso_error_t postgres_user_get_by_name(storage_backend_t *self, const char
 
 static sso_error_t postgres_user_get_by_phone(storage_backend_t *self, const char *phone, user_t *u) {
     if (!self || !phone || !u) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "SELECT id, username, phone, password_hash, email, display_name, status, created_at, updated_at, attributes, mfa_enabled, mfa_secret FROM users WHERE phone = $1";
     const char *params[1] = { phone };
@@ -432,7 +547,7 @@ static sso_error_t postgres_user_get_by_phone(storage_backend_t *self, const cha
 
 static sso_error_t postgres_user_update(storage_backend_t *self, const user_t *u) {
     if (!self || !u) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = 
         "UPDATE users SET phone = $1, password_hash = $2, email = $3, display_name = $4, status = $5, updated_at = $6, attributes = $7, mfa_enabled = $8, mfa_secret = $9 "
@@ -469,7 +584,7 @@ static sso_error_t postgres_user_update(storage_backend_t *self, const user_t *u
 
 static sso_error_t postgres_user_delete(storage_backend_t *self, sso_id_t id) {
     if (!self) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     char id_str[32];
     snprintf(id_str, sizeof(id_str), "%" PRIu64, id);
@@ -493,7 +608,7 @@ static sso_error_t postgres_user_delete(storage_backend_t *self, sso_id_t id) {
 
 static sso_error_t postgres_user_list(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count) {
     if (!self || !ids || !count || !total_count) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     char where[512] = "";
     int p_idx = 1;
@@ -567,7 +682,7 @@ static sso_error_t postgres_user_list(storage_backend_t *self, const char *q, in
 
 static sso_error_t postgres_save_sms_code(storage_backend_t *self, const char *phone, const char *code, sso_timestamp_t expires_at) {
     if (!self || !phone || !code) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = 
         "INSERT INTO sms_codes (phone, code, expires_at, attempts) VALUES ($1, $2, $3, 0) "
@@ -588,7 +703,7 @@ static sso_error_t postgres_save_sms_code(storage_backend_t *self, const char *p
 
 static sso_error_t postgres_get_sms_code(storage_backend_t *self, const char *phone, char *code_out) {
     if (!self || !phone || !code_out) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "SELECT code, expires_at FROM sms_codes WHERE phone = $1";
     const char *params[1] = { phone };
@@ -613,7 +728,7 @@ static sso_error_t postgres_get_sms_code(storage_backend_t *self, const char *ph
 
 static sso_error_t postgres_delete_sms_code(storage_backend_t *self, const char *phone) {
     if (!self || !phone) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "DELETE FROM sms_codes WHERE phone = $1";
     const char *params[1] = { phone };
@@ -633,7 +748,7 @@ static sso_error_t postgres_delete_sms_code(storage_backend_t *self, const char 
 
 static sso_error_t postgres_role_create(storage_backend_t *self, role_t *r) {
     if (!self || !r) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "INSERT INTO roles (name, description, parent_role_id, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id";
     char parent_id_str[32], status_str[16], created_at_str[32], updated_at_str[32];
@@ -657,7 +772,7 @@ static sso_error_t postgres_role_create(storage_backend_t *self, role_t *r) {
 
 static sso_error_t postgres_role_get_by_id(storage_backend_t *self, sso_id_t id, role_t *r) {
     if (!self || !r) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "SELECT id, name, description, parent_role_id, status, created_at, updated_at FROM roles WHERE id = $1";
     char id_str[32]; snprintf(id_str, sizeof(id_str), "%" PRIu64, id);
@@ -676,7 +791,7 @@ static sso_error_t postgres_role_get_by_id(storage_backend_t *self, sso_id_t id,
 
 static sso_error_t postgres_role_get_by_name(storage_backend_t *self, const char *name, role_t *r) {
     if (!self || !name || !r) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "SELECT id, name, description, parent_role_id, status, created_at, updated_at FROM roles WHERE name = $1";
     const char *params[1] = { name };
@@ -694,7 +809,7 @@ static sso_error_t postgres_role_get_by_name(storage_backend_t *self, const char
 
 static sso_error_t postgres_role_update(storage_backend_t *self, const role_t *r) {
     if (!self || !r) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "UPDATE roles SET name = $1, description = $2, parent_role_id = $3, status = $4, updated_at = $5 WHERE id = $6";
     char parent_id_str[32], status_str[16], updated_at_str[32], id_str[32];
@@ -717,7 +832,7 @@ static sso_error_t postgres_role_update(storage_backend_t *self, const role_t *r
 
 static sso_error_t postgres_role_delete(storage_backend_t *self, sso_id_t id) {
     if (!self) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     char id_str[32]; snprintf(id_str, sizeof(id_str), "%" PRIu64, id);
     const char *params[1] = { id_str };
@@ -738,7 +853,7 @@ static sso_error_t postgres_role_delete(storage_backend_t *self, sso_id_t id) {
 
 static sso_error_t postgres_role_list(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count) {
     if (!self || !ids || !count || !total_count) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     char where[512] = "";
     int p_idx = 1;
@@ -805,7 +920,7 @@ static sso_error_t postgres_role_list(storage_backend_t *self, const char *q, in
 
 static sso_error_t postgres_group_create(storage_backend_t *self, group_t *g) {
     if (!self || !g) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "INSERT INTO groups (name, description, parent_group_id, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id";
     char parent_id_str[32], status_str[16], created_at_str[32], updated_at_str[32];
@@ -829,7 +944,7 @@ static sso_error_t postgres_group_create(storage_backend_t *self, group_t *g) {
 
 static sso_error_t postgres_group_get_by_id(storage_backend_t *self, sso_id_t id, group_t *g) {
     if (!self || !g) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "SELECT id, name, description, parent_group_id, status, created_at, updated_at FROM groups WHERE id = $1";
     char id_str[32]; snprintf(id_str, sizeof(id_str), "%" PRIu64, id);
@@ -848,7 +963,7 @@ static sso_error_t postgres_group_get_by_id(storage_backend_t *self, sso_id_t id
 
 static sso_error_t postgres_group_get_by_name(storage_backend_t *self, const char *name, group_t *g) {
     if (!self || !name || !g) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "SELECT id, name, description, parent_group_id, status, created_at, updated_at FROM groups WHERE name = $1";
     const char *params[1] = { name };
@@ -866,7 +981,7 @@ static sso_error_t postgres_group_get_by_name(storage_backend_t *self, const cha
 
 static sso_error_t postgres_group_update(storage_backend_t *self, const group_t *g) {
     if (!self || !g) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "UPDATE groups SET name = $1, description = $2, parent_group_id = $3, status = $4, updated_at = $5 WHERE id = $6";
     char parent_id_str[32], status_str[16], updated_at_str[32], id_str[32];
@@ -889,7 +1004,7 @@ static sso_error_t postgres_group_update(storage_backend_t *self, const group_t 
 
 static sso_error_t postgres_group_delete(storage_backend_t *self, sso_id_t id) {
     if (!self) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     char id_str[32]; snprintf(id_str, sizeof(id_str), "%" PRIu64, id);
     const char *params[1] = { id_str };
@@ -910,7 +1025,7 @@ static sso_error_t postgres_group_delete(storage_backend_t *self, sso_id_t id) {
 
 static sso_error_t postgres_group_list(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count) {
     if (!self || !ids || !count || !total_count) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     char where[512] = "";
     int p_idx = 1;
@@ -977,7 +1092,7 @@ static sso_error_t postgres_group_list(storage_backend_t *self, const char *q, i
 
 static sso_error_t postgres_policy_create(storage_backend_t *self, policy_t *p) {
     if (!self || !p) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "INSERT INTO policies (name, strategy_type, effect, priority, rules, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id";
     char strategy_str[16], effect_str[16], priority_str[16], status_str[16], created_at_str[32], updated_at_str[32];
@@ -1003,7 +1118,7 @@ static sso_error_t postgres_policy_create(storage_backend_t *self, policy_t *p) 
 
 static sso_error_t postgres_policy_get_by_id(storage_backend_t *self, sso_id_t id, policy_t *p) {
     if (!self || !p) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "SELECT id, name, strategy_type, effect, priority, rules, status, created_at, updated_at FROM policies WHERE id = $1";
     char id_str[32]; snprintf(id_str, sizeof(id_str), "%" PRIu64, id);
@@ -1022,7 +1137,7 @@ static sso_error_t postgres_policy_get_by_id(storage_backend_t *self, sso_id_t i
 
 static sso_error_t postgres_policy_get_by_name(storage_backend_t *self, const char *name, policy_t *p) {
     if (!self || !name || !p) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "SELECT id, name, strategy_type, effect, priority, rules, status, created_at, updated_at FROM policies WHERE name = $1";
     const char *params[1] = { name };
@@ -1040,7 +1155,7 @@ static sso_error_t postgres_policy_get_by_name(storage_backend_t *self, const ch
 
 static sso_error_t postgres_policy_update(storage_backend_t *self, const policy_t *p) {
     if (!self || !p) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "UPDATE policies SET name = $1, strategy_type = $2, effect = $3, priority = $4, rules = $5, status = $6, updated_at = $7 WHERE id = $8";
     char strategy_str[16], effect_str[16], priority_str[16], status_str[16], updated_at_str[32], id_str[32];
@@ -1065,7 +1180,7 @@ static sso_error_t postgres_policy_update(storage_backend_t *self, const policy_
 
 static sso_error_t postgres_policy_delete(storage_backend_t *self, sso_id_t id) {
     if (!self) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     char id_str[32]; snprintf(id_str, sizeof(id_str), "%" PRIu64, id);
     const char *params[1] = { id_str };
@@ -1084,7 +1199,7 @@ static sso_error_t postgres_policy_delete(storage_backend_t *self, sso_id_t id) 
 
 static sso_error_t postgres_policy_list(storage_backend_t *self, const char *q, int status, int offset, int limit, sso_id_t *ids, size_t *count, size_t *total_count) {
     if (!self || !ids || !count || !total_count) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     char where[512] = "";
     int p_idx = 1;
@@ -1147,7 +1262,7 @@ static sso_error_t postgres_policy_list(storage_backend_t *self, const char *q, 
 
 static sso_error_t postgres_assign_id_id(storage_backend_t *self, const char *query, sso_id_t id1, sso_id_t id2) {
     if (!self) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char s1[32], s2[32];
     snprintf(s1, sizeof(s1), "%" PRIu64, id1);
     snprintf(s2, sizeof(s2), "%" PRIu64, id2);
@@ -1182,7 +1297,7 @@ static sso_error_t postgres_remove_user_from_group(storage_backend_t *self, sso_
 
 static sso_error_t postgres_get_ids(storage_backend_t *self, const char *query, sso_id_t id, sso_id_t *ids, size_t *count, size_t max) {
     if (!self || !ids || !count) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char id_str[32]; snprintf(id_str, sizeof(id_str), "%" PRIu64, id);
     const char *params[1] = { id_str };
     PGresult *res = PQexecParams(priv->conn, query, 1, NULL, params, NULL, NULL, 0);
@@ -1215,7 +1330,7 @@ static sso_error_t postgres_get_group_users(storage_backend_t *self, sso_id_t gr
 
 static sso_error_t postgres_assign_policy(storage_backend_t *self, sso_id_t policy_id, policy_target_type_t target_type, sso_id_t target_id) {
     if (!self) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char p_id[32], t_type[16], t_id[32];
     snprintf(p_id, sizeof(p_id), "%" PRIu64, policy_id);
     snprintf(t_type, sizeof(t_type), "%d", (int)target_type);
@@ -1232,7 +1347,7 @@ static sso_error_t postgres_assign_policy(storage_backend_t *self, sso_id_t poli
 
 static sso_error_t postgres_unassign_policy(storage_backend_t *self, sso_id_t policy_id, policy_target_type_t target_type, sso_id_t target_id) {
     if (!self) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char p_id[32], t_type[16], t_id[32];
     snprintf(p_id, sizeof(p_id), "%" PRIu64, policy_id);
     snprintf(t_type, sizeof(t_type), "%d", (int)target_type);
@@ -1249,7 +1364,7 @@ static sso_error_t postgres_unassign_policy(storage_backend_t *self, sso_id_t po
 
 static sso_error_t postgres_get_policy_targets(storage_backend_t *self, sso_id_t policy_id, policy_target_type_t target_type, sso_id_t *target_ids, size_t *count, size_t max) {
     if (!self || !target_ids || !count) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char p_id[32], t_type[16];
     snprintf(p_id, sizeof(p_id), "%" PRIu64, policy_id);
     snprintf(t_type, sizeof(t_type), "%d", (int)target_type);
@@ -1269,7 +1384,7 @@ static sso_error_t postgres_get_policy_targets(storage_backend_t *self, sso_id_t
 
 static sso_error_t postgres_get_target_policies(storage_backend_t *self, policy_target_type_t target_type, sso_id_t target_id, sso_id_t *policy_ids, size_t *count, size_t max) {
     if (!self || !policy_ids || !count) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char t_type[16], t_id[32];
     snprintf(t_type, sizeof(t_type), "%d", (int)target_type);
     snprintf(t_id, sizeof(t_id), "%" PRIu64, target_id);
@@ -1293,7 +1408,7 @@ static sso_error_t postgres_get_target_policies(storage_backend_t *self, policy_
 
 static sso_error_t postgres_role_get_parent(storage_backend_t *self, sso_id_t role_id, sso_id_t *parent_id) {
     if (!self || !parent_id) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char id_str[32]; snprintf(id_str, sizeof(id_str), "%" PRIu64, role_id);
     const char *params[1] = { id_str };
     PGresult *res = PQexecParams(priv->conn, "SELECT parent_role_id FROM roles WHERE id = $1", 1, NULL, params, NULL, NULL, 0);
@@ -1308,7 +1423,7 @@ static sso_error_t postgres_role_get_parent(storage_backend_t *self, sso_id_t ro
 
 static sso_error_t postgres_group_get_parent(storage_backend_t *self, sso_id_t group_id, sso_id_t *parent_id) {
     if (!self || !parent_id) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char id_str[32]; snprintf(id_str, sizeof(id_str), "%" PRIu64, group_id);
     const char *params[1] = { id_str };
     PGresult *res = PQexecParams(priv->conn, "SELECT parent_group_id FROM groups WHERE id = $1", 1, NULL, params, NULL, NULL, 0);
@@ -1323,7 +1438,7 @@ static sso_error_t postgres_group_get_parent(storage_backend_t *self, sso_id_t g
 
 static sso_error_t postgres_get_user_roles_with_ancestors(storage_backend_t *self, sso_id_t user_id, sso_id_t *role_ids, size_t *count, size_t max) {
     if (!self || !role_ids || !count) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char id_str[32]; snprintf(id_str, sizeof(id_str), "%" PRIu64, user_id);
     const char *params[1] = { id_str };
     const char *sql =
@@ -1355,7 +1470,7 @@ static sso_error_t postgres_get_user_roles_with_ancestors(storage_backend_t *sel
 
 static sso_error_t postgres_oauth_code_create(storage_backend_t *self, const oauth_auth_code_t *c) {
     if (!self || !c) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char user_id[32], expires[32];
     snprintf(user_id, sizeof(user_id), "%" PRIu64, c->user_id);
     snprintf(expires, sizeof(expires), "%" PRId64, c->expires_at);
@@ -1371,7 +1486,7 @@ static sso_error_t postgres_oauth_code_create(storage_backend_t *self, const oau
 
 static sso_error_t postgres_oauth_code_get(storage_backend_t *self, const char *code, oauth_auth_code_t *out) {
     if (!self || !code || !out) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     const char *params[1] = { code };
     PGresult *res = PQexecParams(priv->conn, "SELECT code, client_id, user_id, redirect_uri, scope, nonce, code_challenge, code_challenge_method, expires_at, used FROM oauth_auth_codes WHERE code = $1", 1, NULL, params, NULL, NULL, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
@@ -1395,7 +1510,7 @@ static sso_error_t postgres_oauth_code_get(storage_backend_t *self, const char *
 
 static sso_error_t postgres_oauth_code_mark_used(storage_backend_t *self, const char *code) {
     if (!self || !code) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     const char *params[1] = { code };
     PGresult *res = PQexecParams(priv->conn, "UPDATE oauth_auth_codes SET used = 1 WHERE code = $1", 1, NULL, params, NULL, NULL, 0);
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
@@ -1408,7 +1523,7 @@ static sso_error_t postgres_oauth_code_mark_used(storage_backend_t *self, const 
 
 static sso_error_t postgres_oauth_code_cleanup(storage_backend_t *self) {
     if (!self) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char now[32]; snprintf(now, sizeof(now), "%" PRId64, sso_timestamp_now());
     const char *params[1] = { now };
     PGresult *res = PQexecParams(priv->conn, "DELETE FROM oauth_auth_codes WHERE expires_at < $1 OR used = 1", 1, NULL, params, NULL, NULL, 0);
@@ -1422,7 +1537,7 @@ static sso_error_t postgres_oauth_code_cleanup(storage_backend_t *self) {
 
 static sso_error_t postgres_oauth_client_create(storage_backend_t *self, oauth_client_t *c) {
     if (!self || !c) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char ttl[32], status[16], created[32], updated[32];
     snprintf(ttl, sizeof(ttl), "%ld", c->token_ttl_ms);
     snprintf(status, sizeof(status), "%d", c->status);
@@ -1441,7 +1556,7 @@ static sso_error_t postgres_oauth_client_create(storage_backend_t *self, oauth_c
 
 static sso_error_t postgres_oauth_client_get(storage_backend_t *self, const char *client_id, oauth_client_t *c) {
     if (!self || !client_id || !c) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     const char *params[1] = { client_id };
     PGresult *res = PQexecParams(priv->conn, "SELECT id, client_id, client_secret_hash, redirect_uris, app_name, app_description, app_logo_url, allowed_scopes, allowed_grant_types, token_ttl_ms, status, created_at, updated_at FROM oauth_clients WHERE client_id = $1", 1, NULL, params, NULL, NULL, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
@@ -1455,7 +1570,7 @@ static sso_error_t postgres_oauth_client_get(storage_backend_t *self, const char
 
 static sso_error_t postgres_oauth_client_update(storage_backend_t *self, const oauth_client_t *c) {
     if (!self || !c) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char ttl[32], status[16], updated[32], id_str[32];
     snprintf(ttl, sizeof(ttl), "%ld", c->token_ttl_ms);
     snprintf(status, sizeof(status), "%d", c->status);
@@ -1473,7 +1588,7 @@ static sso_error_t postgres_oauth_client_update(storage_backend_t *self, const o
 
 static sso_error_t postgres_oauth_client_delete(storage_backend_t *self, const char *client_id) {
     if (!self || !client_id) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     const char *params[1] = { client_id };
     PGresult *res = PQexecParams(priv->conn, "DELETE FROM oauth_clients WHERE client_id = $1", 1, NULL, params, NULL, NULL, 0);
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
@@ -1486,7 +1601,7 @@ static sso_error_t postgres_oauth_client_delete(storage_backend_t *self, const c
 
 static sso_error_t postgres_oauth_client_list(storage_backend_t *self, int offset, int limit, oauth_client_t *clients, size_t *count, size_t max) {
     if (!self || !clients || !count) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
     char off[16], lim[16];
     snprintf(off, sizeof(off), "%d", offset);
     snprintf(lim, sizeof(lim), "%d", limit);
@@ -1510,7 +1625,7 @@ static sso_error_t postgres_oauth_client_list(storage_backend_t *self, int offse
 
 static sso_error_t postgres_rt_create(storage_backend_t *self, const refresh_token_t *rt) {
     if (!self || !rt) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "INSERT INTO refresh_tokens (token_hash, user_id, client_id, expires_at, issued_at, revoked) VALUES ($1, $2, $3, $4, $5, $6)";
     
@@ -1541,7 +1656,7 @@ static sso_error_t postgres_rt_create(storage_backend_t *self, const refresh_tok
 
 static sso_error_t postgres_rt_get(storage_backend_t *self, const char *token_hash, refresh_token_t *out) {
     if (!self || !token_hash || !out) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "SELECT token_hash, user_id, client_id, expires_at, issued_at, revoked FROM refresh_tokens WHERE token_hash = $1";
     const char *params[1] = { token_hash };
@@ -1577,7 +1692,7 @@ static sso_error_t postgres_rt_get(storage_backend_t *self, const char *token_ha
 
 static sso_error_t postgres_rt_revoke(storage_backend_t *self, const char *token_hash) {
     if (!self || !token_hash) return SSO_ERR_INVALID_PARAM;
-    postgres_priv_t *priv = (postgres_priv_t *)self->handle;
+    postgres_priv_t *priv = postgres_get_priv(self);
 
     const char *query = "UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = $1";
     const char *params[1] = { token_hash };
@@ -1614,11 +1729,13 @@ sso_error_t storage_postgres_create(storage_backend_t **backend) {
     (*backend)->name[sizeof((*backend)->name) - 1] = '\0';
 
     /* Lifecycle */
-    (*backend)->open       = postgres_open;
-    (*backend)->close      = postgres_close;
-    (*backend)->begin      = postgres_begin;
-    (*backend)->commit     = postgres_commit;
-    (*backend)->rollback   = postgres_rollback;
+    (*backend)->open           = postgres_open;
+    (*backend)->close          = postgres_close;
+    (*backend)->begin          = postgres_begin;
+    (*backend)->commit         = postgres_commit;
+    (*backend)->rollback       = postgres_rollback;
+    (*backend)->thread_init    = postgres_thread_init;
+    (*backend)->thread_cleanup = postgres_thread_cleanup;
 
     /* User */
     (*backend)->user_create       = postgres_user_create;

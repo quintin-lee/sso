@@ -311,6 +311,8 @@ static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
         return SSO_ERR_STORAGE;
     }
 
+    sqlite3_busy_timeout(priv->db, 5000);
+
     /* Performance optimization: WAL mode + NORMAL synchronous */
     sqlite3_exec(priv->db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL);
     sqlite3_exec(priv->db, "PRAGMA synchronous=NORMAL;", NULL, NULL, NULL);

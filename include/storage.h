@@ -27,6 +27,8 @@ typedef void        (*storage_close_fn)(storage_backend_t *self);
 typedef sso_error_t (*storage_begin_fn)(storage_backend_t *self);
 typedef sso_error_t (*storage_commit_fn)(storage_backend_t *self);
 typedef sso_error_t (*storage_rollback_fn)(storage_backend_t *self);
+typedef void        (*storage_thread_init_fn)(storage_backend_t *self);
+typedef void        (*storage_thread_cleanup_fn)(storage_backend_t *self);
 
 /* User CRUD — create writes back the assigned id */
 typedef sso_error_t (*storage_user_create_fn)(storage_backend_t *self, user_t *user);
@@ -169,6 +171,8 @@ struct storage_backend {
     storage_begin_fn                begin;
     storage_commit_fn               commit;
     storage_rollback_fn             rollback;
+    storage_thread_init_fn          thread_init;
+    storage_thread_cleanup_fn       thread_cleanup;
 
     /* User */
     storage_user_create_fn          user_create;
