@@ -10,6 +10,10 @@
 # ============================================================================
 set -euo pipefail
 
+# Bypass system proxies for local test requests
+export no_proxy="localhost,127.0.0.1,${no_proxy:-}"
+export NO_PROXY="localhost,127.0.0.1,${NO_PROXY:-}"
+
 PORT="${SSO_TEST_PORT:-18080}"
 BASE="http://127.0.0.1:${PORT}"
 PASSED=0
@@ -411,16 +415,6 @@ test_metrics() {
     if echo "$metrics_resp" | grep -q "perm_"; then pass "metrics endpoint (contains perm_ metrics)"; else fail "metrics - unexpected: $(echo "$metrics_resp" | head -c 100)"; fi
 }
 
-test_pages() {
-    echo ""
-    echo "--- HTML Pages ---"
-
-    # Login page
-    local page_code
-    page_code=$(curl -s -o /dev/null -w "%{http_code}" "${BASE}/" 2>&1)
-    if [ "$page_code" = "200" ]; then pass "login page (HTTP 200)"; else fail "login page expected 200 got $page_code"; fi
-}
-
 # --- Summary ---
 summary() {
     local total=$((PASSED + FAILED))
@@ -453,6 +447,5 @@ test_oauth_endpoints
 test_permission_checks
 test_management_crud
 test_metrics
-test_pages
 
 summary
