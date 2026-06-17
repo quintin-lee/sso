@@ -222,6 +222,20 @@ void token_destroy(token_t *token) {
 /*           ==
  * Token operations
  *           == */
+/**
+ * @brief Issues a new JWT token signed symmetrically or asymmetrically.
+ * 
+ * Flow:
+ * 1. Initialize output token structure and populate timestamps and counters.
+ * 2. Generate a unique JTI (UUID) using a combination of timestamps and cryptographically secure random bytes.
+ * 3. Construct and serialize the JSON Header (stating RS256/HS256 algorithms).
+ * 4. Construct and serialize the JSON Payload containing standard JWT claims (sub, exp, iat, jti),
+ *    plus application claims (nonce/tnc, roles, groups, scopes).
+ * 5. Base64url-encode both segments, concat them as "header.payload".
+ * 6. Generate 32 bytes of cryptographically secure random bytes for a refresh token.
+ * 7. Compute signature using HMAC-SHA256 (symmetrically) or RSA-SHA256 (asymmetrically)
+ *    and append as "header.payload.signature".
+ */
 sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
                         const sso_id_t *role_ids, size_t role_count,
                         const sso_id_t *group_ids, size_t group_count,
@@ -232,6 +246,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     memset(out, 0, sizeof(*out));
     out->user_id = user->id;
     out->issued_at = sso_timestamp_now();
+    /* Handle custom TTL or fallback to manager default TTL */
     long long actual_ttl = (ttl_ms > 0) ? ttl_ms : (ttl_ms == 0 ? mgr->default_ttl_ms : ttl_ms);
     out->expires_at = out->issued_at + actual_ttl;
     out->role_count = role_count;
@@ -242,6 +257,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
         strncpy(out->scope, scope, sizeof(out->scope) - 1);
     }
 
+    /* Generate cryptographically secure random bytes for JTI uniqueness */
     unsigned char rand_bytes[8];
     randombytes_buf(rand_bytes, sizeof(rand_bytes));
     snprintf(out->jti, sizeof(out->jti), "%llx%02x%02x%02x%02x%02x%02x%02x%02x",
@@ -249,6 +265,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
              rand_bytes[0], rand_bytes[1], rand_bytes[2], rand_bytes[3],
              rand_bytes[4], rand_bytes[5], rand_bytes[6], rand_bytes[7]);
 
+    /* Duplicate arrays into the token object to keep them self-contained */
     if (role_ids && role_count > 0) {
         out->role_ids = (sso_id_t *)malloc(role_count * sizeof(sso_id_t));
         if (!out->role_ids) return SSO_ERR_OUT_OF_MEMORY;
@@ -264,7 +281,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
         memcpy(out->group_ids, group_ids, group_count * sizeof(sso_id_t));
     }
 
-    /* JWT Header */
+    /* --- Step A: Assemble and encode JWT Header --- */
     cJSON *header = cJSON_CreateObject();
     cJSON_AddStringToObject(header, "alg", mgr->mode == SSO_TOKEN_MODE_RS256 ? "RS256" : "HS256");
     cJSON_AddStringToObject(header, "typ", "JWT");
@@ -272,11 +289,10 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     cJSON_Delete(header);
  
     char b64_header[256];
- 
     base64url_encode((unsigned char *)header_str, strlen(header_str), b64_header, sizeof(b64_header));
     free(header_str);
 
-    /* JWT Payload */
+    /* --- Step B: Assemble and encode JWT Payload --- */
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jti", out->jti);
     cJSON_AddNumberToObject(root, "sub", (double)out->user_id);
@@ -314,18 +330,18 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     base64url_encode((unsigned char *)payload_str, strlen(payload_str), b64_payload, sizeof(b64_payload));
     free(payload_str);
 
-    /* signing_input = header.payload */
+    /* Construct the standard signing input string header.payload */
     char signing_input[2560];
     snprintf(signing_input, sizeof(signing_input), "%s.%s", b64_header, b64_payload);
 
-    /* Generate 32 bytes of random data for refresh token */
+    /* --- Step C: Generate secure random refresh token string --- */
     unsigned char rt_bytes[32];
     randombytes_buf(rt_bytes, sizeof(rt_bytes));
-    
-    /* Base64url encode it */
     base64url_encode(rt_bytes, sizeof(rt_bytes), out->raw_refresh_token, sizeof(out->raw_refresh_token));
 
+    /* --- Step D: Create Cryptographic Signature --- */
     if (mgr->mode == SSO_TOKEN_MODE_HS256) {
+        /* Symmetric signing via OpenSSL HMAC-SHA256 */
         unsigned char hmac_result[EVP_MAX_MD_SIZE];
         unsigned int hmac_len = 0;
         HMAC(EVP_sha256(), mgr->keys.secret, (int)sizeof(mgr->keys.secret),
@@ -336,6 +352,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
         base64url_encode(hmac_result, hmac_len, sig_b64, sizeof(sig_b64));
         snprintf(out->token_str, sizeof(out->token_str), "%s.%s", signing_input, sig_b64);
     } else {
+        /* Asymmetric signing via OpenSSL RSA-SHA256 signature */
         EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
         EVP_PKEY_CTX *pk_ctx = NULL;
         size_t sig_len = 0;
@@ -495,13 +512,28 @@ static sso_error_t scan_jwt_payload(const char *json, token_t *out) {
     return (found_sub && found_exp) ? SSO_OK : SSO_ERR_TOKEN_INVALID;
 }
 
+/**
+ * @brief Decodes, validates the cryptographic signature, and scans claims of a JWT.
+ * 
+ * Flow:
+ * 1. Split the token string by dot '.' characters into header, payload, and signature.
+ * 2. Form the original signing_input string "header.payload".
+ * 3. Verify signature:
+ *    - Symmetrically: compute HMAC-SHA256 of signing_input with the server secret,
+ *      then verify it matches the decoded signature.
+ *    - Asymmetrically: decode signature from base64url and verify using OpenSSL DigestVerify
+ *      with the RSA public key.
+ * 4. Base64url-decode the payload segment and verify it.
+ * 5. Parse/scan the JSON payload claims.
+ * 6. Verify expiration timestamp.
+ */
 sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *out) {
     if (!mgr || !token_str || !out) return SSO_ERR_INVALID_PARAM;
 
     memset(out, 0, sizeof(*out));
     strncpy(out->token_str, token_str, SSO_MAX_TOKEN_STR - 1);
 
-    /* Split into header, payload, and signature */
+    /* Split raw token string into header, payload, and signature components */
     const char *dot1 = strchr(token_str, '.');
     if (!dot1) return SSO_ERR_TOKEN_INVALID;
 
@@ -524,15 +556,16 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
 
     const char *sig_part = dot2 + 1;
 
-    /* signing_input = header.payload */
+    /* Reconstruct signing input string = header.payload */
     char signing_input[2560];
     snprintf(signing_input, sizeof(signing_input), "%s.%s", b64_header, b64_payload);
 
-    /* Backward compat: detect hex-encoded signature (old format) */
+    /* Detect hex-encoded legacy signature format vs new base64url format */
     bool legacy_hex = is_hex_str(sig_part);
 
-    /* Verify signature */
+    /* --- Verify Signature Integrity --- */
     if (mgr->mode == SSO_TOKEN_MODE_HS256) {
+        /* Symmetric HS256 HMAC-SHA256 signature verification */
         unsigned char hmac_result[EVP_MAX_MD_SIZE];
         unsigned int hmac_len = 0;
         HMAC(EVP_sha256(), mgr->keys.secret, (int)sizeof(mgr->keys.secret),
@@ -551,13 +584,14 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
                 return SSO_ERR_TOKEN_INVALID;
         }
     } else {
+        /* Asymmetric RS256 RSA-SHA256 signature verification */
         unsigned char *sig = NULL;
         size_t sig_len = 0;
 
         if (legacy_hex) {
             sig_len = strlen(sig_part) / 2;
             sig = (unsigned char *)malloc(sig_len);
-            if (!sig) return SSO_ERR_TOKEN_INVALID; // Or an OOM error if you have one
+            if (!sig) return SSO_ERR_TOKEN_INVALID;
             for (size_t i = 0; i < sig_len; i++) {
                 unsigned int val;
                 sscanf(sig_part + i*2, "%02x", &val);
@@ -566,7 +600,7 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         } else {
             sig_len = strlen(sig_part) / 4 * 3 + 4;
             sig = (unsigned char *)malloc(sig_len);
-            if (!sig) return SSO_ERR_TOKEN_INVALID; // Or OOM error
+            if (!sig) return SSO_ERR_TOKEN_INVALID;
             sig_len = base64url_decode(sig_part, sig, sig_len);
         }
 
@@ -583,15 +617,17 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         if (v_err != SSO_OK) return v_err;
     }
 
-    /* Decode payload */
+    /* --- Decode and Scan JSON Payload Claims --- */
     unsigned char decoded[4096];
     size_t decoded_len = base64url_decode(b64_payload, decoded, sizeof(decoded) - 1);
     if (decoded_len == 0) return SSO_ERR_TOKEN_INVALID;
     decoded[decoded_len] = '\0';
 
+    /* Single-pass scan of standard and custom claims */
     sso_error_t scan_err = scan_jwt_payload((const char *)decoded, out);
     if (scan_err != SSO_OK) return scan_err;
 
+    /* Verify if the token expiration date is in the past */
     if (sso_timestamp_now() > out->expires_at) {
         token_destroy(out);
         return SSO_ERR_TOKEN_EXPIRED;
