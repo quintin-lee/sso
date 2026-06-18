@@ -36,10 +36,14 @@
             <InputText v-model.trim="role.name" placeholder="admin" />
          </div>
          <div class="flex flex-col gap-1.5">
-             <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('common.description') }}</label>
-            <InputText v-model.trim="role.description" placeholder="Administrator role" />
-         </div>
-       </div>
+              <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('common.description') }}</label>
+             <InputText v-model.trim="role.description" placeholder="Administrator role" />
+          </div>
+          <div class="flex items-center gap-2 pt-2">
+            <Checkbox v-model="role.status" :binary="true" inputId="roleStatus" :trueValue="1" :falseValue="0" />
+            <label for="roleStatus" class="text-sm font-semibold text-[var(--text-primary)] select-none">{{ $t('common.active') }}</label>
+          </div>
+        </div>
        <template #footer>
          <div class="flex gap-2 justify-end">
              <Button :label="$t('common.cancel')" text severity="secondary" @click="roleDialog = false" class="!rounded-lg !text-[var(--text-secondary)] hover:!text-[var(--text-primary)]" />
@@ -59,6 +63,7 @@ import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
+import Checkbox from 'primevue/checkbox';
 import { useToast } from 'primevue/usetoast';
 import { useConfirm } from 'primevue/useconfirm';
 
