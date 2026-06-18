@@ -200,12 +200,17 @@ const openCreateDialog = () => {
   userDialog.value = true;
 };
 
-const editUser = (data: User) => {
+const editUser = async (data: User) => {
   user.value = { ...data };
   selectedRoles.value = (data.roles || []).map(r => r.id);
   selectedGroups.value = (data.groups || []).map(g => g.id);
   selectedPolicies.value = [];
   loadRoleGroupOptions();
+  // Load directly-assigned policies for this user
+  try {
+    const policies = await adminService.getUserPolicies(data.id);
+    selectedPolicies.value = policies.map(p => p.id);
+  } catch { /* not critical */ }
   userDialog.value = true;
 };
 

@@ -118,6 +118,33 @@ sso_error_t policy_list(policy_manager_t *mgr, const char *q, int status,
 }
 
 /* -----------------------------------------------------------------------
+ * Query — get policies directly assigned to a target
+ * ----------------------------------------------------------------------- */
+sso_error_t policy_get_direct_policies(policy_manager_t *mgr,
+                                        policy_target_type_t target_type,
+                                        sso_id_t target_id,
+                                        policy_t *policies,
+                                        size_t *count, size_t max) {
+    if (!mgr || !policies || !count) return SSO_ERR_INVALID_PARAM;
+    *count = 0;
+    storage_backend_t *sb = (storage_backend_t *)mgr->ctx->storage_backend;
+    if (!sb || !sb->get_target_policies) return SSO_ERR_NOT_IMPLEMENTED;
+
+    sso_id_t policy_ids[64];
+    size_t pcount = 0;
+    sso_error_t err = sb->get_target_policies(sb, target_type, target_id,
+                                              policy_ids, &pcount, 64);
+    if (err != SSO_OK) return err;
+
+    for (size_t i = 0; i < pcount && *count < max; i++) {
+        if (policy_get_by_id(mgr, policy_ids[i], &policies[*count]) == SSO_OK) {
+            (*count)++;
+        }
+    }
+    return *count > 0 ? SSO_OK : SSO_ERR_NOT_FOUND;
+}
+
+/* -----------------------------------------------------------------------
  * Assignments
  * ----------------------------------------------------------------------- */
 sso_error_t policy_assign_to(policy_manager_t *mgr, sso_id_t policy_id,

@@ -165,6 +165,22 @@ sso_error_t policy_unassign_from(policy_manager_t *mgr, sso_id_t policy_id,
                                  policy_target_type_t target_type, sso_id_t target_id);
 
 /**
+ * @brief Gets all policies directly assigned to a specific target (user/role/group).
+ *
+ * @param mgr Policy manager.
+ * @param target_type Type of target (POLICY_TARGET_USER, POLICY_TARGET_ROLE, or POLICY_TARGET_GROUP).
+ * @param target_id Target ID.
+ * @param policies Output array of policy_t structs.
+ * @param count Output count of policies found.
+ * @param max Max capacity of policies array.
+ */
+sso_error_t policy_get_direct_policies(policy_manager_t *mgr,
+                                        policy_target_type_t target_type,
+                                        sso_id_t target_id,
+                                        policy_t *policies,
+                                        size_t *count, size_t max);
+
+/**
  * @brief Gets all target IDs of a given type that the policy is assigned to.
  * 
  * @param mgr Policy manager.

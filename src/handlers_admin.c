@@ -1039,3 +1039,113 @@ sso_error_t handle_remove_group_member(sso_context_t *ctx, const http_request_t 
     sso_response_ok(resp, "{\"removed\":true}");
     return SSO_OK;
 }
+
+sso_error_t handle_get_user_policies(sso_context_t *ctx, const http_request_t *req,
+                                            http_response_t *resp) {
+    sso_id_t user_id = extract_path_id(req->path, "/api/v1/users/");
+    if (user_id == 0) {
+        sso_response_error(resp, 400, "Invalid user ID");
+        return SSO_OK;
+    }
+
+    policy_manager_t *pmgr = (policy_manager_t *)ctx->policy_mgr;
+    policy_t policies[64];
+    size_t count = 0;
+    sso_error_t err = policy_get_direct_policies(pmgr, POLICY_TARGET_USER,
+                                                  user_id, policies, &count, 64);
+    if (err != SSO_OK && err != SSO_ERR_NOT_FOUND) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    char json[4096];
+    char arr[3072];
+    arr[0] = '\0';
+    strcat(arr, "[");
+    for (size_t i = 0; i < count; i++) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
+                 i > 0 ? "," : "",
+                 (unsigned long long)policies[i].id, policies[i].name);
+        strcat(arr, buf);
+    }
+    strcat(arr, "]");
+
+    snprintf(json, sizeof(json), "{\"policies\":%s}", arr);
+    sso_response_ok(resp, json);
+    return SSO_OK;
+}
+
+sso_error_t handle_get_policy_targets(sso_context_t *ctx, const http_request_t *req,
+                                             http_response_t *resp) {
+    sso_id_t policy_id = extract_path_id(req->path, "/policies/");
+    if (!policy_id) {
+        sso_response_error(resp, 400, "policy_id required");
+        return SSO_OK;
+    }
+
+    policy_manager_t *pmgr = (policy_manager_t *)ctx->policy_mgr;
+
+    /* Build response with all three target types */
+    char users_json[1024] = "";
+    char roles_json[1024] = "";
+    char groups_json[1024] = "";
+
+    /* Users */
+    {
+        sso_id_t ids[64];
+        size_t cnt = 0;
+        if (policy_get_targets(pmgr, policy_id, POLICY_TARGET_USER, ids, &cnt, 64) == SSO_OK || cnt > 0) {
+            strcat(users_json, "[");
+            for (size_t i = 0; i < cnt; i++) {
+                char buf[64];
+                snprintf(buf, sizeof(buf), "%s%llu", i > 0 ? "," : "", (unsigned long long)ids[i]);
+                strcat(users_json, buf);
+            }
+            strcat(users_json, "]");
+        } else {
+            strcat(users_json, "[]");
+        }
+    }
+
+    /* Roles */
+    {
+        sso_id_t ids[64];
+        size_t cnt = 0;
+        if (policy_get_targets(pmgr, policy_id, POLICY_TARGET_ROLE, ids, &cnt, 64) == SSO_OK || cnt > 0) {
+            strcat(roles_json, "[");
+            for (size_t i = 0; i < cnt; i++) {
+                char buf[64];
+                snprintf(buf, sizeof(buf), "%s%llu", i > 0 ? "," : "", (unsigned long long)ids[i]);
+                strcat(roles_json, buf);
+            }
+            strcat(roles_json, "]");
+        } else {
+            strcat(roles_json, "[]");
+        }
+    }
+
+    /* Groups */
+    {
+        sso_id_t ids[64];
+        size_t cnt = 0;
+        if (policy_get_targets(pmgr, policy_id, POLICY_TARGET_GROUP, ids, &cnt, 64) == SSO_OK || cnt > 0) {
+            strcat(groups_json, "[");
+            for (size_t i = 0; i < cnt; i++) {
+                char buf[64];
+                snprintf(buf, sizeof(buf), "%s%llu", i > 0 ? "," : "", (unsigned long long)ids[i]);
+                strcat(groups_json, buf);
+            }
+            strcat(groups_json, "]");
+        } else {
+            strcat(groups_json, "[]");
+        }
+    }
+
+    char json[4096];
+    snprintf(json, sizeof(json),
+        "{\"user_ids\":%s,\"role_ids\":%s,\"group_ids\":%s}",
+        users_json, roles_json, groups_json);
+    sso_response_ok(resp, json);
+    return SSO_OK;
+}

@@ -377,6 +377,14 @@ export const adminService = {
       target_id: targetId
     });
     return data;
+  },
+  async getUserPolicies(userId: number): Promise<{id: number, name: string}[]> {
+    const { data } = await api.get<{policies: {id: number, name: string}[]}>(`/users/${userId}/policies`);
+    return data.policies;
+  },
+  async getPolicyTargets(policyId: number): Promise<{user_ids: number[], role_ids: number[], group_ids: number[]}> {
+    const { data } = await api.get<{user_ids: number[], role_ids: number[], group_ids: number[]}>(`/policies/${policyId}/targets`);
+    return data;
   }
 };
 

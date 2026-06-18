@@ -598,14 +598,30 @@ const openCreateDialog = () => {
   policyDialog.value = true;
 };
 
-const editPolicy = (data: Policy) => {
+const editPolicy = async (data: Policy) => {
   policy.value = { ...data };
   editorMode.value = 'visual';
   assignedTargets.value = [];
   assignTargetType.value = null;
   assignTargetId.value = null;
   syncVisualStateFromRules();
-  loadAssignmentOptions();
+  await loadAssignmentOptions();
+  // Load existing policy targets to pre-populate tags
+  try {
+    const targets = await adminService.getPolicyTargets(data.id);
+    for (const uid of targets.user_ids) {
+      const u = allUsers.value.find(x => x.id === uid);
+      if (u) assignedTargets.value.push({ type: 'user', id: uid, label: u.username });
+    }
+    for (const rid of targets.role_ids) {
+      const r = allRoles.value.find(x => x.id === rid);
+      if (r) assignedTargets.value.push({ type: 'role', id: rid, label: r.name });
+    }
+    for (const gid of targets.group_ids) {
+      const g = allGroups.value.find(x => x.id === gid);
+      if (g) assignedTargets.value.push({ type: 'group', id: gid, label: g.name });
+    }
+  } catch { /* not critical */ }
   policyDialog.value = true;
 };
 

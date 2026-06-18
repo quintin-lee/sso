@@ -225,6 +225,8 @@ static int run_server(sso_config_t *cfg) {
         {"/api/v1/policies/:id",    HTTP_DELETE, handle_delete_policy,   true},
         {"/api/v1/policies/*/assign",HTTP_POST, handle_assign_policy,    true},
         {"/api/v1/policies/*/unassign",HTTP_POST, handle_unassign_policy, true},
+        {"/api/v1/users/*/policies",   HTTP_GET,  handle_get_user_policies, true},
+        {"/api/v1/policies/*/targets", HTTP_GET,  handle_get_policy_targets, true},
         {"/api/v1/groups",          HTTP_GET,  handle_list_groups,       true},
         {"/api/v1/groups",          HTTP_POST, handle_create_group,      true},
         {"/api/v1/groups/:id",      HTTP_PUT,  handle_update_group,      true},
