@@ -49,6 +49,7 @@ sso_error_t group_create(group_manager_t *mgr, const char *name,
     strncpy(group.name, name, SSO_MAX_GROUP_NAME - 1);
     if (description) strncpy(group.description, description, SSO_MAX_DESCRIPTION - 1);
     group.parent_group_id = parent_group_id;
+    group.status = GROUP_STATUS_ACTIVE;
     group.created_at = sso_timestamp_now();
     group.updated_at = group.created_at;
 

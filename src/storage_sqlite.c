@@ -1112,9 +1112,10 @@ static sso_error_t sqlite_get_user_roles_with_ancestors(storage_backend_t *self,
         "  UNION"
         "  SELECT r.parent_role_id FROM roles r"
         "  INNER JOIN user_role_tree ut ON r.id = ut.role_id"
-        "  WHERE r.parent_role_id != 0"
+        "  WHERE r.parent_role_id != 0 AND r.status = 1"
         ")"
-        "SELECT DISTINCT role_id FROM user_role_tree";
+        "SELECT DISTINCT t.role_id FROM user_role_tree t "
+        "INNER JOIN roles r ON t.role_id = r.id WHERE r.status = 1";
 
     sqlite3_stmt *stmt = NULL;
     if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK)

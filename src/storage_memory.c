@@ -400,11 +400,18 @@ static sso_error_t mem_get_user_roles_with_ancestors(storage_backend_t *self, ss
     size_t n=0;
     for (size_t i=0;i<dc && n<m;i++) {
         sso_id_t cur=dir[i];
+        role_t r_info;
+        if (mem_role_get_by_id(self, cur, &r_info) != SSO_OK || r_info.status != ROLE_STATUS_ACTIVE) {
+            continue;
+        }
         bool dup=false; for (size_t j=0;j<n;j++) if (ids[j]==cur) { dup=true; break; }
         if (!dup) ids[n++]=cur;
         while (n<m) {
             sso_id_t par;
             if (mem_role_get_parent(self,cur,&par)!=SSO_OK || par==SSO_ID_NONE) break;
+            if (mem_role_get_by_id(self, par, &r_info) != SSO_OK || r_info.status != ROLE_STATUS_ACTIVE) {
+                break;
+            }
             dup=false; for (size_t j=0;j<n;j++) if (ids[j]==par) { dup=true; break; }
             if (!dup) ids[n++]=par;
             cur=par;

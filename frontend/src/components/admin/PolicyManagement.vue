@@ -270,20 +270,36 @@
 
           <!-- Policy Assignments -->
           <div class="border-t border-[var(--border-primary)] pt-5 space-y-4">
-            <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block">{{ $t('policies.assignTo') }}</span>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policies.assignTo') }}</span>
+            </div>
+
+            <!-- Add Assignment Row -->
+            <div class="flex gap-2 items-end">
               <div class="flex flex-col gap-1.5">
-                <label class="text-xs font-bold text-[var(--text-secondary)]">{{ $t('common.user') }}</label>
-                <MultiSelect v-model="assignedUserIds" :options="allUsers" optionLabel="username" optionValue="id" :maxSelectedLabels="3" :placeholder="$t('policies.assignPlaceholder', { type: $t('common.user').toLowerCase() })" filter class="w-full" />
+                <label class="text-xs font-bold text-[var(--text-secondary)] whitespace-nowrap">{{ $t('policies.targetType') }}</label>
+                <Select v-model="assignTargetType" :options="targetTypeOptions" optionLabel="label" optionValue="value" :placeholder="$t('policies.selectTargetType')" class="w-36" />
               </div>
-              <div class="flex flex-col gap-1.5">
-                <label class="text-xs font-bold text-[var(--text-secondary)]">{{ $t('common.role') }}</label>
-                <MultiSelect v-model="assignedRoleIds" :options="allRoles" optionLabel="name" optionValue="id" :maxSelectedLabels="3" :placeholder="$t('policies.assignPlaceholder', { type: $t('common.role').toLowerCase() })" filter class="w-full" />
+              <div class="flex flex-col gap-1.5 flex-1 min-w-0">
+                <label class="text-xs font-bold text-[var(--text-secondary)] whitespace-nowrap">{{ $t('policies.target') }}</label>
+                <Select v-model="assignTargetId" :options="targetOptions" optionLabel="label" optionValue="value" filter :placeholder="$t('policies.searchPlaceholder')" class="w-full" :disabled="assignTargetType === null" />
               </div>
-              <div class="flex flex-col gap-1.5">
-                <label class="text-xs font-bold text-[var(--text-secondary)]">{{ $t('common.group') }}</label>
-                <MultiSelect v-model="assignedGroupIds" :options="allGroups" optionLabel="name" optionValue="id" :maxSelectedLabels="3" :placeholder="$t('policies.assignPlaceholder', { type: $t('common.group').toLowerCase() })" filter class="w-full" />
+              <Button icon="pi pi-plus" label="Assign" size="small" @click="addAssignment" :disabled="!assignTargetId" class="!rounded-lg !bg-[var(--accent-strong)] hover:!bg-[var(--accent)] !text-white !border-none mb-0.5 whitespace-nowrap" />
+            </div>
+
+            <!-- Assigned Lists -->
+            <template v-if="assignedTargets.length > 0">
+              <div v-for="group in ['user', 'role', 'group']" :key="group">
+                <div v-if="assignedTargets.filter(a => a.type === group).length > 0" class="space-y-1.5">
+                  <label class="text-xs font-bold text-[var(--text-secondary)] capitalize">{{ group }}s</label>
+                  <div class="flex flex-wrap gap-1.5">
+                    <Tag v-for="a in assignedTargets.filter(t => t.type === group)" :key="group + '-' + a.id" :value="a.label" removable @remove="removeAssignment(group, a.id)" class="!text-xs" />
+                  </div>
+                </div>
               </div>
+            </template>
+            <div v-else class="text-xs text-[var(--text-muted)] italic">
+              {{ $t('policies.noAssignments') }}
             </div>
           </div>
         </div>
@@ -308,7 +324,8 @@ import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
-import MultiSelect from 'primevue/multiselect';
+import Select from 'primevue/select';
+import Tag from 'primevue/tag';
 import { useToast } from 'primevue/usetoast';
 import { useConfirm } from 'primevue/useconfirm';
 
@@ -334,9 +351,58 @@ const policy = ref<Partial<Policy>>({});
 const allUsers = ref<User[]>([]);
 const allRoles = ref<Role[]>([]);
 const allGroups = ref<Group[]>([]);
-const assignedUserIds = ref<number[]>([]);
-const assignedRoleIds = ref<number[]>([]);
-const assignedGroupIds = ref<number[]>([]);
+
+interface Assignment {
+  type: 'user' | 'role' | 'group';
+  id: number;
+  label: string;
+}
+
+const assignedTargets = ref<Assignment[]>([]);
+const assignTargetType = ref<number | null>(null);
+const assignTargetId = ref<number | null>(null);
+
+const targetTypeOptions = [
+  { label: 'User', value: 0 },
+  { label: 'Role', value: 1 },
+  { label: 'Group', value: 2 },
+];
+
+const targetOptions = computed(() => {
+  if (assignTargetType.value === 0) return allUsers.value.map(u => ({ label: `${u.username}${u.display_name ? ' (' + u.display_name + ')' : ''}`, value: u.id }));
+  if (assignTargetType.value === 1) return allRoles.value.map(r => ({ label: r.name, value: r.id }));
+  if (assignTargetType.value === 2) return allGroups.value.map(g => ({ label: g.name, value: g.id }));
+  return [];
+});
+
+const addAssignment = () => {
+  if (assignTargetId.value === null || assignTargetType.value === null) return;
+
+  const typeMap = ['user' as const, 'role' as const, 'group' as const];
+  const type = typeMap[assignTargetType.value];
+  const id = assignTargetId.value;
+
+  if (assignedTargets.value.some(a => a.type === type && a.id === id)) return;
+
+  let label = '';
+  if (type === 'user') {
+    const u = allUsers.value.find(x => x.id === id);
+    if (u) label = u.username;
+  } else if (type === 'role') {
+    const r = allRoles.value.find(x => x.id === id);
+    if (r) label = r.name;
+  } else if (type === 'group') {
+    const g = allGroups.value.find(x => x.id === id);
+    if (g) label = g.name;
+  }
+
+  assignedTargets.value.push({ type, id, label });
+  assignTargetId.value = null;
+};
+
+const removeAssignment = (type: string, id: number) => {
+  assignedTargets.value = assignedTargets.value.filter(a => !(a.type === type && a.id === id));
+};
 
 // Editor States
 const editorMode = ref<'visual' | 'code'>('visual');
@@ -524,9 +590,9 @@ const loadAssignmentOptions = async () => {
 const openCreateDialog = () => {
   policy.value = { status: 1, strategy_type: 1, effect: 1, rules: '{}' };
   editorMode.value = 'visual';
-  assignedUserIds.value = [];
-  assignedRoleIds.value = [];
-  assignedGroupIds.value = [];
+  assignedTargets.value = [];
+  assignTargetType.value = null;
+  assignTargetId.value = null;
   syncVisualStateFromRules();
   loadAssignmentOptions();
   policyDialog.value = true;
@@ -535,9 +601,9 @@ const openCreateDialog = () => {
 const editPolicy = (data: Policy) => {
   policy.value = { ...data };
   editorMode.value = 'visual';
-  assignedUserIds.value = [];
-  assignedRoleIds.value = [];
-  assignedGroupIds.value = [];
+  assignedTargets.value = [];
+  assignTargetType.value = null;
+  assignTargetId.value = null;
   syncVisualStateFromRules();
   loadAssignmentOptions();
   policyDialog.value = true;
@@ -558,22 +624,16 @@ const savePolicy = async () => {
     // Save policy assignments
     if (policy.value.id) {
       const policyId = policy.value.id;
-      const assignPromises: Promise<any>[] = [];
+      const typeMap: Record<string, number> = { user: 0, role: 1, group: 2 };
 
-      for (const userId of assignedUserIds.value) {
-        assignPromises.push(adminService.assignPolicy(policyId, 0, userId));
+      for (const a of assignedTargets.value) {
+        try {
+          await adminService.assignPolicy(policyId, typeMap[a.type], a.id);
+        } catch { /* skip duplicates */ }
       }
-      for (const roleId of assignedRoleIds.value) {
-        assignPromises.push(adminService.assignPolicy(policyId, 1, roleId));
-      }
-      for (const groupId of assignedGroupIds.value) {
-        assignPromises.push(adminService.assignPolicy(policyId, 2, groupId));
-      }
-
-      await Promise.allSettled(assignPromises);
     }
 
-    toast.add({ severity: 'success', summary: t('common.success'), detail: 'Policy saved with assignments', life: 3000 });
+    toast.add({ severity: 'success', summary: t('common.success'), detail: 'Policy saved', life: 3000 });
     policyDialog.value = false;
     loadPolicies();
   } catch (err) {

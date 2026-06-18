@@ -74,6 +74,13 @@ sso_error_t handle_create_role(sso_context_t *ctx, const http_request_t *req,
     role_t role;
     sso_error_t err = role_create(rmgr, name, desc ? desc : "", parent_id, &role);
     free(name); free(desc);
+    if (err == SSO_OK) {
+        int status = (int)json_int_value(req->body, "status", -1);
+        if (status >= 0) {
+            role.status = (role_status_t)status;
+            role_update(rmgr, &role);
+        }
+    }
     if (err == SSO_ERR_ALREADY_EXISTS) {
         sso_response_error(resp, 409, "Role already exists");
         return SSO_OK;
@@ -645,6 +652,13 @@ sso_error_t handle_create_group(sso_context_t *ctx, const http_request_t *req,
     group_t group;
     sso_error_t err = group_create(gmgr, name, desc ? desc : "", parent_id, &group);
     free(name); free(desc);
+    if (err == SSO_OK) {
+        int status = (int)json_int_value(req->body, "status", -1);
+        if (status >= 0) {
+            group.status = (group_status_t)status;
+            group_update(gmgr, &group);
+        }
+    }
     if (err == SSO_ERR_ALREADY_EXISTS) {
         sso_response_error(resp, 409, "Group already exists");
         return SSO_OK;
@@ -743,6 +757,7 @@ sso_error_t handle_update_role(sso_context_t *ctx, const http_request_t *req,
     char *name = json_str_value(req->body, "name");
     char *desc = json_str_value(req->body, "description");
     sso_id_t parent = (sso_id_t)json_int_value(req->body, "parent_role_id", -1);
+    int status = (int)json_int_value(req->body, "status", -1);
 
     if (name) {
         strncpy(role.name, name, SSO_MAX_ROLE_NAME - 1);
@@ -754,6 +769,9 @@ sso_error_t handle_update_role(sso_context_t *ctx, const http_request_t *req,
     }
     if (parent != (sso_id_t)-1) {
         role.parent_role_id = parent;
+    }
+    if (status >= 0) {
+        role.status = (role_status_t)status;
     }
 
     err = role_update(rmgr, &role);
@@ -836,6 +854,7 @@ sso_error_t handle_update_group(sso_context_t *ctx, const http_request_t *req,
     char *name = json_str_value(req->body, "name");
     char *desc = json_str_value(req->body, "description");
     sso_id_t parent = (sso_id_t)json_int_value(req->body, "parent_group_id", -1);
+    int status = (int)json_int_value(req->body, "status", -1);
 
     if (name) {
         strncpy(group.name, name, SSO_MAX_GROUP_NAME - 1);
@@ -847,6 +866,9 @@ sso_error_t handle_update_group(sso_context_t *ctx, const http_request_t *req,
     }
     if (parent != (sso_id_t)-1) {
         group.parent_group_id = parent;
+    }
+    if (status >= 0) {
+        group.status = (group_status_t)status;
     }
 
     err = group_update(gmgr, &group);
