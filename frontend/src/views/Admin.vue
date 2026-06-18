@@ -9,7 +9,7 @@
         </div>
         <div>
           <h2 class="text-lg font-extrabold text-[var(--text-primary)] leading-none tracking-tight">SSO Admin</h2>
-          <span class="text-[11px] text-[var(--text-muted)] font-medium tracking-wider uppercase">{{ $t('sidebar.controlCenter') }}</span>
+          <span class="text-xs text-[var(--text-secondary)] font-medium tracking-wider uppercase">{{ $t('sidebar.controlCenter') }}</span>
         </div>
       </div>
 
@@ -22,7 +22,7 @@
         </button>
 
         <!-- Management Section -->
-        <div class="px-4 pt-6 pb-2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.12em]">{{ $t('sidebar.management') }}</div>
+        <div class="px-4 pt-6 pb-2 text-xs font-bold text-[var(--text-secondary)]/70 uppercase tracking-[0.12em]">{{ $t('sidebar.management') }}</div>
         <button @click="currentTab = 'users'" :class="tabClass('users')">
           <i class="pi pi-users text-lg"></i>
           <span>{{ $t('sidebar.users') }}</span>
@@ -37,7 +37,7 @@
         </button>
 
         <!-- Security Section -->
-        <div class="px-4 pt-6 pb-2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.12em]">{{ $t('sidebar.security') }}</div>
+        <div class="px-4 pt-6 pb-2 text-xs font-bold text-[var(--text-secondary)]/70 uppercase tracking-[0.12em]">{{ $t('sidebar.security') }}</div>
         <button @click="currentTab = 'policies'" :class="tabClass('policies')">
           <i class="pi pi-lock text-lg"></i>
           <span>{{ $t('sidebar.policies') }}</span>
@@ -56,7 +56,7 @@
           </div>
           <div class="overflow-hidden">
             <p class="text-sm font-semibold text-[var(--text-primary)] truncate">{{ $t('sidebar.administrator') }}</p>
-            <p class="text-[11px] text-[var(--text-muted)] truncate font-mono">admin@sso.local</p>
+            <p class="text-xs text-[var(--text-secondary)] truncate font-mono">admin@sso.local</p>
           </div>
         </div>
         <button @click="handleLogout" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-semibold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 rounded-xl transition-all">
@@ -74,7 +74,7 @@
           <h1 class="text-xl font-extrabold text-[var(--text-primary)] leading-none tracking-tight">
             {{ $t(`sidebar.${currentTab}`) }}
           </h1>
-          <nav class="flex text-[11px] text-[var(--text-muted)] mt-1 font-medium">
+          <nav class="flex text-xs text-[var(--text-secondary)] mt-1 font-medium">
             <span class="hover:text-[var(--accent)] cursor-pointer transition-colors" @click="currentTab = 'dashboard'">SSO Admin</span>
             <span class="mx-2 text-[var(--border-primary)]">/</span>
             <span class="text-[var(--text-secondary)]">{{ $t(`sidebar.${currentTab}`) }}</span>
@@ -84,7 +84,7 @@
         <div class="flex items-center gap-3">
           <!-- Search -->
           <div class="relative">
-            <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm"></i>
+            <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] text-sm"></i>
             <input type="text" :placeholder="$t('common.search')" class="pl-9 pr-4 py-2 bg-[var(--bg-elevated)] border border-[var(--border-primary)] rounded-xl text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] w-56 transition-all" />
           </div>
 
@@ -180,7 +180,7 @@ const handleLogout = async () => {
   @apply rounded-xl overflow-hidden border border-[var(--border-primary)];
 }
 .p-datatable .p-datatable-thead > tr > th {
-  @apply bg-[var(--bg-elevated)] text-[var(--text-muted)] font-bold text-[10px] uppercase tracking-[0.12em] py-4 px-5 border-b border-[var(--border-primary)] text-left;
+  @apply bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs uppercase tracking-[0.12em] py-4 px-5 border-b border-[var(--border-primary)] text-left;
 }
 .p-datatable .p-datatable-tbody > tr {
   @apply bg-[var(--bg-card)] text-[var(--text-secondary)] transition-colors;
@@ -203,7 +203,7 @@ const handleLogout = async () => {
   @apply flex gap-1;
 }
 .p-paginator .p-paginator-page {
-  @apply w-8 h-8 flex items-center justify-center rounded-lg text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer;
+  @apply w-8 h-8 flex items-center justify-center rounded-lg text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer;
 }
 .p-paginator .p-paginator-page.p-highlight {
   @apply bg-indigo-500/15 text-indigo-400;
