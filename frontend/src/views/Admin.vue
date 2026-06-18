@@ -81,7 +81,7 @@
         <div class="flex items-center gap-2.5">
           <div class="relative">
             <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-xs"></i>
-            <input type="text" :placeholder="$t('common.search')" class="pl-8 pr-3 py-1.5 bg-[var(--bg-elevated)] border border-[var(--border-primary)] rounded-lg text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] w-48 transition-all" />
+            <input type="text" v-model="searchQuery" :placeholder="$t('common.search')" class="pl-8 pr-3 py-1.5 bg-[var(--bg-elevated)] border border-[var(--border-primary)] rounded-lg text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] w-48 transition-all" />
           </div>
 
           <button @click="toggleLanguage" class="flex items-center gap-1.5 py-1.5 px-2.5 bg-[var(--bg-elevated)] border border-[var(--border-primary)] hover:border-[var(--accent)] text-[var(--text-secondary)] hover:text-[var(--accent)] rounded-lg font-semibold text-[11px] uppercase transition-all">
@@ -98,11 +98,11 @@
       <!-- Content -->
       <div class="flex-grow overflow-y-auto p-6 bg-[var(--bg-primary)]">
         <Dashboard v-if="currentTab === 'dashboard'" />
-        <UserManagement v-else-if="currentTab === 'users'" ref="userRef" />
-        <RoleManagement v-else-if="currentTab === 'roles'" ref="roleRef" />
-        <GroupManagement v-else-if="currentTab === 'groups'" ref="groupRef" />
-        <PolicyManagement v-else-if="currentTab === 'policies'" ref="policyRef" />
-        <AuditLogViewer v-else-if="currentTab === 'logs'" />
+        <UserManagement v-else-if="currentTab === 'users'" ref="userRef" :search="searchQuery" />
+        <RoleManagement v-else-if="currentTab === 'roles'" ref="roleRef" :search="searchQuery" />
+        <GroupManagement v-else-if="currentTab === 'groups'" ref="groupRef" :search="searchQuery" />
+        <PolicyManagement v-else-if="currentTab === 'policies'" ref="policyRef" :search="searchQuery" />
+        <AuditLogViewer v-else-if="currentTab === 'logs'" :search="searchQuery" />
       </div>
     </main>
   </div>
@@ -120,6 +120,8 @@ import RoleManagement from '../components/admin/RoleManagement.vue';
 import GroupManagement from '../components/admin/GroupManagement.vue';
 import PolicyManagement from '../components/admin/PolicyManagement.vue';
 import AuditLogViewer from '../components/admin/AuditLogViewer.vue';
+
+const searchQuery = ref('');
 
 const { locale } = useI18n();
 const router = useRouter();

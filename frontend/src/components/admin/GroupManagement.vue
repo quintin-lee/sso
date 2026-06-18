@@ -1,6 +1,6 @@
 <template>
   <div class="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] overflow-hidden">
-    <DataTable :value="groups" paginator :rows="10" :loading="loading">
+    <DataTable :value="displayedGroups" paginator :rows="10" :loading="loading">
       <Column field="id" :header="$t('common.id')" class="w-20 font-mono text-xs"></Column>
       <Column field="name" :header="$t('common.name')" class="font-semibold"></Column>
       <Column field="description" :header="$t('common.description')"></Column>
@@ -44,7 +44,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { adminService, type Group } from '../../services/api';
 import DataTable from 'primevue/datatable';
@@ -54,10 +54,21 @@ import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import { useToast } from 'primevue/usetoast';
 
+const props = defineProps<{ search?: string }>();
+
 const { t } = useI18n();
 const toast = useToast();
 const loading = ref(false);
 const groups = ref<Group[]>([]);
+
+const displayedGroups = computed(() => {
+  const q = (props.search || '').toLowerCase().trim();
+  if (!q) return groups.value;
+  return groups.value.filter(g =>
+    (g.name || '').toLowerCase().includes(q) ||
+    (g.description || '').toLowerCase().includes(q)
+  );
+});
 const groupDialog = ref(false);
 const group = ref<Partial<Group>>({});
 

@@ -1,6 +1,6 @@
 <template>
   <div class="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] overflow-hidden">
-    <DataTable :value="logs" paginator :rows="20" :loading="loading">
+    <DataTable :value="displayedLogs" paginator :rows="20" :loading="loading">
       <!-- Time Column -->
       <Column field="timestamp_ms" :header="$t('sidebar.logs')" class="w-48">
         <template #body="slotProps">
@@ -59,17 +59,30 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { auditService, type AuditLog } from '../../services/api';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import { useToast } from 'primevue/usetoast';
 
+const props = defineProps<{ search?: string }>();
+
 const { t } = useI18n();
 const toast = useToast();
 const loading = ref(false);
 const logs = ref<AuditLog[]>([]);
+
+const displayedLogs = computed(() => {
+  const q = (props.search || '').toLowerCase().trim();
+  if (!q) return logs.value;
+  return logs.value.filter(l =>
+    String(l.user_id || '').includes(q) ||
+    (l.decision || '').toLowerCase().includes(q) ||
+    String(l.duration_ms || '').includes(q) ||
+    (l.trace || '').toLowerCase().includes(q)
+  );
+});
 
 const loadLogs = async () => {
   loading.value = true;

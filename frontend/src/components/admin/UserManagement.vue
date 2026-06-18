@@ -1,6 +1,6 @@
 <template>
   <div class="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] overflow-hidden">
-    <DataTable :value="users" paginator :rows="10" :totalRecords="totalUsers" lazy @page="onUserPage" :loading="loading" class="p-datatable-sm">
+    <DataTable :value="displayedUsers" paginator :rows="10" :totalRecords="totalUsers" lazy @page="onUserPage" :loading="loading" class="p-datatable-sm">
       <Column field="id" :header="$t('common.id')" class="w-20 font-mono text-xs"></Column>
       <Column field="username" :header="$t('users.username')" class="font-semibold">
         <template #body="slotProps">
@@ -94,11 +94,23 @@ import Password from 'primevue/password';
 import Checkbox from 'primevue/checkbox';
 import { useToast } from 'primevue/usetoast';
 
+const props = defineProps<{ search?: string }>();
+
 const { t, locale } = useI18n();
 const toast = useToast();
 const loading = ref(false);
 const users = ref<User[]>([]);
 const totalUsers = ref(0);
+
+const displayedUsers = computed(() => {
+  const q = (props.search || '').toLowerCase().trim();
+  if (!q) return users.value;
+  return users.value.filter(u =>
+    (u.username || '').toLowerCase().includes(q) ||
+    (u.display_name || '').toLowerCase().includes(q) ||
+    (u.email || '').toLowerCase().includes(q)
+  );
+});
 const userDialog = ref(false);
 const user = ref<Partial<User>>({});
 

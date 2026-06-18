@@ -1,6 +1,6 @@
 <template>
   <div class="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] overflow-hidden">
-    <DataTable :value="policies" paginator :rows="10" :loading="loading">
+    <DataTable :value="displayedPolicies" paginator :rows="10" :loading="loading">
       <Column field="id" :header="$t('common.id')" class="w-20 font-mono text-xs"></Column>
       <Column field="name" :header="$t('common.name')" class="font-semibold"></Column>
       <Column field="strategy_name" :header="$t('policies.strategy')">
@@ -281,7 +281,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { adminService, type Policy } from '../../services/api';
 import DataTable from 'primevue/datatable';
@@ -291,10 +291,21 @@ import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import { useToast } from 'primevue/usetoast';
 
+const props = defineProps<{ search?: string }>();
+
 const { t } = useI18n();
 const toast = useToast();
 const loading = ref(false);
 const policies = ref<Policy[]>([]);
+
+const displayedPolicies = computed(() => {
+  const q = (props.search || '').toLowerCase().trim();
+  if (!q) return policies.value;
+  return policies.value.filter(p =>
+    (p.name || '').toLowerCase().includes(q) ||
+    p.strategy_name?.toLowerCase().includes(q)
+  );
+});
 const policyDialog = ref(false);
 const policy = ref<Partial<Policy>>({});
 
