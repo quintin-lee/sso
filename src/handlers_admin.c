@@ -7,6 +7,7 @@
 #include "group.h"
 #include "policy.h"
 #include "storage.h"
+#include "permission.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
@@ -52,6 +53,11 @@ sso_error_t handle_create_user(sso_context_t *ctx, const http_request_t *req,
         "{\"user_id\":%llu,\"username\":\"%s\",\"created\":true}",
         (unsigned long long)user.id, user.username);
     sso_response_ok(resp, buf);
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "create_user", "users", user.id, "success", buf);
+    }
     return SSO_OK;
 }
 
@@ -95,6 +101,11 @@ sso_error_t handle_create_role(sso_context_t *ctx, const http_request_t *req,
         "{\"role_id\":%llu,\"name\":\"%s\",\"created\":true}",
         (unsigned long long)role.id, role.name);
     sso_response_ok(resp, buf);
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "create_role", "roles", role.id, "success", buf);
+    }
     return SSO_OK;
 }
 
@@ -141,6 +152,17 @@ sso_error_t handle_assign_role(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"assigned\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det),
+            "Assigned role %llu to %s %llu",
+            (unsigned long long)role_id,
+            user_id ? "user" : "group",
+            (unsigned long long)(user_id ? user_id : group_id));
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "assign_role", "roles", role_id, "success", det);
+    }
     return SSO_OK;
 }
 
@@ -594,6 +616,11 @@ sso_error_t handle_create_policy(sso_context_t *ctx, const http_request_t *req,
         "{\"policy_id\":%llu,\"name\":\"%s\",\"created\":true}",
         (unsigned long long)policy.id, policy.name);
     sso_response_ok(resp, buf);
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "create_policy", "policies", policy.id, "success", buf);
+    }
     return SSO_OK;
 }
 
@@ -630,6 +657,18 @@ sso_error_t handle_assign_policy(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"assigned\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        const char *tnames[] = {"user", "role", "group"};
+        snprintf(det, sizeof(det),
+            "Assigned policy %llu to %s %llu",
+            (unsigned long long)policy_id,
+            (size_t)target_type < 3 ? tnames[target_type] : "?",
+            (unsigned long long)target_id);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "assign_policy", "policies", policy_id, "success", det);
+    }
     return SSO_OK;
 }
 
@@ -673,8 +712,13 @@ sso_error_t handle_create_group(sso_context_t *ctx, const http_request_t *req,
         "{\"id\":%llu,\"name\":\"%s\",\"created\":true}",
         (unsigned long long)group.id, group.name);
     sso_response_ok(resp, buf);
-    return SSO_OK;
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "create_group", "groups", group.id, "success", buf);
     }
+    return SSO_OK;
+}
 
 sso_error_t handle_update_user(sso_context_t *ctx, const http_request_t *req,
                                        http_response_t *resp) {
@@ -715,12 +759,19 @@ sso_error_t handle_update_user(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"updated\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det), "Updated user %llu (%s)",
+            (unsigned long long)user.id, user.username);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "update_user", "users", user.id, "success", det);
+    }
     return SSO_OK;
 }
 
 sso_error_t handle_delete_user(sso_context_t *ctx, const http_request_t *req,
                                        http_response_t *resp) {
-    (void)req;
     sso_id_t user_id = extract_path_id(req->path, "/users/");
     if (!user_id) {
         sso_response_error(resp, 400, "user_id required");
@@ -735,6 +786,13 @@ sso_error_t handle_delete_user(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"deleted\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det), "Deleted user %llu", (unsigned long long)user_id);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "delete_user", "users", user_id, "success", det);
+    }
     return SSO_OK;
 }
 
@@ -781,12 +839,19 @@ sso_error_t handle_update_role(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"updated\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det), "Updated role %llu (%s)",
+            (unsigned long long)role.id, role.name);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "update_role", "roles", role.id, "success", det);
+    }
     return SSO_OK;
 }
 
 sso_error_t handle_delete_role(sso_context_t *ctx, const http_request_t *req,
                                        http_response_t *resp) {
-    (void)req;
     sso_id_t role_id = extract_path_id(req->path, "/roles/");
     if (!role_id) {
         sso_response_error(resp, 400, "role_id required");
@@ -801,6 +866,13 @@ sso_error_t handle_delete_role(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"deleted\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det), "Deleted role %llu", (unsigned long long)role_id);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "delete_role", "roles", role_id, "success", det);
+    }
     return SSO_OK;
 }
 
@@ -832,6 +904,17 @@ sso_error_t handle_unassign_role(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"unassigned\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det),
+            "Unassigned role %llu from %s %llu",
+            (unsigned long long)role_id,
+            user_id ? "user" : "group",
+            (unsigned long long)(user_id ? user_id : group_id));
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "unassign_role", "roles", role_id, "success", det);
+    }
     return SSO_OK;
 }
 
@@ -878,6 +961,14 @@ sso_error_t handle_update_group(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"updated\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det), "Updated group %llu (%s)",
+            (unsigned long long)group.id, group.name);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "update_group", "groups", group.id, "success", det);
+    }
     return SSO_OK;
 }
 
@@ -898,6 +989,13 @@ sso_error_t handle_delete_group(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"deleted\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det), "Deleted group %llu", (unsigned long long)group_id);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "delete_group", "groups", group_id, "success", det);
+    }
     return SSO_OK;
 }
 
@@ -942,6 +1040,14 @@ sso_error_t handle_update_policy(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"updated\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det), "Updated policy %llu (%s)",
+            (unsigned long long)policy.id, policy.name);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "update_policy", "policies", policy.id, "success", det);
+    }
     return SSO_OK;
 }
 
@@ -962,6 +1068,13 @@ sso_error_t handle_delete_policy(sso_context_t *ctx, const http_request_t *req,
     }
 
     sso_response_ok(resp, "{\"deleted\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det), "Deleted policy %llu", (unsigned long long)policy_id);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "delete_policy", "policies", policy_id, "success", det);
+    }
     return SSO_OK;
 }
 
@@ -989,6 +1102,18 @@ sso_error_t handle_unassign_policy(sso_context_t *ctx, const http_request_t *req
     }
 
     sso_response_ok(resp, "{\"unassigned\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        const char *tnames[] = {"user", "role", "group"};
+        char det[256];
+        snprintf(det, sizeof(det),
+            "Unassigned policy %llu from %s %llu",
+            (unsigned long long)policy_id,
+            (size_t)target_type < 3 ? tnames[target_type] : "?",
+            (unsigned long long)target_id);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "unassign_policy", "policies", policy_id, "success", det);
+    }
     return SSO_OK;
 }
 
@@ -1014,6 +1139,15 @@ sso_error_t handle_add_group_member(sso_context_t *ctx, const http_request_t *re
     }
 
     sso_response_ok(resp, "{\"added\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det),
+            "Added user %llu to group %llu",
+            (unsigned long long)user_id, (unsigned long long)group_id);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "add_group_member", "groups", group_id, "success", det);
+    }
     return SSO_OK;
 }
 sso_error_t handle_remove_group_member(sso_context_t *ctx, const http_request_t *req,
@@ -1037,6 +1171,15 @@ sso_error_t handle_remove_group_member(sso_context_t *ctx, const http_request_t 
     }
 
     sso_response_ok(resp, "{\"removed\":true}");
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det),
+            "Removed user %llu from group %llu",
+            (unsigned long long)user_id, (unsigned long long)group_id);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "remove_group_member", "groups", group_id, "success", det);
+    }
     return SSO_OK;
 }
 

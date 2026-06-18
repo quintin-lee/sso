@@ -217,7 +217,9 @@ export interface AuditLog {
   timestamp?: number;
   username?: string;
   action?: string;
+  operation?: string;
   resource?: string;
+  resource_id?: number;
   status?: string;
   ip_address?: string;
   details?: string;

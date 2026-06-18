@@ -546,6 +546,89 @@ static void audit_log_decision(const eval_context_t *ctx, bool allowed, const ch
     pthread_mutex_unlock(&audit_log_lock);
 }
 
+void admin_audit_log(sso_config_t *cfg,
+                     sso_id_t actor_user_id, const char *actor_username,
+                     const char *client_ip,
+                     const char *operation, const char *resource,
+                     sso_id_t resource_id,
+                     const char *status, const char *details) {
+    const char *log_path = s_audit_log_path;
+    if (cfg && cfg->audit_log_path[0]) {
+        log_path = cfg->audit_log_path;
+    }
+
+    pthread_mutex_lock(&audit_log_lock);
+    rotate_audit_log();
+
+    FILE *f = fopen(log_path, "a");
+    if (!f) {
+        pthread_mutex_unlock(&audit_log_lock);
+        return;
+    }
+
+    char esc_user[256] = "", esc_ip[64] = "", esc_op[64] = "";
+    char esc_res[64] = "", esc_st[16] = "", esc_det[1024] = "";
+    if (actor_username) { size_t j = 0;
+        for (size_t i = 0; actor_username[i] && j < sizeof(esc_user)-3; i++) {
+            if (actor_username[i] == '"') { esc_user[j++]='\\'; esc_user[j++]='"'; }
+            else if (actor_username[i] == '\\') { esc_user[j++]='\\'; esc_user[j++]='\\'; }
+            else esc_user[j++] = actor_username[i];
+        }
+    }
+    if (client_ip) { size_t j = 0;
+        for (size_t i = 0; client_ip[i] && j < sizeof(esc_ip)-3; i++) {
+            if (client_ip[i] == '"') { esc_ip[j++]='\\'; esc_ip[j++]='"'; }
+            else esc_ip[j++] = client_ip[i];
+        }
+    }
+    if (operation) { size_t j = 0;
+        for (size_t i = 0; operation[i] && j < sizeof(esc_op)-3; i++) {
+            if (operation[i] == '"') { esc_op[j++]='\\'; esc_op[j++]='"'; }
+            else esc_op[j++] = operation[i];
+        }
+    }
+    if (resource) { size_t j = 0;
+        for (size_t i = 0; resource[i] && j < sizeof(esc_res)-3; i++) {
+            if (resource[i] == '"') { esc_res[j++]='\\'; esc_res[j++]='"'; }
+            else esc_res[j++] = resource[i];
+        }
+    }
+    if (status) { size_t j = 0;
+        for (size_t i = 0; status[i] && j < sizeof(esc_st)-3; i++) {
+            if (status[i] == '"') { esc_st[j++]='\\'; esc_st[j++]='"'; }
+            else esc_st[j++] = status[i];
+        }
+    }
+    if (details) { size_t j = 0;
+        for (size_t i = 0; details[i] && j < sizeof(esc_det)-3; i++) {
+            if (details[i] == '"') { esc_det[j++]='\\'; esc_det[j++]='"'; }
+            else if (details[i] == '\n') { esc_det[j++]='\\'; esc_det[j++]='n'; }
+            else esc_det[j++] = details[i];
+        }
+    }
+
+    fprintf(f, "{"
+            "\"action\":\"admin\","
+            "\"timestamp_ms\":%llu,"
+            "\"user_id\":%llu,"
+            "\"username\":\"%s\","
+            "\"ip_address\":\"%s\","
+            "\"operation\":\"%s\","
+            "\"resource\":\"%s\","
+            "\"resource_id\":%llu,"
+            "\"status\":\"%s\","
+            "\"details\":\"%s\""
+            "}\n",
+            (unsigned long long)get_time_ms(),
+            (unsigned long long)actor_user_id,
+            esc_user, esc_ip, esc_op, esc_res,
+            (unsigned long long)resource_id,
+            esc_st, esc_det);
+
+    fclose(f);
+    pthread_mutex_unlock(&audit_log_lock);
+}
+
 sso_error_t perm_engine_evaluate(permission_engine_t *engine,
                                  eval_context_t *ctx,
                                  bool *result,

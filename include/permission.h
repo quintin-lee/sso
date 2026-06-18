@@ -23,6 +23,7 @@
 #define SSO_PERMISSION_H
 
 #include "sso.h"
+#include "config.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -272,6 +273,35 @@ sso_error_t perm_check_abac(sso_context_t *ctx, sso_id_t user_id,
                             const char *resource_attrs,
                             const char *action,
                             bool *allowed);
+
+/* -----------------------------------------------------------------------
+ * Admin audit log — key CRUD operations from the admin pages
+ * ----------------------------------------------------------------------- */
+
+/**
+ * @brief Writes an admin CRUD operation entry to the unified audit log.
+ *
+ * Logs: timestamp, actor (user_id + username), client_ip, operation,
+ * resource type, resource ID, status (success/failure), and details.
+ *
+ * Uses the same audit log file and mutex as permission check logs.
+ *
+ * @param cfg SSO config (for audit_log_path).
+ * @param actor_user_id ID of the admin who performed the action.
+ * @param actor_username Username of the admin.
+ * @param client_ip Requester IP address.
+ * @param operation Operation name (e.g. "create_user", "delete_policy").
+ * @param resource Resource type (e.g. "users", "roles", "policies").
+ * @param resource_id ID of the affected resource (0 if N/A).
+ * @param status "success" or "failure".
+ * @param details Human-readable description of the operation.
+ */
+void admin_audit_log(sso_config_t *cfg,
+                     sso_id_t actor_user_id, const char *actor_username,
+                     const char *client_ip,
+                     const char *operation, const char *resource,
+                     sso_id_t resource_id,
+                     const char *status, const char *details);
 
 #ifdef __cplusplus
 }
