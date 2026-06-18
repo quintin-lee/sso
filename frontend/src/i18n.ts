@@ -94,7 +94,11 @@ const messages = {
       locationType: 'Location Type',
       locationValue: 'Value (IP/CIDR/Country)',
       assignTo: 'Assign Policy To',
-      assignPlaceholder: 'Select {type}s'
+      targetType: 'Target Type',
+      target: 'Target',
+      selectTargetType: 'Type',
+      searchPlaceholder: 'Search...',
+      noAssignments: 'No assignments yet. Select a target type and target above to assign this policy.'
     },
     dashboard: {
       totalEvals: 'Total Evaluations',
@@ -224,7 +228,11 @@ const messages = {
       locationType: '定位类型',
       locationValue: '数值 (IP/网段/国家代码)',
       assignTo: '分配策略给',
-      assignPlaceholder: '选择{type}'
+      targetType: '目标类型',
+      target: '目标',
+      selectTargetType: '选择类型',
+      searchPlaceholder: '搜索...',
+      noAssignments: '暂无分配。请在上方选择目标类型和目标来分配此策略。'
     },
     dashboard: {
       totalEvals: '权限评估总数',
