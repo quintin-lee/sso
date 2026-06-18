@@ -44,11 +44,13 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Copy frontend assets
 COPY --from=frontend-builder /app/frontend/dist /usr/share/nginx/html
 
-# Copy backend binary
+# Copy backend binary and config
 COPY --from=backend-builder /app/sso_system /usr/local/bin/sso_system
+COPY --from=backend-builder /app/sso.toml /app/sso.toml
 
-# Copy supervisor config
-RUN mkdir -p /etc/supervisor.d/
+# Copy supervisor configs
+RUN mkdir -p /etc/supervisor.d/ /var/log/supervisor
+COPY supervisord.conf /etc/supervisord.conf
 COPY sso.ini /etc/supervisor.d/sso.ini
 
 # Setup directories and permissions
@@ -58,7 +60,7 @@ RUN mkdir -p /app/data && chown -R nobody:nobody /app /var/lib/nginx /var/log/ng
 EXPOSE 80
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD wget -qO- http://127.0.0.1/api/v1/health || exit 1
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
