@@ -17,7 +17,7 @@
  * Shared utilities
  * ----------------------------------------------------------------------- */
 uint64_t get_time_ms(void);
-void parse_query_params(const char *path, char *q, int *status, int *page, int *limit);
+void parse_query_params(const http_request_t *req, char *q, int *status, int *page, int *limit);
 sso_id_t extract_path_id(const char *path, const char *prefix);
 sso_error_t send_real_sms(const char *phone, const char *code);
 char *json_str_value(const char *json, const char *key);

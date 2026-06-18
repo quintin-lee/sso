@@ -595,14 +595,21 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
     bool l1_hit = (engine->res_cache[l1_idx].valid &&
                    engine->res_cache[l1_idx].user_id == ctx->user_id &&
                    (now - engine->res_cache[l1_idx].timestamp) < 60000);
-    policy_t policies_buf[64];
-    policy_t *policies = policies_buf;
+    policy_t *policies_buf = NULL;
+    policy_t *policies = NULL;
     size_t policy_count = 0;
 
     if (l1_hit) {
         policies = engine->res_cache[l1_idx].policies;
         policy_count = engine->res_cache[l1_idx].count;
         atomic_fetch_add(&engine->metrics.cache_hits_l1, 1);
+    } else {
+        policies_buf = (policy_t *)malloc(sizeof(policy_t) * 64);
+        if (!policies_buf) {
+            pthread_rwlock_unlock(&engine->lock);
+            return SSO_ERR_OUT_OF_MEMORY;
+        }
+        policies = policies_buf;
     }
 
     pthread_rwlock_unlock(&engine->lock);
@@ -615,12 +622,14 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         if (!pmgr) {
             audit_log_decision(ctx, false, "Error: policy manager not found", get_time_monotonic_ms() - now, false);
             LOG_ERROR("policy manager not found in engine context");
+            free(policies_buf);
             return SSO_ERR_INIT;
         }
 
         err = policy_resolve_for_user(pmgr, ctx->user_id, policies_buf, &policy_count, max_policies);
         if (err != SSO_OK && err != SSO_ERR_NOT_FOUND) {
             audit_log_decision(ctx, false, "Error: policy resolution failed", get_time_monotonic_ms() - now, false);
+            free(policies_buf);
             return err;
         }
     }
@@ -628,6 +637,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
     if (policy_count == 0) {
         if (decision_trace) *decision_trace = strdup("Default DENY: No policies found");
         audit_log_decision(ctx, false, "Default DENY: No policies found", get_time_monotonic_ms() - now, false);
+        free(policies_buf);
         return SSO_OK;
     }
 
@@ -680,6 +690,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
 
             pthread_rwlock_unlock(&engine->lock);
             audit_log_decision(ctx, false, full_trace, get_time_monotonic_ms() - now, false);
+            free(policies_buf);
             return SSO_OK;
         }
 
@@ -714,6 +725,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
     }
 
     audit_log_decision(ctx, any_allowed, full_trace, duration, false);
+    free(policies_buf);
     return SSO_OK;
 }
 

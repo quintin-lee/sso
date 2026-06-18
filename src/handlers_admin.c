@@ -145,7 +145,7 @@ sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *req,
                                      http_response_t *resp) {
     char q[SSO_MAX_QUERY];
     int status, page, limit;
-    parse_query_params(req->path, q, &status, &page, &limit);
+    parse_query_params(req, q, &status, &page, &limit);
 
     int offset = (page - 1) * limit;
 
@@ -338,7 +338,7 @@ sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *req,
                                        http_response_t *resp) {
     char q[SSO_MAX_QUERY];
     int status, page, limit;
-    parse_query_params(req->path, q, &status, &page, &limit);
+    parse_query_params(req, q, &status, &page, &limit);
 
     int offset = (page - 1) * limit;
 
@@ -410,7 +410,7 @@ sso_error_t handle_list_policies(sso_context_t *ctx, const http_request_t *req,
                                           http_response_t *resp) {
     char q[SSO_MAX_QUERY];
     int status, page, limit;
-    parse_query_params(req->path, q, &status, &page, &limit);
+    parse_query_params(req, q, &status, &page, &limit);
 
     int offset = (page - 1) * limit;
 
@@ -477,7 +477,7 @@ sso_error_t handle_list_groups(sso_context_t *ctx, const http_request_t *req,
                                         http_response_t *resp) {
     char q[SSO_MAX_QUERY];
     int status, page, limit;
-    parse_query_params(req->path, q, &status, &page, &limit);
+    parse_query_params(req, q, &status, &page, &limit);
 
     int offset = (page - 1) * limit;
 

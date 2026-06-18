@@ -18,26 +18,21 @@ uint64_t get_time_ms() {
     return (uint64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
 }
 
-void parse_query_params(const char *path, char *q, int *status, int *page, int *limit) {
+void parse_query_params(const http_request_t *req, char *q, int *status, int *page, int *limit) {
     if (q) q[0] = '\0';
     if (status) *status = -1;
     if (page) *page = 1;
     if (limit) *limit = 20;
 
-    const char *p = strchr(path, '?');
-    if (!p) return;
-    p++;
+    if (!req || !req->query_params) return;
 
-    char buf[1024];
-    strncpy(buf, p, sizeof(buf) - 1);
-    buf[sizeof(buf) - 1] = '\0';
-
-    char *token = strtok(buf, "&");
-    while (token) {
-        char *eq = strchr(token, '=');
+    for (size_t i = 0; req->query_params[i]; i++) {
+        char *param = strdup(req->query_params[i]);
+        if (!param) continue;
+        char *eq = strchr(param, '=');
         if (eq) {
             *eq = '\0';
-            const char *key = token;
+            const char *key = param;
             const char *val = eq + 1;
             if (strcmp(key, "q") == 0 && q) {
                 strncpy(q, val, SSO_MAX_QUERY - 1);
@@ -53,7 +48,7 @@ void parse_query_params(const char *path, char *q, int *status, int *page, int *
                 if (*limit > 100) *limit = 100;
             }
         }
-        token = strtok(NULL, "&");
+        free(param);
     }
 }
 
@@ -132,11 +127,11 @@ char *json_str_value(const char *json, const char *key) {
     while (*p && (*p == ' ' || *p == '\t' || *p == '\n')) p++;
     if (*p == '"') p++; else return NULL;
 
-    /* Find closing quote, respecting \\" escapes */
+    /* Find closing quote, respecting all escapes */
     const char *end = p;
     while (*end) {
-        if (*end == '\\' && *(end + 1) == '"') {
-            end += 2; /* skip escaped quote */
+        if (*end == '\\' && *(end + 1) != '\0') {
+            end += 2; /* skip escaped character */
         } else if (*end == '"') {
             break;
         } else {
@@ -150,9 +145,16 @@ char *json_str_value(const char *json, const char *key) {
     /* Copy and unescape */
     size_t j = 0;
     for (size_t i = 0; i < len; i++) {
-        if (p[i] == '\\' && i + 1 < len && p[i + 1] == '"') {
-            val[j++] = '"';
-            i++; /* skip backslash */
+        if (p[i] == '\\' && i + 1 < len) {
+            if (p[i + 1] == '"') { val[j++] = '"'; i++; }
+            else if (p[i + 1] == '\\') { val[j++] = '\\'; i++; }
+            else if (p[i + 1] == '/') { val[j++] = '/'; i++; }
+            else if (p[i + 1] == 'b') { val[j++] = '\b'; i++; }
+            else if (p[i + 1] == 'f') { val[j++] = '\f'; i++; }
+            else if (p[i + 1] == 'n') { val[j++] = '\n'; i++; }
+            else if (p[i + 1] == 'r') { val[j++] = '\r'; i++; }
+            else if (p[i + 1] == 't') { val[j++] = '\t'; i++; }
+            else { val[j++] = p[i]; }
         } else {
             val[j++] = p[i];
         }
