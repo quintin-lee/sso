@@ -53,6 +53,7 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import { useToast } from 'primevue/usetoast';
+import { useConfirm } from 'primevue/useconfirm';
 
 const props = defineProps<{ search?: string }>();
 
@@ -110,16 +111,27 @@ const saveGroup = async () => {
   }
 };
 
-const confirmDeleteGroup = async (data: Group) => {
-  if (confirm(t('groups.deleteConfirm', { name: data.name }))) {
-    try {
-      await adminService.deleteGroup(data.id);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Group deleted successfully', life: 3000 });
-      loadGroups();
-    } catch (err) {
-      toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete group', life: 3000 });
+const confirmDlg = useConfirm();
+
+const confirmDeleteGroup = (data: Group) => {
+  confirmDlg.require({
+    message: t('groups.deleteConfirm', { name: data.name }),
+    header: t('common.confirmDelete'),
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: t('common.cancel'),
+    acceptLabel: t('common.delete'),
+    rejectClass: 'p-button-text p-button-sm',
+    acceptClass: 'p-button-danger p-button-sm',
+    accept: async () => {
+      try {
+        await adminService.deleteGroup(data.id);
+        toast.add({ severity: 'success', summary: t('common.success'), detail: 'Group deleted successfully', life: 3000 });
+        loadGroups();
+      } catch (err) {
+        toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete group', life: 3000 });
+      }
     }
-  }
+  });
 };
 
 onMounted(() => {

@@ -106,6 +106,7 @@
       </div>
     </main>
   </div>
+  <ConfirmDialog />
 </template>
 
 <script setup lang="ts">
@@ -114,6 +115,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { authService } from '../services/api';
 import Button from 'primevue/button';
+import ConfirmDialog from 'primevue/confirmdialog';
 import Dashboard from '../components/admin/Dashboard.vue';
 import UserManagement from '../components/admin/UserManagement.vue';
 import RoleManagement from '../components/admin/RoleManagement.vue';
@@ -397,5 +399,17 @@ const handleLogout = async () => {
 .sso-dark .p-checkbox.p-checkbox-checked .p-checkbox-box {
   background: var(--accent);
   border-color: var(--accent);
+}
+
+.sso-dark .p-confirmdialog .p-confirmdialog-icon {
+  font-size: 24px;
+  color: var(--warning, #f59e0b);
+  margin-bottom: 8px;
+}
+
+.sso-dark .p-confirmdialog .p-confirmdialog-message {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 </style>

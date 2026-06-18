@@ -33,7 +33,8 @@ const messages = {
       name: 'Name',
       description: 'Description',
       id: 'ID',
-      created: 'Created At'
+      created: 'Created At',
+      confirmDelete: 'Delete Confirmation'
     },
     users: {
       title: 'User Management',
@@ -157,7 +158,8 @@ const messages = {
       name: '名称',
       description: '描述',
       id: 'ID',
-      created: '创建时间'
+      created: '创建时间',
+      confirmDelete: '删除确认'
     },
     users: {
       title: '用户管理',

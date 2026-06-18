@@ -93,6 +93,7 @@ import InputText from 'primevue/inputtext';
 import Password from 'primevue/password';
 import Checkbox from 'primevue/checkbox';
 import { useToast } from 'primevue/usetoast';
+import { useConfirm } from 'primevue/useconfirm';
 
 const props = defineProps<{ search?: string }>();
 
@@ -203,16 +204,27 @@ const saveUser = async () => {
   }
 };
 
-const confirmDeleteUser = async (data: User) => {
-  if (confirm(t('users.deleteConfirm', { name: data.username }))) {
-    try {
-      await adminService.deleteUser(data.id);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'User deleted successfully', life: 3000 });
-      loadUsers();
-    } catch (err) {
-      toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete user', life: 3000 });
+const confirm = useConfirm();
+
+const confirmDeleteUser = (data: User) => {
+  confirm.require({
+    message: t('users.deleteConfirm', { name: data.username }),
+    header: t('common.confirmDelete'),
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: t('common.cancel'),
+    acceptLabel: t('common.delete'),
+    rejectClass: 'p-button-text p-button-sm',
+    acceptClass: 'p-button-danger p-button-sm',
+    accept: async () => {
+      try {
+        await adminService.deleteUser(data.id);
+        toast.add({ severity: 'success', summary: t('common.success'), detail: 'User deleted successfully', life: 3000 });
+        loadUsers();
+      } catch (err) {
+        toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete user', life: 3000 });
+      }
     }
-  }
+  });
 };
 
 onMounted(() => {

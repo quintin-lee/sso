@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
+import ConfirmationService from 'primevue/confirmationservice'
 import Aura from '@primevue/themes/aura'
 import 'primeicons/primeicons.css'
 import './style.css'
@@ -22,6 +23,7 @@ app.use(PrimeVue, {
   },
 })
 app.use(ToastService)
+app.use(ConfirmationService)
 app.use(i18n)
 app.use(router)
 app.mount('#app')

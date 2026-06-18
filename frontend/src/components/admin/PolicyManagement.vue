@@ -290,6 +290,7 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import { useToast } from 'primevue/usetoast';
+import { useConfirm } from 'primevue/useconfirm';
 
 const props = defineProps<{ search?: string }>();
 
@@ -511,16 +512,27 @@ const savePolicy = async () => {
   }
 };
 
-const confirmDeletePolicy = async (data: Policy) => {
-  if (confirm(t('policies.deleteConfirm', { name: data.name }))) {
-    try {
-      await adminService.deletePolicy(data.id);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Policy deleted successfully', life: 3000 });
-      loadPolicies();
-    } catch (err) {
-      toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete policy', life: 3000 });
+const confirmDlg = useConfirm();
+
+const confirmDeletePolicy = (data: Policy) => {
+  confirmDlg.require({
+    message: t('policies.deleteConfirm', { name: data.name }),
+    header: t('common.confirmDelete'),
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: t('common.cancel'),
+    acceptLabel: t('common.delete'),
+    rejectClass: 'p-button-text p-button-sm',
+    acceptClass: 'p-button-danger p-button-sm',
+    accept: async () => {
+      try {
+        await adminService.deletePolicy(data.id);
+        toast.add({ severity: 'success', summary: t('common.success'), detail: 'Policy deleted successfully', life: 3000 });
+        loadPolicies();
+      } catch (err) {
+        toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete policy', life: 3000 });
+      }
     }
-  }
+  });
 };
 
 onMounted(() => {

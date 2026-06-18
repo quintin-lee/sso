@@ -60,6 +60,7 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import { useToast } from 'primevue/usetoast';
+import { useConfirm } from 'primevue/useconfirm';
 
 const props = defineProps<{ search?: string }>();
 
@@ -122,16 +123,27 @@ const saveRole = async () => {
   }
 };
 
-const confirmDeleteRole = async (data: Role) => {
-  if (confirm(t('roles.deleteConfirm', { name: data.name }))) {
-    try {
-      await adminService.deleteRole(data.id);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Role deleted successfully', life: 3000 });
-      loadRoles();
-    } catch (err) {
-      toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete role', life: 3000 });
+const confirmDlg = useConfirm();
+
+const confirmDeleteRole = (data: Role) => {
+  confirmDlg.require({
+    message: t('roles.deleteConfirm', { name: data.name }),
+    header: t('common.confirmDelete'),
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: t('common.cancel'),
+    acceptLabel: t('common.delete'),
+    rejectClass: 'p-button-text p-button-sm',
+    acceptClass: 'p-button-danger p-button-sm',
+    accept: async () => {
+      try {
+        await adminService.deleteRole(data.id);
+        toast.add({ severity: 'success', summary: t('common.success'), detail: 'Role deleted successfully', life: 3000 });
+        loadRoles();
+      } catch (err) {
+        toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete role', life: 3000 });
+      }
     }
-  }
+  });
 };
 
 onMounted(() => {
