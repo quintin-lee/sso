@@ -113,15 +113,20 @@ export interface Policy {
 }
 
 export interface AuditLog {
-  id: number;
-  timestamp: number;
-  user_id?: number;
+  timestamp_ms: number;
+  user_id: number;
+  decision: string;
+  duration_ms: number;
+  cache_hit: boolean;
+  trace: string;
+  id?: number;
+  timestamp?: number;
   username?: string;
-  action: string;
-  resource: string;
-  status: string;
-  ip_address: string;
-  details: string;
+  action?: string;
+  resource?: string;
+  status?: string;
+  ip_address?: string;
+  details?: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -264,8 +269,14 @@ export const adminService = {
 
 export const auditService = {
   async listLogs(page = 1, limit = 20): Promise<PaginatedResponse<AuditLog>> {
-    const { data } = await api.get<PaginatedResponse<AuditLog>>(`/audit/logs?page=${page}&limit=${limit}`);
-    return data;
+    const { data } = await api.get<any>(`/audit/logs?page=${page}&limit=${limit}`);
+    const items = Array.isArray(data) ? data : [];
+    return {
+      total: items.length,
+      page,
+      limit,
+      items
+    };
   }
 };
 
