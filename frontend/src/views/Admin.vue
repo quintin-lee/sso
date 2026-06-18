@@ -115,8 +115,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { authService } from '../services/api';
 import Button from 'primevue/button';
@@ -129,7 +129,14 @@ import AuditLogViewer from '../components/admin/AuditLogViewer.vue';
 
 const { locale } = useI18n();
 const router = useRouter();
-const currentTab = ref('dashboard');
+const route = useRoute();
+
+const currentTab = computed({
+  get: () => (route.query.tab as string) || 'dashboard',
+  set: (val) => {
+    router.replace({ query: { ...route.query, tab: val } });
+  }
+});
 
 const userRef = ref();
 const roleRef = ref();

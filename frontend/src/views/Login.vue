@@ -42,7 +42,52 @@ const handleLogin = async () => {
   }
 };
 
+const otpDigits = ref(['', '', '', '', '', '']);
+const otpInputs = ref<HTMLInputElement[]>([]);
+
+const handleOtpInput = (event: Event, idx: number) => {
+  const input = event.target as HTMLInputElement;
+  const rawVal = input.value.replace(/[^0-9]/g, '');
+  const lastChar = rawVal.charAt(rawVal.length - 1);
+  otpDigits.value[idx] = lastChar;
+
+  if (lastChar && idx < 5) {
+    otpInputs.value[idx + 1]?.focus();
+  }
+
+  if (otpDigits.value.join('').length === 6) {
+    handleMfaVerify();
+  }
+};
+
+const handleOtpDelete = (_event: KeyboardEvent, idx: number) => {
+  if (!otpDigits.value[idx] && idx > 0) {
+    otpDigits.value[idx - 1] = '';
+    otpInputs.value[idx - 1]?.focus();
+  }
+};
+
+const handleOtpPaste = (event: ClipboardEvent) => {
+  event.preventDefault();
+  const pasteData = event.clipboardData?.getData('text') || '';
+  const cleanDigits = pasteData.replace(/[^0-9]/g, '').slice(0, 6).split('');
+
+  cleanDigits.forEach((digit, idx) => {
+    if (idx < 6) {
+      otpDigits.value[idx] = digit;
+    }
+  });
+
+  const nextFocusIdx = Math.min(cleanDigits.length, 5);
+  otpInputs.value[nextFocusIdx]?.focus();
+
+  if (otpDigits.value.join('').length === 6) {
+    handleMfaVerify();
+  }
+};
+
 const handleMfaVerify = async () => {
+  mfaCode.value = otpDigits.value.join('');
   error.value = '';
   loading.value = true;
   try {
@@ -130,17 +175,24 @@ const handleMfaVerify = async () => {
           <p class="text-[var(--text-secondary)] text-sm">{{ $t('login.mfaSubtitle') }}</p>
         </div>
 
-        <div class="flex flex-col gap-1.5">
-          <label for="mfaCode" class="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-[0.12em] text-center">{{ $t('login.mfaCode') }}</label>
-          <InputText
-            id="mfaCode"
-            v-model="mfaCode"
-            :placeholder="$t('login.mfaPlaceholder')"
-            class="!text-center !text-2xl !tracking-[0.3em] !bg-[var(--bg-elevated)]/60 !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3 hover:!border-[var(--accent)] transition-all"
-            required
-            maxlength="6"
-            autofocus
-          />
+        <div class="flex flex-col gap-3">
+          <label class="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-[0.12em] text-center">{{ $t('login.mfaCode') }}</label>
+          <div class="flex justify-between gap-2">
+            <input
+              v-for="(_, idx) in otpDigits"
+              :key="idx"
+              ref="otpInputs"
+              v-model="otpDigits[idx]"
+              type="text"
+              maxlength="1"
+              pattern="[0-9]"
+              class="w-12 h-14 text-center text-2xl font-bold bg-[var(--bg-elevated)]/60 border border-[var(--border-primary)] text-[var(--text-primary)] rounded-xl focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] outline-none transition-all hover:border-[var(--accent)]/50"
+              required
+              @input="handleOtpInput($event, idx)"
+              @keydown.delete="handleOtpDelete($event, idx)"
+              @paste="handleOtpPaste($event)"
+            />
+          </div>
         </div>
 
         <Message v-if="error" severity="error" variant="simple" size="small" class="!bg-rose-500/10 !border-rose-500/20 !text-rose-400 !rounded-xl">
@@ -156,7 +208,7 @@ const handleMfaVerify = async () => {
 
         <button
           type="button"
-          @click="showMfa = false"
+          @click="showMfa = false; otpDigits = ['', '', '', '', '', '']"
           class="w-full text-[var(--text-muted)] text-xs hover:text-[var(--text-secondary)] transition-colors uppercase tracking-widest font-semibold"
         >
           {{ $t('login.back') }}

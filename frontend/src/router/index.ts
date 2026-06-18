@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { authService } from '../services/api';
-import Login from '../views/Login.vue';
-import Admin from '../views/Admin.vue';
+const Login = () => import('../views/Login.vue');
+const Admin = () => import('../views/Admin.vue');
 
 const router = createRouter({
   history: createWebHistory(),
@@ -31,7 +31,7 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth && !isAuthenticated) {
     next({ name: 'login' });
   } else if (to.meta.guest && isAuthenticated) {
-    next({ name: 'home' });
+    next({ name: 'admin' });
   } else {
     next();
   }

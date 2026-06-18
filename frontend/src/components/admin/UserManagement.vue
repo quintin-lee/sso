@@ -86,7 +86,7 @@ import Password from 'primevue/password';
 import Checkbox from 'primevue/checkbox';
 import { useToast } from 'primevue/usetoast';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const toast = useToast();
 const loading = ref(false);
 const users = ref<User[]>([]);
@@ -132,6 +132,42 @@ const editUser = (data: User) => {
 };
 
 const saveUser = async () => {
+  // Client-side validations
+  if (!user.value.username || user.value.username.trim().length < 3) {
+    toast.add({
+      severity: 'error',
+      summary: t('common.error'),
+      detail: locale.value === 'zh' ? '用户名至少需要3个字符' : 'Username must be at least 3 characters long',
+      life: 3000
+    });
+    return;
+  }
+
+  if (user.value.email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(user.value.email)) {
+      toast.add({
+        severity: 'error',
+        summary: t('common.error'),
+        detail: locale.value === 'zh' ? '电子邮箱格式不正确' : 'Invalid email address format',
+        life: 3000
+      });
+      return;
+    }
+  }
+
+  if (!user.value.id) {
+    if (!user.value.password || user.value.password.length < 6) {
+      toast.add({
+        severity: 'error',
+        summary: t('common.error'),
+        detail: locale.value === 'zh' ? '密码长度至少为6位' : 'Password must be at least 6 characters long',
+        life: 3000
+      });
+      return;
+    }
+  }
+
   try {
     if (user.value.id) {
       await adminService.updateUser(user.value.id, user.value);

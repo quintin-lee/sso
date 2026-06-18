@@ -23,7 +23,21 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor to capture tokens from headers
+let isRefreshing = false;
+let failedQueue: any[] = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (token) {
+      prom.resolve(token);
+    } else {
+      prom.reject(error);
+    }
+  });
+  failedQueue = [];
+};
+
+// Response interceptor to capture tokens from headers and handle 401 token refresh
 api.interceptors.response.use(
   (response) => {
     const getHeader = (name: string) => {
@@ -46,13 +60,93 @@ api.interceptors.response.use(
 
     return response;
   },
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Check if it's a 401 and not already a retry or login/refresh request
+    if (
+      error.response &&
+      error.response.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes('/auth/login') &&
+      !originalRequest.url?.includes('/auth/refresh')
+    ) {
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            if (originalRequest.headers) {
+              if (typeof originalRequest.headers.set === 'function') {
+                originalRequest.headers.set('Authorization', `Bearer ${token}`);
+              } else {
+                originalRequest.headers['Authorization'] = `Bearer ${token}`;
+              }
+            }
+            return api(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const storedRefreshToken = localStorage.getItem('refresh_token');
+        if (!storedRefreshToken) {
+          throw new Error('No refresh token available');
+        }
+
+        const { headers } = await axios.post('/api/v1/auth/refresh', {
+          refresh_token: storedRefreshToken,
+        });
+
+        const getHeader = (h: any, name: string) => {
+          return h ? (h[name] || h[name.toLowerCase()]) : undefined;
+        };
+        const newAccessToken = getHeader(headers, 'X-SSO-Access-Token') || getHeader(headers, 'x-sso-access-token');
+        const newRefreshToken = getHeader(headers, 'X-SSO-Refresh-Token') || getHeader(headers, 'x-sso-refresh-token');
+
+        if (newAccessToken) {
+          localStorage.setItem('access_token', newAccessToken);
+          localStorage.setItem('sso_token', newAccessToken);
+        }
+        if (newRefreshToken) {
+          localStorage.setItem('refresh_token', newRefreshToken);
+        }
+
+        const token = newAccessToken || localStorage.getItem('access_token');
+        processQueue(null, token);
+
+        if (token && originalRequest.headers) {
+          if (typeof originalRequest.headers.set === 'function') {
+            originalRequest.headers.set('Authorization', `Bearer ${token}`);
+          } else {
+            originalRequest.headers['Authorization'] = `Bearer ${token}`;
+          }
+        }
+        return api(originalRequest);
+      } catch (refreshError) {
+        processQueue(refreshError, null);
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('sso_token');
+        window.location.href = '/login';
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    // For other 401 errors (e.g. login failed, refresh failed)
     if (error.response && error.response.status === 401) {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('sso_token');
       window.location.href = '/login';
     }
+
     return Promise.reject(error);
   }
 );

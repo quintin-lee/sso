@@ -102,7 +102,15 @@
             <path :d="trendLinePath" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" opacity="0.8" />
 
             <!-- Active Points -->
-            <circle v-for="(val, idx) in activeUsersData" :key="'dot-'+idx" :cx="trendX(idx)" :cy="trendY(val)" r="4" fill="#ffffff" stroke="#6366f1" stroke-width="2" class="cursor-pointer hover:r-6 transition-all duration-200" />
+            <circle v-for="(val, idx) in activeUsersData" :key="'dot-'+idx" :cx="trendX(idx)" :cy="trendY(val)" :r="hoveredDotIdx === idx ? 6 : 4" fill="#ffffff" stroke="#6366f1" stroke-width="2" class="cursor-pointer transition-all duration-200" @mouseenter="hoveredDotIdx = idx" @mouseleave="hoveredDotIdx = null" />
+
+            <!-- Tooltip -->
+            <g v-if="hoveredDotIdx !== null" :transform="`translate(${trendX(hoveredDotIdx)}, ${trendY(activeUsersData[hoveredDotIdx]) - 25})`" class="pointer-events-none">
+              <rect x="-45" y="-18" width="90" height="24" rx="6" fill="#151829" stroke="#6366f1" stroke-width="1.5" />
+              <text x="0" y="-2" fill="#ffffff" font-size="9" font-weight="bold" text-anchor="middle">
+                {{ activeUsersData[hoveredDotIdx] }} {{ $t('dashboard.activeUsers') }}
+              </text>
+            </g>
 
             <!-- X-Axis Labels -->
             <text v-for="(lbl, idx) in trendLabels" :key="idx" :x="trendX(idx)" y="192" fill="#64748b" font-size="10" font-weight="600" text-anchor="middle">
@@ -219,6 +227,7 @@ import { auditService } from '../../services/api';
 const { t } = useI18n();
 
 // Metrics State
+const hoveredDotIdx = ref<number | null>(null);
 const totalEvals = ref(0);
 const cacheL1 = ref(0);
 const cacheL2 = ref(0);
