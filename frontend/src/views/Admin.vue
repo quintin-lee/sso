@@ -304,14 +304,24 @@ const handleLogout = async () => {
 .p-password .p-password-input {
   @apply bg-[var(--bg-elevated)] border border-[var(--border-primary)] text-[var(--text-primary)] placeholder-[var(--text-muted)] rounded-xl pl-4 pr-10 py-2.5 text-sm w-full;
 }
+.p-password-toggle-button,
 .p-password-toggle-icon,
+.p-password .p-password-toggle-button,
 .p-password .p-password-toggle-icon {
   position: absolute !important;
   right: 1rem !important;
   top: 50% !important;
   transform: translateY(-50%) !important;
-  cursor: pointer;
-  z-index: 10;
+  cursor: pointer !important;
+  z-index: 10 !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  box-shadow: none !important;
 }
 
 /* Select dropdown */

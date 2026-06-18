@@ -147,7 +147,9 @@ textarea::placeholder,
 .p-password .p-password-input {
   padding-right: 2.75rem !important;
 }
+.p-password-toggle-button,
 .p-password-toggle-icon,
+.p-password .p-password-toggle-button,
 .p-password .p-password-toggle-icon {
   position: absolute !important;
   right: 1rem !important;
@@ -156,8 +158,19 @@ textarea::placeholder,
   cursor: pointer !important;
   z-index: 10 !important;
   color: var(--text-secondary) !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  box-shadow: none !important;
 }
+.p-password-toggle-button:hover,
 .p-password-toggle-icon:hover,
+.p-password .p-password-toggle-button:hover,
 .p-password .p-password-toggle-icon:hover {
   color: var(--text-primary) !important;
+  background: transparent !important;
 }
