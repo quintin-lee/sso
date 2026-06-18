@@ -40,15 +40,15 @@
        <div class="space-y-5">
          <!-- Name -->
          <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('common.name') }}</label>
+             <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('common.name') }}</label>
             <InputText v-model.trim="policy.name" placeholder="Allow Dashboard View" />
          </div>
 
          <!-- Strategy Type & Effect Grid -->
          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
            <div class="flex flex-col gap-1.5">
-              <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.strategy') }}</label>
-              <select v-model="policy.strategy_type" class="!bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !rounded-xl !px-3 !py-2.5 !text-sm">
+               <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policies.strategy') }}</label>
+               <select v-model="policy.strategy_type" class="!bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !rounded-lg !px-3 !py-2.5 !text-sm">
                 <option :value="1">Functional (功能权限)</option>
                 <option :value="2">API (接口权限)</option>
                 <option :value="3">Data (数据权限)</option>
@@ -60,8 +60,8 @@
            </div>
 
            <div class="flex flex-col gap-1.5">
-              <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.effect') }}</label>
-              <select v-model="policy.effect" class="!bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !rounded-xl !px-3 !py-2.5 !text-sm">
+               <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policies.effect') }}</label>
+               <select v-model="policy.effect" class="!bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !rounded-lg !px-3 !py-2.5 !text-sm">
                 <option :value="1">{{ $t('policies.allow') }}</option>
                 <option :value="2">{{ $t('policies.deny') }}</option>
               </select>
@@ -70,12 +70,12 @@
 
          <!-- Editor Mode Switch -->
          <div class="flex items-center justify-between border-t border-[var(--border-primary)] pt-4">
-           <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.rules') }}</span>
+            <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policies.rules') }}</span>
            <div class="flex bg-[var(--bg-elevated)] p-1 rounded-xl border border-[var(--border-primary)]">
-             <button @click="editorMode = 'visual'" class="py-1.5 px-3.5 text-xs font-bold rounded-lg transition-all" :class="editorMode === 'visual' ? 'bg-indigo-500/15 text-indigo-400 shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'">
-                {{ $t('policies.visualEditor') }}
-             </button>
-             <button @click="editorMode = 'code'" class="py-1.5 px-3.5 text-xs font-bold rounded-lg transition-all" :class="editorMode === 'code' ? 'bg-indigo-500/15 text-indigo-400 shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'">
+              <button @click="editorMode = 'visual'" class="py-1.5 px-3.5 text-xs font-bold rounded-lg transition-all" :class="editorMode === 'visual' ? 'bg-[var(--accent)]/15 text-[var(--accent)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'">
+                 {{ $t('policies.visualEditor') }}
+              </button>
+              <button @click="editorMode = 'code'" class="py-1.5 px-3.5 text-xs font-bold rounded-lg transition-all" :class="editorMode === 'code' ? 'bg-[var(--accent)]/15 text-[var(--accent)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'">
                 {{ $t('policies.codeEditor') }}
              </button>
            </div>
@@ -87,7 +87,7 @@
            <!-- 1. Functional Strategy Visual Builder -->
            <div v-if="policy.strategy_type === 1" class="space-y-3">
              <div class="flex justify-between items-center">
-               <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('policies.functionalCode') }}</span>
+                <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">{{ $t('policies.functionalCode') }}</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('functions')" />
              </div>
              <div v-for="(row, idx) in visualState.functions" :key="idx" class="flex gap-2 items-center">
@@ -103,7 +103,7 @@
            <!-- 2. API Strategy Visual Builder -->
            <div v-else-if="policy.strategy_type === 2" class="space-y-3">
              <div class="flex justify-between items-center">
-               <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">API Endpoint Rules</span>
+                <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">API Endpoint Rules</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('endpoints')" />
              </div>
              <div v-for="(row, idx) in visualState.endpoints" :key="idx" class="flex gap-2 items-center">
@@ -127,20 +127,20 @@
            <div v-else-if="policy.strategy_type === 3" class="space-y-4">
              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                <div class="flex flex-col gap-1.5">
-                 <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.resourceType') }}</label>
+                  <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policies.resourceType') }}</label>
                  <InputText v-model="visualState.resource_type" class="text-sm" placeholder="user" />
                </div>
                <div class="flex flex-col gap-1.5">
-                 <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.allowedFields') }} (comma-separated)</label>
+                  <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policies.allowedFields') }} (comma-separated)</label>
                  <InputText v-model="visualState.allowed_fields" class="text-sm" placeholder="id, username, email" />
                </div>
              </div>
 
              <!-- Conditions -->
-             <div class="border-t border-[var(--border-primary)] pt-3 space-y-3">
-               <div class="flex justify-between items-center">
-                 <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('policies.conditions') }}</span>
-                 <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('data_conditions')" />
+              <div class="border-t border-[var(--border-primary)] pt-3 space-y-3">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">{{ $t('policies.conditions') }}</span>
+                  <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('data_conditions')" />
                </div>
                <div v-for="(row, idx) in visualState.data_conditions" :key="idx" class="flex gap-2 items-center">
                  <InputText v-model="row.field" class="w-1/3 text-sm" placeholder="field" />
@@ -163,7 +163,7 @@
            <!-- 4. RBAC Strategy Visual Builder -->
            <div v-else-if="policy.strategy_type === 4" class="space-y-3">
              <div class="flex justify-between items-center">
-               <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Role Membership</span>
+                <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">Role Membership</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('roles')" />
              </div>
              <div v-for="(row, idx) in visualState.roles" :key="idx" class="flex gap-2 items-center">
@@ -179,7 +179,7 @@
            <!-- 5. Location Strategy Visual Builder -->
            <div v-else-if="policy.strategy_type === 5" class="space-y-3">
              <div class="flex justify-between items-center">
-               <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Location Rules</span>
+                <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">Location Rules</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('locations')" />
              </div>
              <div v-for="(row, idx) in visualState.locations" :key="idx" class="flex gap-2 items-center">
@@ -201,15 +201,15 @@
            <div v-else-if="policy.strategy_type === 6" class="space-y-4">
              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                <div class="flex flex-col gap-1.5">
-                 <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.logic') }}</label>
+                  <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policies.logic') }}</label>
                  <select v-model="visualState.abac_logic" class="!p-2 !text-xs !font-bold">
                    <option value="and">AND (All match)</option>
                    <option value="or">OR (Any match)</option>
                  </select>
                </div>
                <div class="flex flex-col gap-1.5">
-                 <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.effect') }}</label>
-                 <select v-model="visualState.abac_effect" class="!p-2 !text-xs !font-bold">
+                  <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policies.effect') }}</label>
+                  <select v-model="visualState.abac_effect" class="!p-2 !text-xs !font-bold">
                    <option value="allow">ALLOW</option>
                    <option value="deny">DENY</option>
                  </select>
@@ -217,10 +217,10 @@
              </div>
 
              <!-- ABAC Conditions List -->
-             <div class="border-t border-[var(--border-primary)] pt-3 space-y-3">
-               <div class="flex justify-between items-center">
-                 <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('policies.conditions') }}</span>
-                 <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('abac_conditions')" />
+              <div class="border-t border-[var(--border-primary)] pt-3 space-y-3">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">{{ $t('policies.conditions') }}</span>
+                  <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('abac_conditions')" />
                </div>
                <div v-for="(row, idx) in visualState.abac_conditions" :key="idx" class="flex gap-2 items-center flex-wrap md:flex-nowrap bg-[var(--bg-card)] p-3 rounded-xl border border-[var(--border-primary)]">
                  <select v-model="row.source" class="!p-2 !text-xs !font-semibold">
@@ -248,7 +248,7 @@
            <!-- 7. LBAC Strategy Visual Builder -->
            <div v-else-if="policy.strategy_type === 7" class="space-y-3">
              <div class="flex justify-between items-center">
-               <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('policies.labelName') }}</span>
+                <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">{{ $t('policies.labelName') }}</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('labels')" />
              </div>
              <div v-for="(row, idx) in visualState.labels" :key="idx" class="flex gap-2 items-center">
@@ -272,8 +272,8 @@
        <!-- Modal Footer -->
         <template #footer>
            <div class="flex gap-2 justify-end">
-             <Button :label="$t('common.cancel')" text severity="secondary" @click="policyDialog = false" class="!rounded-xl !text-[var(--text-muted)] hover:!text-[var(--text-primary)]" />
-             <Button :label="$t('common.save')" @click="savePolicy" class="!rounded-xl !px-6 !bg-indigo-500 hover:!bg-indigo-400 !text-white !border-none" />
+              <Button :label="$t('common.cancel')" text severity="secondary" @click="policyDialog = false" class="!rounded-lg !text-[var(--text-secondary)] hover:!text-[var(--text-primary)]" />
+              <Button :label="$t('common.save')" @click="savePolicy" class="!rounded-lg !px-6 !bg-[var(--accent-strong)] hover:!bg-[var(--accent)] !text-white !border-none" />
            </div>
         </template>
     </Dialog>

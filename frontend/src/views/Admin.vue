@@ -109,7 +109,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { authService } from '../services/api';
@@ -155,6 +155,14 @@ const handleCreate = () => {
   if (currentTab.value === 'groups') groupRef.value?.openCreateDialog();
   if (currentTab.value === 'policies') policyRef.value?.openCreateDialog();
 };
+
+onMounted(() => {
+  document.documentElement.classList.add('sso-dark');
+});
+
+onUnmounted(() => {
+  document.documentElement.classList.remove('sso-dark');
+});
 
 const handleLogout = async () => {
   try {

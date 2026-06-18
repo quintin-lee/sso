@@ -51,20 +51,20 @@
     <Dialog v-model:visible="userDialog" :header="user.id ? $t('users.update') : $t('users.create')" modal class="w-full max-w-lg">
        <div class="space-y-4">
          <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('users.username') }}</label>
-            <InputText v-model.trim="user.username" placeholder="johndoe" autofocus />
-         </div>
-         <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('users.displayName') }}</label>
-            <InputText v-model.trim="user.display_name" placeholder="John Doe" />
-         </div>
-         <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('users.email') }}</label>
-            <InputText v-model.trim="user.email" placeholder="john@example.com" />
-         </div>
-         <div v-if="!user.id" class="flex flex-col gap-1.5">
-            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('login.password') }}</label>
-            <Password v-model="user.password" :feedback="false" placeholder="••••••••" toggleMask class="w-full" inputClass="w-full !bg-[var(--bg-elevated)]/60 !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3 hover:!border-[var(--accent)] transition-all" required />
+             <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('users.username') }}</label>
+             <InputText v-model.trim="user.username" placeholder="johndoe" autofocus />
+          </div>
+          <div class="flex flex-col gap-1.5">
+             <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('users.displayName') }}</label>
+             <InputText v-model.trim="user.display_name" placeholder="John Doe" />
+          </div>
+          <div class="flex flex-col gap-1.5">
+             <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('users.email') }}</label>
+             <InputText v-model.trim="user.email" placeholder="john@example.com" />
+          </div>
+          <div v-if="!user.id" class="flex flex-col gap-1.5">
+             <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('login.password') }}</label>
+             <Password v-model="user.password" :feedback="false" placeholder="••••••••" toggleMask class="w-full" inputClass="w-full !bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-lg !px-4 !py-3 hover:!border-[var(--accent)] transition-all" required />
          </div>
          <div class="flex items-center gap-2 mt-4">
             <Checkbox v-model="userStatus" :binary="true" inputId="userStatus" />
@@ -73,8 +73,8 @@
        </div>
         <template #footer>
            <div class="flex gap-2 justify-end">
-             <Button :label="$t('common.cancel')" text severity="secondary" @click="userDialog = false" class="!rounded-xl !text-[var(--text-muted)] hover:!text-[var(--text-primary)]" />
-             <Button :label="$t('common.save')" @click="saveUser" class="!rounded-xl !px-6 !bg-indigo-500 hover:!bg-indigo-400 !text-white !border-none" />
+              <Button :label="$t('common.cancel')" text severity="secondary" @click="userDialog = false" class="!rounded-lg !text-[var(--text-secondary)] hover:!text-[var(--text-primary)]" />
+              <Button :label="$t('common.save')" @click="saveUser" class="!rounded-lg !px-6 !bg-[var(--accent-strong)] hover:!bg-[var(--accent)] !text-white !border-none" />
            </div>
         </template>
     </Dialog>

@@ -25,18 +25,18 @@
     <Dialog v-model:visible="groupDialog" :header="group.id ? $t('groups.update') : $t('groups.create')" modal class="w-full max-w-lg">
        <div class="space-y-4">
          <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('common.name') }}</label>
-            <InputText v-model.trim="group.name" placeholder="Engineering" />
-         </div>
-         <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('common.description') }}</label>
+             <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('common.name') }}</label>
+             <InputText v-model.trim="group.name" placeholder="Engineering" />
+          </div>
+          <div class="flex flex-col gap-1.5">
+             <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('common.description') }}</label>
             <InputText v-model.trim="group.description" placeholder="Engineering department" />
          </div>
        </div>
        <template #footer>
          <div class="flex gap-2 justify-end">
-            <Button :label="$t('common.cancel')" text severity="secondary" @click="groupDialog = false" class="!rounded-xl !text-[var(--text-muted)] hover:!text-[var(--text-primary)]" />
-            <Button :label="$t('common.save')" @click="saveGroup" class="!rounded-xl !px-6 !bg-indigo-500 hover:!bg-indigo-400 !text-white !border-none" />
+             <Button :label="$t('common.cancel')" text severity="secondary" @click="groupDialog = false" class="!rounded-lg !text-[var(--text-secondary)] hover:!text-[var(--text-primary)]" />
+             <Button :label="$t('common.save')" @click="saveGroup" class="!rounded-lg !px-6 !bg-[var(--accent-strong)] hover:!bg-[var(--accent)] !text-white !border-none" />
          </div>
        </template>
     </Dialog>
