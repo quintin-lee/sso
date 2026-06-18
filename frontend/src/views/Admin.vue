@@ -209,25 +209,57 @@ const handleLogout = async () => {
   @apply bg-indigo-500/15 text-indigo-400;
 }
 
-/* Dialog */
+/* Dialog Overlay & Card */
 .p-dialog {
-  @apply bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-2xl shadow-2xl;
+  @apply bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-2xl shadow-2xl overflow-hidden;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.0) 100%);
 }
 .p-dialog-mask {
-  @apply bg-black/60;
-  backdrop-filter: blur(8px);
+  @apply bg-black/70;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
 }
 .p-dialog-header {
-  @apply p-6 border-b border-[var(--border-primary)];
+  @apply p-6 border-b border-[var(--border-subtle)] flex items-center justify-between;
 }
 .p-dialog-title {
-  @apply text-lg font-extrabold text-[var(--text-primary)] tracking-tight;
+  @apply text-lg font-extrabold text-[var(--text-primary)] tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-indigo-200;
 }
 .p-dialog-content {
   @apply p-6;
 }
 .p-dialog-footer {
-  @apply p-6 border-t border-[var(--border-primary)] pt-4;
+  @apply p-6 border-t border-[var(--border-subtle)] flex justify-end gap-3 pt-4;
+}
+
+/* Close action styling */
+.p-dialog .p-dialog-header-action {
+  @apply w-8 h-8 rounded-xl bg-white/5 border border-white/5 text-[var(--text-secondary)] hover:text-white hover:bg-white/10 hover:border-white/10 flex items-center justify-center transition-all duration-200 focus:outline-none cursor-pointer;
+}
+
+/* Form inputs & labels inside Dialogs */
+.p-dialog label:not(.text-sm) {
+  @apply text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-[0.12em] mb-2 block;
+}
+.p-dialog .p-inputtext,
+.p-dialog select,
+.p-dialog textarea,
+.p-dialog .p-password-input {
+  @apply w-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-elevated)] border border-[var(--border-primary)] hover:border-[var(--accent)] focus:border-[var(--accent)] rounded-xl px-4 py-3 text-sm transition-all focus:ring-1 focus:ring-[var(--accent)] outline-none !important;
+}
+
+/* Springy Dialog Transitions */
+.p-dialog-enter-active {
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.p-dialog-leave-active {
+  transition: all 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+}
+.p-dialog-enter-from, .p-dialog-leave-to {
+  opacity: 0;
+  transform: scale(0.96) translateY(8px);
 }
 
 /* Button */
