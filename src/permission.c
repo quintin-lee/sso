@@ -166,7 +166,7 @@ sso_error_t perm_engine_create(permission_engine_t **engine, sso_context_t *ctx)
     /* Copy audit log path from config */
     sso_config_t *cfg = (sso_config_t *)ctx->config;
     if (cfg && cfg->audit_log_path[0]) {
-        strncpy(s_audit_log_path, cfg->audit_log_path, sizeof(s_audit_log_path) - 1);
+        snprintf(s_audit_log_path, sizeof(s_audit_log_path), "%s", cfg->audit_log_path);
     }
 
     return SSO_OK;
