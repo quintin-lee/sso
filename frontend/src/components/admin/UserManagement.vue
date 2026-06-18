@@ -26,7 +26,7 @@
       <Column field="created_at" :header="$t('common.created')">
         <template #body="slotProps">
           <span class="text-[var(--text-muted)] text-sm">
-            {{ new Date(slotProps.data.created_at * 1000).toLocaleDateString() }}
+            {{ new Date(slotProps.data.created_at).toLocaleString() }}
           </span>
         </template>
       </Column>
