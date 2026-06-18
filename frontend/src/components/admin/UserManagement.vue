@@ -70,10 +70,14 @@
              <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('users.roles') }}</label>
              <MultiSelect v-model="selectedRoles" :options="roleOptions" optionLabel="name" optionValue="id" :loading="rolesLoading" filter class="w-full" :maxSelectedLabels="3" />
          </div>
-         <div class="flex flex-col gap-1.5" v-if="user.id">
-             <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('users.groups') }}</label>
-             <MultiSelect v-model="selectedGroups" :options="groupOptions" optionLabel="name" optionValue="id" :loading="groupsLoading" filter class="w-full" :maxSelectedLabels="3" />
-         </div>
+          <div class="flex flex-col gap-1.5" v-if="user.id">
+              <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('users.groups') }}</label>
+              <MultiSelect v-model="selectedGroups" :options="groupOptions" optionLabel="name" optionValue="id" :loading="groupsLoading" filter class="w-full" :maxSelectedLabels="3" />
+          </div>
+          <div class="flex flex-col gap-1.5" v-if="user.id">
+              <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('users.policies') }}</label>
+              <MultiSelect v-model="selectedPolicies" :options="policyOptions" optionLabel="name" optionValue="id" :loading="policiesLoading" filter class="w-full" :maxSelectedLabels="3" />
+          </div>
          <div class="flex items-center gap-2 mt-4">
              <Checkbox v-model="userStatus" :binary="true" inputId="userStatus" />
              <label for="userStatus" class="text-sm font-semibold text-[var(--text-primary)]">{{ $t('common.active') }}</label>
@@ -92,7 +96,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { adminService, type User, type Role, type Group } from '../../services/api';
+import { adminService, type User, type Role, type Group, type Policy } from '../../services/api';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
@@ -125,10 +129,13 @@ const userDialog = ref(false);
 const user = ref<Partial<User>>({});
 const selectedRoles = ref<number[]>([]);
 const selectedGroups = ref<number[]>([]);
+const selectedPolicies = ref<number[]>([]);
 const roleOptions = ref<Role[]>([]);
 const groupOptions = ref<Group[]>([]);
+const policyOptions = ref<Policy[]>([]);
 const rolesLoading = ref(false);
 const groupsLoading = ref(false);
+const policiesLoading = ref(false);
 
 const userStatus = computed({
   get: () => user.value.status === 1,
@@ -174,12 +181,21 @@ const loadRoleGroupOptions = async () => {
     } catch (_) { /* ignore */ }
     groupsLoading.value = false;
   }
+  if (policyOptions.value.length === 0) {
+    policiesLoading.value = true;
+    try {
+      const res = await adminService.listPolicies(1, 200);
+      policyOptions.value = res.items;
+    } catch (_) { /* ignore */ }
+    policiesLoading.value = false;
+  }
 };
 
 const openCreateDialog = () => {
   user.value = { status: 1 };
   selectedRoles.value = [];
   selectedGroups.value = [];
+  selectedPolicies.value = [];
   loadRoleGroupOptions();
   userDialog.value = true;
 };
@@ -188,6 +204,7 @@ const editUser = (data: User) => {
   user.value = { ...data };
   selectedRoles.value = (data.roles || []).map(r => r.id);
   selectedGroups.value = (data.groups || []).map(g => g.id);
+  selectedPolicies.value = [];
   loadRoleGroupOptions();
   userDialog.value = true;
 };
@@ -248,6 +265,13 @@ const saveUser = async () => {
       const toRemoveG = oldGroupIds.filter(id => !newGroupIds.includes(id));
       await Promise.all(toAddG.map(id => adminService.addGroupMember(id, user.value.id!)));
       await Promise.all(toRemoveG.map(id => adminService.removeGroupMember(id, user.value.id!)));
+
+      // Assign selected policies
+      for (const pid of selectedPolicies.value) {
+        try {
+          await adminService.assignPolicy(pid, 0, user.value.id!);
+        } catch { /* skip duplicates */ }
+      }
 
       toast.add({ severity: 'success', summary: t('common.success'), detail: 'User updated successfully', life: 3000 });
     } else {

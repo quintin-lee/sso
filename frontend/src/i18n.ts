@@ -47,6 +47,7 @@ const messages = {
       phone: 'Phone',
       roles: 'Roles',
       groups: 'Groups',
+      policies: 'Policies',
       create: 'Create User',
       update: 'Update User',
       deleteConfirm: 'Are you sure you want to delete user {name}?'
@@ -181,6 +182,7 @@ const messages = {
       phone: '手机号码',
       roles: '关联角色',
       groups: '所属群组',
+      policies: '权限策略',
       create: '创建用户',
       update: '更新用户',
       deleteConfirm: '您确定要删除用户 {name} 吗？'
