@@ -133,6 +133,80 @@ static sso_error_t bootstrap_data(sso_context_t *ctx) {
     policy_assign_to(pmgr, func_policy.id, POLICY_TARGET_ROLE, admin_role.id);
     policy_assign_to(pmgr, api_policy.id,  POLICY_TARGET_ROLE, admin_role.id);
 
+    policy_t editor_func;
+    err = policy_create(pmgr, "Content Editor Functions",
+        PERM_STRATEGY_FUNCTIONAL, POLICY_EFFECT_ALLOW, 80,
+        "{\"functions\":["
+          "{\"code\":\"content:*\",\"effect\":\"allow\"},"
+          "{\"code\":\"media:*\",\"effect\":\"allow\"},"
+          "{\"code\":\"report:view\",\"effect\":\"allow\"}"
+        "]}",
+        &editor_func);
+    if (err != SSO_OK) return err;
+
+    policy_t editor_api;
+    err = policy_create(pmgr, "Content Editor API",
+        PERM_STRATEGY_API, POLICY_EFFECT_ALLOW, 75,
+        "{\"endpoints\":["
+          "{\"method\":\"GET\",\"path\":\"/api/v1/content/*\",\"effect\":\"allow\"},"
+          "{\"method\":\"POST\",\"path\":\"/api/v1/content/*\",\"effect\":\"allow\"},"
+          "{\"method\":\"PUT\",\"path\":\"/api/v1/content/*\",\"effect\":\"allow\"},"
+          "{\"method\":\"DELETE\",\"path\":\"/api/v1/content/*\",\"effect\":\"deny\"}"
+        "]}",
+        &editor_api);
+    if (err != SSO_OK) return err;
+
+    policy_assign_to(pmgr, editor_func.id, POLICY_TARGET_ROLE, editor_role.id);
+    policy_assign_to(pmgr, editor_api.id,  POLICY_TARGET_ROLE, editor_role.id);
+
+    policy_t viewer_func;
+    err = policy_create(pmgr, "Viewer Functions",
+        PERM_STRATEGY_FUNCTIONAL, POLICY_EFFECT_ALLOW, 60,
+        "{\"functions\":["
+          "{\"code\":\"content:view\",\"effect\":\"allow\"},"
+          "{\"code\":\"report:view\",\"effect\":\"allow\"},"
+          "{\"code\":\"dashboard:view\",\"effect\":\"allow\"}"
+        "]}",
+        &viewer_func);
+    if (err != SSO_OK) return err;
+
+    policy_t viewer_api;
+    err = policy_create(pmgr, "Viewer API",
+        PERM_STRATEGY_API, POLICY_EFFECT_ALLOW, 55,
+        "{\"endpoints\":["
+          "{\"method\":\"GET\",\"path\":\"/api/v1/*\",\"effect\":\"allow\"}"
+        "]}",
+        &viewer_api);
+    if (err != SSO_OK) return err;
+
+    policy_assign_to(pmgr, viewer_func.id, POLICY_TARGET_ROLE, viewer_role.id);
+    policy_assign_to(pmgr, viewer_api.id,  POLICY_TARGET_ROLE, viewer_role.id);
+
+    policy_t user_func;
+    err = policy_create(pmgr, "User Self-service",
+        PERM_STRATEGY_FUNCTIONAL, POLICY_EFFECT_ALLOW, 50,
+        "{\"functions\":["
+          "{\"code\":\"profile:view\",\"effect\":\"allow\"},"
+          "{\"code\":\"profile:edit\",\"effect\":\"allow\"},"
+          "{\"code\":\"password:change\",\"effect\":\"allow\"}"
+        "]}",
+        &user_func);
+    if (err != SSO_OK) return err;
+
+    policy_t user_api;
+    err = policy_create(pmgr, "User Self-service API",
+        PERM_STRATEGY_API, POLICY_EFFECT_ALLOW, 45,
+        "{\"endpoints\":["
+          "{\"method\":\"GET\",\"path\":\"/api/v1/auth/me\",\"effect\":\"allow\"},"
+          "{\"method\":\"POST\",\"path\":\"/api/v1/auth/password\",\"effect\":\"allow\"},"
+          "{\"method\":\"PUT\",\"path\":\"/api/v1/auth/me\",\"effect\":\"allow\"}"
+        "]}",
+        &user_api);
+    if (err != SSO_OK) return err;
+
+    policy_assign_to(pmgr, user_func.id, POLICY_TARGET_ROLE, member_role.id);
+    policy_assign_to(pmgr, user_api.id,  POLICY_TARGET_ROLE, member_role.id);
+
     printf("[bootstrap] Default admin and roles created\n");
     return SSO_OK;
 }
