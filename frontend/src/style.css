@@ -17,6 +17,7 @@
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --text-muted: #5c708a;
+  --text-placeholder: #475569;
   
   --accent: #6366f1;
   --accent-light: #a5b4fc;
@@ -101,9 +102,16 @@ body {
   color: var(--text-primary);
 }
 
-/* PrimeVue Component Styling Customizations */
+/* PrimeVue Component Styling Customizations & Placeholders */
 .p-inputtext, .p-password-input {
   transition: all 0.2s ease !important;
+}
+
+input::placeholder,
+textarea::placeholder,
+.p-inputtext::placeholder {
+  color: var(--text-placeholder) !important;
+  opacity: 0.9 !important;
 }
 
 .p-inputtext:focus, .p-password:focus-within .p-password-input {
