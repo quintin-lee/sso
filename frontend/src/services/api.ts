@@ -370,6 +370,13 @@ export const adminService = {
       target_id: targetId
     });
     return data;
+  },
+  async unassignPolicy(policyId: number, targetType: number, targetId: number) {
+    const { data } = await api.post(`/policies/${policyId}/unassign`, {
+      target_type: targetType,
+      target_id: targetId
+    });
+    return data;
   }
 };
 

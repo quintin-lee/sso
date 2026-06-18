@@ -34,7 +34,10 @@ const messages = {
       description: 'Description',
       id: 'ID',
       created: 'Created At',
-      confirmDelete: 'Delete Confirmation'
+      confirmDelete: 'Delete Confirmation',
+      user: 'User',
+      role: 'Role',
+      group: 'Group'
     },
     users: {
       title: 'User Management',
@@ -89,7 +92,9 @@ const messages = {
       method: 'HTTP Method',
       path: 'Path Pattern',
       locationType: 'Location Type',
-      locationValue: 'Value (IP/CIDR/Country)'
+      locationValue: 'Value (IP/CIDR/Country)',
+      assignTo: 'Assign Policy To',
+      assignPlaceholder: 'Select {type}s'
     },
     dashboard: {
       totalEvals: 'Total Evaluations',
@@ -159,7 +164,10 @@ const messages = {
       description: '描述',
       id: 'ID',
       created: '创建时间',
-      confirmDelete: '删除确认'
+      confirmDelete: '删除确认',
+      user: '用户',
+      role: '角色',
+      group: '群组'
     },
     users: {
       title: '用户管理',
@@ -214,7 +222,9 @@ const messages = {
       method: 'HTTP 方法',
       path: '请求路径模式',
       locationType: '定位类型',
-      locationValue: '数值 (IP/网段/国家代码)'
+      locationValue: '数值 (IP/网段/国家代码)',
+      assignTo: '分配策略给',
+      assignPlaceholder: '选择{type}'
     },
     dashboard: {
       totalEvals: '权限评估总数',

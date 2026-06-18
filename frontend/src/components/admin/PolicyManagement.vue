@@ -263,11 +263,30 @@
 
          </div>
 
-         <!-- Code/JSON Editor -->
-         <div v-else class="flex flex-col gap-2">
-             <textarea v-model.trim="policy.rules" class="w-full h-64 bg-[var(--bg-elevated)] border border-[var(--border-primary)] text-[var(--text-primary)] rounded-xl p-4 font-mono text-sm" placeholder='{"action": "read", "resource": "dashboard"}'></textarea>
-         </div>
-       </div>
+          <!-- Code/JSON Editor -->
+          <div v-else class="flex flex-col gap-2">
+              <textarea v-model.trim="policy.rules" class="w-full h-64 bg-[var(--bg-elevated)] border border-[var(--border-primary)] text-[var(--text-primary)] rounded-xl p-4 font-mono text-sm" placeholder='{"action": "read", "resource": "dashboard"}'></textarea>
+          </div>
+
+          <!-- Policy Assignments -->
+          <div class="border-t border-[var(--border-primary)] pt-5 space-y-4">
+            <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block">{{ $t('policies.assignTo') }}</span>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-bold text-[var(--text-secondary)]">{{ $t('common.user') }}</label>
+                <MultiSelect v-model="assignedUserIds" :options="allUsers" optionLabel="username" optionValue="id" :maxSelectedLabels="3" :placeholder="$t('policies.assignPlaceholder', { type: $t('common.user').toLowerCase() })" filter class="w-full" />
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-bold text-[var(--text-secondary)]">{{ $t('common.role') }}</label>
+                <MultiSelect v-model="assignedRoleIds" :options="allRoles" optionLabel="name" optionValue="id" :maxSelectedLabels="3" :placeholder="$t('policies.assignPlaceholder', { type: $t('common.role').toLowerCase() })" filter class="w-full" />
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-bold text-[var(--text-secondary)]">{{ $t('common.group') }}</label>
+                <MultiSelect v-model="assignedGroupIds" :options="allGroups" optionLabel="name" optionValue="id" :maxSelectedLabels="3" :placeholder="$t('policies.assignPlaceholder', { type: $t('common.group').toLowerCase() })" filter class="w-full" />
+              </div>
+            </div>
+          </div>
+        </div>
 
        <!-- Modal Footer -->
         <template #footer>
@@ -283,12 +302,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { adminService, type Policy } from '../../services/api';
+import { adminService, type Policy, type User, type Role, type Group } from '../../services/api';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
+import MultiSelect from 'primevue/multiselect';
 import { useToast } from 'primevue/usetoast';
 import { useConfirm } from 'primevue/useconfirm';
 
@@ -309,6 +329,14 @@ const displayedPolicies = computed(() => {
 });
 const policyDialog = ref(false);
 const policy = ref<Partial<Policy>>({});
+
+// Assignment state
+const allUsers = ref<User[]>([]);
+const allRoles = ref<Role[]>([]);
+const allGroups = ref<Group[]>([]);
+const assignedUserIds = ref<number[]>([]);
+const assignedRoleIds = ref<number[]>([]);
+const assignedGroupIds = ref<number[]>([]);
 
 // Editor States
 const editorMode = ref<'visual' | 'code'>('visual');
@@ -478,17 +506,40 @@ const loadPolicies = async () => {
   }
 };
 
+const loadAssignmentOptions = async () => {
+  try {
+    const [usersRes, rolesRes, groupsRes] = await Promise.all([
+      adminService.listUsers(1, 200),
+      adminService.listRoles(1, 200),
+      adminService.listGroups(1, 200),
+    ]);
+    allUsers.value = usersRes.items;
+    allRoles.value = rolesRes.items;
+    allGroups.value = groupsRes.items;
+  } catch (err) {
+    console.error('Failed to load assignment options', err);
+  }
+};
+
 const openCreateDialog = () => {
   policy.value = { status: 1, strategy_type: 1, effect: 1, rules: '{}' };
   editorMode.value = 'visual';
+  assignedUserIds.value = [];
+  assignedRoleIds.value = [];
+  assignedGroupIds.value = [];
   syncVisualStateFromRules();
+  loadAssignmentOptions();
   policyDialog.value = true;
 };
 
 const editPolicy = (data: Policy) => {
   policy.value = { ...data };
   editorMode.value = 'visual';
+  assignedUserIds.value = [];
+  assignedRoleIds.value = [];
+  assignedGroupIds.value = [];
   syncVisualStateFromRules();
+  loadAssignmentOptions();
   policyDialog.value = true;
 };
 
@@ -500,11 +551,29 @@ const savePolicy = async () => {
   try {
     if (policy.value.id) {
       await adminService.updatePolicy(policy.value.id, policy.value);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Policy updated successfully', life: 3000 });
     } else {
       await adminService.createPolicy(policy.value);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Policy created successfully', life: 3000 });
     }
+
+    // Save policy assignments
+    if (policy.value.id) {
+      const policyId = policy.value.id;
+      const assignPromises: Promise<any>[] = [];
+
+      for (const userId of assignedUserIds.value) {
+        assignPromises.push(adminService.assignPolicy(policyId, 0, userId));
+      }
+      for (const roleId of assignedRoleIds.value) {
+        assignPromises.push(adminService.assignPolicy(policyId, 1, roleId));
+      }
+      for (const groupId of assignedGroupIds.value) {
+        assignPromises.push(adminService.assignPolicy(policyId, 2, groupId));
+      }
+
+      await Promise.allSettled(assignPromises);
+    }
+
+    toast.add({ severity: 'success', summary: t('common.success'), detail: 'Policy saved with assignments', life: 3000 });
     policyDialog.value = false;
     loadPolicies();
   } catch (err) {
