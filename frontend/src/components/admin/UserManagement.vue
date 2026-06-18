@@ -54,6 +54,10 @@
             <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('users.email') }}</label>
             <InputText v-model.trim="user.email" placeholder="john@example.com" />
          </div>
+         <div v-if="!user.id" class="flex flex-col gap-1.5">
+            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('login.password') }}</label>
+            <Password v-model="user.password" :feedback="false" placeholder="••••••••" toggleMask class="w-full" inputClass="w-full !bg-[var(--bg-elevated)]/60 !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3 hover:!border-[var(--accent)] transition-all" required />
+         </div>
          <div class="flex items-center gap-2 mt-4">
             <Checkbox v-model="userStatus" :binary="true" inputId="userStatus" />
             <label for="userStatus" class="text-sm font-semibold text-[var(--text-primary)]">{{ $t('common.active') }}</label>
@@ -78,6 +82,7 @@ import Column from 'primevue/column';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
+import Password from 'primevue/password';
 import Checkbox from 'primevue/checkbox';
 import { useToast } from 'primevue/usetoast';
 

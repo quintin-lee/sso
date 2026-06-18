@@ -207,6 +207,7 @@ void sso_response_ok(http_response_t *resp, const char *body_json) {
 
 void sso_response_error(http_response_t *resp, int status_code, const char *message) {
     resp->status_code = status_code;
+    LOG_WARN("API Error Response [%d]: %s", status_code, message);
     char buf[1024];
     snprintf(buf, sizeof(buf), "{\"error\":\"%s\"}", message);
     resp->body = strdup(buf);

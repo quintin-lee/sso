@@ -74,6 +74,7 @@ export interface User {
   display_name: string;
   phone?: string;
   status: number;
+  password?: string;
   roles?: Role[];
   groups?: Group[];
   created_at: number;
