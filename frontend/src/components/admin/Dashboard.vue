@@ -3,63 +3,63 @@
     <!-- Stats Grid -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
       <!-- Total Evaluations -->
-      <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between group hover:border-indigo-500 transition-all duration-300">
-        <div class="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl group-hover:bg-indigo-500/20 transition-all"></div>
+      <div class="glass-card p-6 flex flex-col justify-between relative overflow-hidden group">
+        <div class="absolute -top-10 -right-10 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl group-hover:bg-indigo-500/20 transition-all duration-500"></div>
         <div class="flex justify-between items-start">
-          <span class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('dashboard.totalEvals') }}</span>
-          <div class="w-8 h-8 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400">
+          <span class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest">{{ $t('dashboard.totalEvals') }}</span>
+          <div class="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400 group-hover:scale-110 group-hover:shadow-[0_0_15px_rgba(99,102,241,0.4)] transition-all duration-300 border border-indigo-500/20">
             <i class="pi pi-shield"></i>
           </div>
         </div>
         <div class="mt-4">
-          <h3 class="text-3xl font-extrabold text-white tracking-tight">{{ totalEvals }}</h3>
+          <h3 class="text-3xl font-extrabold text-white tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-indigo-200">{{ totalEvals }}</h3>
           <p class="text-xs text-indigo-400 font-medium mt-1">Live requests stream</p>
         </div>
       </div>
 
       <!-- Interception Rate -->
-      <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between group hover:border-rose-500 transition-all duration-300">
-        <div class="absolute top-0 right-0 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl group-hover:bg-rose-500/20 transition-all"></div>
+      <div class="glass-card p-6 flex flex-col justify-between relative overflow-hidden group hover:!border-rose-500/30">
+        <div class="absolute -top-10 -right-10 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl group-hover:bg-rose-500/20 transition-all duration-500"></div>
         <div class="flex justify-between items-start">
-          <span class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('dashboard.interceptionRate') }}</span>
-          <div class="w-8 h-8 bg-rose-500/10 rounded-xl flex items-center justify-center text-rose-400">
+          <span class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest">{{ $t('dashboard.interceptionRate') }}</span>
+          <div class="w-10 h-10 bg-rose-500/10 rounded-xl flex items-center justify-center text-rose-400 group-hover:scale-110 group-hover:shadow-[0_0_15px_rgba(244,63,94,0.4)] transition-all duration-300 border border-rose-500/20">
             <i class="pi pi-ban"></i>
           </div>
         </div>
         <div class="mt-4 flex items-baseline gap-2">
-          <h3 class="text-3xl font-extrabold text-white tracking-tight">{{ interceptionRate.toFixed(1) }}%</h3>
-          <span class="text-xs font-semibold" :class="interceptionRate > 20 ? 'text-rose-400' : 'text-[var(--text-secondary)]'">
+          <h3 class="text-3xl font-extrabold text-white tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-rose-200">{{ interceptionRate.toFixed(1) }}%</h3>
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full" :class="interceptionRate > 20 ? 'bg-rose-500/15 text-rose-400' : 'bg-slate-500/10 text-[var(--text-secondary)]'">
             {{ interceptionRate > 20 ? 'High' : 'Normal' }}
           </span>
         </div>
       </div>
 
       <!-- Average Latency -->
-      <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between group hover:border-amber-500 transition-all duration-300">
-        <div class="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all"></div>
+      <div class="glass-card p-6 flex flex-col justify-between relative overflow-hidden group hover:!border-amber-500/30">
+        <div class="absolute -top-10 -right-10 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all duration-500"></div>
         <div class="flex justify-between items-start">
-          <span class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('dashboard.avgLatency') }}</span>
-          <div class="w-8 h-8 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-400">
+          <span class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest">{{ $t('dashboard.avgLatency') }}</span>
+          <div class="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-400 group-hover:scale-110 group-hover:shadow-[0_0_15px_rgba(245,158,11,0.4)] transition-all duration-300 border border-amber-500/20">
             <i class="pi pi-clock"></i>
           </div>
         </div>
         <div class="mt-4">
-          <h3 class="text-3xl font-extrabold text-white tracking-tight">{{ avgLatency.toFixed(2) }} ms</h3>
+          <h3 class="text-3xl font-extrabold text-white tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-amber-200">{{ avgLatency.toFixed(2) }} ms</h3>
           <p class="text-xs text-amber-400 font-medium mt-1">L1/L2 cache-optimized</p>
         </div>
       </div>
 
       <!-- Cache Hit Rate -->
-      <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between group hover:border-emerald-500 transition-all duration-300">
-        <div class="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all"></div>
+      <div class="glass-card p-6 flex flex-col justify-between relative overflow-hidden group hover:!border-emerald-500/30">
+        <div class="absolute -top-10 -right-10 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all duration-500"></div>
         <div class="flex justify-between items-start">
-          <span class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('dashboard.cacheHitRate') }}</span>
-          <div class="w-8 h-8 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-400">
+          <span class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest">{{ $t('dashboard.cacheHitRate') }}</span>
+          <div class="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-400 group-hover:scale-110 group-hover:shadow-[0_0_15px_rgba(16,185,129,0.4)] transition-all duration-300 border border-emerald-500/20">
             <i class="pi pi-bolt"></i>
           </div>
         </div>
         <div class="mt-4">
-          <h3 class="text-3xl font-extrabold text-white tracking-tight">{{ cacheHitRate.toFixed(1) }}%</h3>
+          <h3 class="text-3xl font-extrabold text-white tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-emerald-200">{{ cacheHitRate.toFixed(1) }}%</h3>
           <p class="text-xs text-emerald-400 font-medium mt-1">L1: {{ cacheL1 }} | L2: {{ cacheL2 }}</p>
         </div>
       </div>
@@ -68,7 +68,7 @@
     <!-- Charts Section -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
       <!-- Active User Trends (Line Chart) -->
-      <div class="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-2xl p-6 shadow-xl">
+      <div class="glass-card p-6">
         <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
           <i class="pi pi-chart-line text-indigo-400"></i>
           <span>{{ $t('dashboard.activeUserTrends') }}</span>
@@ -77,62 +77,100 @@
           <svg viewBox="0 0 500 200" class="w-full h-full overflow-visible">
             <defs>
               <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#6366f1" stop-opacity="0.4" />
+                <stop offset="0%" stop-color="#6366f1" stop-opacity="0.35" />
                 <stop offset="100%" stop-color="#6366f1" stop-opacity="0.0" />
               </linearGradient>
+              <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="6" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
             </defs>
             <!-- Grid Lines -->
-            <line x1="40" y1="20" x2="480" y2="20" stroke="#334155" stroke-dasharray="4" stroke-width="0.5" />
-            <line x1="40" y1="70" x2="480" y2="70" stroke="#334155" stroke-dasharray="4" stroke-width="0.5" />
-            <line x1="40" y1="120" x2="480" y2="120" stroke="#334155" stroke-dasharray="4" stroke-width="0.5" />
-            <line x1="40" y1="170" x2="480" y2="170" stroke="#475569" stroke-width="1" />
+            <line x1="40" y1="20" x2="480" y2="20" stroke="rgba(255,255,255,0.05)" stroke-dasharray="4" stroke-width="0.5" />
+            <line x1="40" y1="70" x2="480" y2="70" stroke="rgba(255,255,255,0.05)" stroke-dasharray="4" stroke-width="0.5" />
+            <line x1="40" y1="120" x2="480" y2="120" stroke="rgba(255,255,255,0.05)" stroke-dasharray="4" stroke-width="0.5" />
+            <line x1="40" y1="170" x2="480" y2="170" stroke="rgba(255,255,255,0.15)" stroke-width="1" />
 
-            <!-- Line Path -->
-            <path :d="trendLinePath" fill="none" stroke="#6366f1" stroke-width="3" stroke-linecap="round" />
-            <!-- Area Path -->
+            <!-- Glowing Area -->
             <path :d="trendAreaPath" fill="url(#lineGrad)" />
+            
+            <!-- Glowing Line -->
+            <path :d="trendLinePath" fill="none" stroke="#818cf8" stroke-width="3.5" stroke-linecap="round" filter="url(#neonGlow)" />
+            <path :d="trendLinePath" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" opacity="0.8" />
+
+            <!-- Active Points -->
+            <circle v-for="(val, idx) in activeUsersData" :key="'dot-'+idx" :cx="trendX(idx)" :cy="trendY(val)" r="4" fill="#ffffff" stroke="#6366f1" stroke-width="2" class="cursor-pointer hover:r-6 transition-all duration-200" />
 
             <!-- X-Axis Labels -->
-            <text v-for="(lbl, idx) in trendLabels" :key="idx" :x="trendX(idx)" y="190" fill="#94a3b8" font-size="10" text-anchor="middle">
+            <text v-for="(lbl, idx) in trendLabels" :key="idx" :x="trendX(idx)" y="192" fill="#64748b" font-size="10" font-weight="600" text-anchor="middle">
               {{ lbl }}
             </text>
             <!-- Y-Axis Labels -->
-            <text x="30" y="25" fill="#94a3b8" font-size="10" text-anchor="end">{{ maxUsers }}</text>
-            <text x="30" y="95" fill="#94a3b8" font-size="10" text-anchor="end">{{ Math.floor(maxUsers/2) }}</text>
-            <text x="30" y="173" fill="#94a3b8" font-size="10" text-anchor="end">0</text>
+            <text x="30" y="24" fill="#64748b" font-size="10" font-weight="600" text-anchor="end">{{ maxUsers }}</text>
+            <text x="30" y="94" fill="#64748b" font-size="10" font-weight="600" text-anchor="end">{{ Math.floor(maxUsers/2) }}</text>
+            <text x="30" y="174" fill="#64748b" font-size="10" font-weight="600" text-anchor="end">0</text>
           </svg>
         </div>
       </div>
 
       <!-- Policy Latency Bar Chart -->
-      <div class="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-2xl p-6 shadow-xl">
+      <div class="glass-card p-6">
         <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
           <i class="pi pi-chart-bar text-amber-400"></i>
           <span>{{ $t('dashboard.policyLatency') }}</span>
         </h3>
         <div class="w-full h-64 flex items-center justify-center relative">
           <svg viewBox="0 0 500 200" class="w-full h-full overflow-visible">
+            <defs>
+              <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#fbbf24" />
+                <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.6" />
+              </linearGradient>
+              <filter id="barGlow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
             <!-- Grid Lines -->
-            <line x1="40" y1="20" x2="480" y2="20" stroke="#334155" stroke-dasharray="4" stroke-width="0.5" />
-            <line x1="40" y1="70" x2="480" y2="70" stroke="#334155" stroke-dasharray="4" stroke-width="0.5" />
-            <line x1="40" y1="120" x2="480" y2="120" stroke="#334155" stroke-dasharray="4" stroke-width="0.5" />
-            <line x1="40" y1="170" x2="480" y2="170" stroke="#475569" stroke-width="1" />
+            <line x1="40" y1="20" x2="480" y2="20" stroke="rgba(255,255,255,0.05)" stroke-dasharray="4" stroke-width="0.5" />
+            <line x1="40" y1="70" x2="480" y2="70" stroke="rgba(255,255,255,0.05)" stroke-dasharray="4" stroke-width="0.5" />
+            <line x1="40" y1="120" x2="480" y2="120" stroke="rgba(255,255,255,0.05)" stroke-dasharray="4" stroke-width="0.5" />
+            <line x1="40" y1="170" x2="480" y2="170" stroke="rgba(255,255,255,0.15)" stroke-width="1" />
 
             <!-- Bars -->
-            <g v-for="(p, idx) in latencyData" :key="idx">
+            <g v-for="(p, idx) in latencyData" :key="idx" class="group/bar cursor-pointer">
+              <!-- Glow backbar -->
               <rect 
                 :x="barX(idx)" 
                 :y="barY(p.latency)" 
                 width="30" 
                 :height="barHeight(p.latency)" 
                 fill="#f59e0b" 
-                rx="4" 
-                class="hover:fill-amber-400 transition-colors"
+                rx="5" 
+                opacity="0.3"
+                filter="url(#barGlow)"
+                class="group-hover/bar:opacity-60 transition-all duration-300"
               />
-              <text :x="barX(idx) + 15" y="188" fill="#94a3b8" font-size="10" text-anchor="middle">
+              <!-- Foreground bar -->
+              <rect 
+                :x="barX(idx)" 
+                :y="barY(p.latency)" 
+                width="30" 
+                :height="barHeight(p.latency)" 
+                fill="url(#barGrad)" 
+                rx="5" 
+                class="group-hover/bar:fill-amber-300 transition-colors duration-300"
+              />
+              <text :x="barX(idx) + 15" y="192" fill="#64748b" font-size="10" font-weight="600" text-anchor="middle">
                 {{ p.name }}
               </text>
-              <text :x="barX(idx) + 15" :y="barY(p.latency) - 6" fill="#f59e0b" font-size="10" font-weight="bold" text-anchor="middle">
+              <text :x="barX(idx) + 15" :y="barY(p.latency) - 8" fill="#fbbf24" font-size="10" font-weight="bold" text-anchor="middle" class="group-hover/bar:scale-110 transition-transform origin-bottom duration-300">
                 {{ p.latency }}ms
               </text>
             </g>
@@ -142,26 +180,29 @@
     </div>
 
     <!-- Security Warnings Board -->
-    <div class="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl">
+    <div class="glass-card p-6 relative overflow-hidden">
+      <!-- Glow effect for section -->
+      <div class="absolute -bottom-20 -right-20 w-80 h-80 bg-rose-500/5 rounded-full blur-3xl"></div>
+      
       <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
         <i class="pi pi-exclamation-triangle text-rose-500 animate-pulse"></i>
         <span>{{ $t('dashboard.securityWarnings') }}</span>
       </h3>
-      <div v-if="alerts.length === 0" class="flex flex-col items-center justify-center py-10 border border-dashed border-[var(--border-primary)] rounded-xl bg-[var(--bg-elevated)]/50">
+      <div v-if="alerts.length === 0" class="flex flex-col items-center justify-center py-12 border border-dashed border-white/5 rounded-2xl bg-white/2">
         <i class="pi pi-verified text-emerald-400 text-3xl mb-3"></i>
-        <p class="text-[var(--text-secondary)] text-sm font-medium">{{ $t('dashboard.noWarnings') }}</p>
+        <p class="text-[var(--text-secondary)] text-sm font-semibold">{{ $t('dashboard.noWarnings') }}</p>
       </div>
       <div v-else class="space-y-4">
-        <div v-for="(a, idx) in alerts" :key="idx" class="flex gap-4 p-4 border border-rose-900/30 rounded-xl" :class="a.severity === 'high' ? 'bg-rose-950/20' : 'bg-amber-950/10 border-amber-900/30'">
-          <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" :class="a.severity === 'high' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'">
-            <i class="pi" :class="a.severity === 'high' ? 'pi-shield' : 'pi-clock'"></i>
+        <div v-for="(a, idx) in alerts" :key="idx" class="flex gap-4 p-4 border rounded-2xl backdrop-blur-md transition-all hover:scale-[1.01]" :class="a.severity === 'high' ? 'bg-rose-500/5 border-rose-500/20 hover:border-rose-500/35' : 'bg-amber-500/5 border-amber-500/20 hover:border-amber-500/35'">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border" :class="a.severity === 'high' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.2)]' : 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.2)]'">
+            <i class="pi" :class="a.severity === 'high' ? 'pi-shield-slash' : 'pi-exclamation-circle'"></i>
           </div>
-          <div>
-            <h4 class="font-bold" :class="a.severity === 'high' ? 'text-rose-400' : 'text-amber-400'">
+          <div class="flex-grow">
+            <h4 class="font-bold text-sm tracking-wide uppercase" :class="a.severity === 'high' ? 'text-rose-400' : 'text-amber-400'">
               {{ a.severity === 'high' ? 'Access Anomaly Alert' : 'System Performance Warning' }}
             </h4>
-            <p class="text-[var(--text-secondary)] text-sm mt-1">{{ a.message }}</p>
-            <span class="text-[10px] text-[var(--text-muted)] font-mono mt-2 block">{{ a.time }}</span>
+            <p class="text-[var(--text-secondary)] text-sm mt-1 font-medium">{{ a.message }}</p>
+            <span class="text-[10px] text-[var(--text-muted)] font-mono font-bold mt-2.5 block">{{ a.time }}</span>
           </div>
         </div>
       </div>

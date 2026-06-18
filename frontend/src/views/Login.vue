@@ -58,9 +58,9 @@ const handleMfaVerify = async () => {
 
 <template>
   <div class="login-container flex items-center justify-center min-h-screen bg-[var(--bg-primary)] relative overflow-hidden">
-    <!-- Decorative gradient orbs -->
-    <div class="absolute -top-40 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl"></div>
-    <div class="absolute -bottom-40 -left-40 w-96 h-96 bg-violet-500/10 rounded-full blur-3xl"></div>
+    <!-- Glowing background decorative orbs -->
+    <div class="absolute -top-40 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pulse-neon"></div>
+    <div class="absolute -bottom-40 -left-40 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl"></div>
 
     <!-- Language Toggle -->
     <div class="absolute top-6 right-6 z-10">
@@ -70,31 +70,32 @@ const handleMfaVerify = async () => {
       </button>
     </div>
 
-    <div class="login-card w-full max-w-md p-8 bg-[var(--bg-card)] border border-[var(--border-primary)] shadow-2xl shadow-indigo-500/5 rounded-2xl relative z-0 backdrop-blur-sm">
+    <!-- Glassmorphic Login Card -->
+    <div class="glass-card w-full max-w-md p-8 relative z-0 backdrop-blur-xl animate-fade-in">
       <!-- Brand -->
       <div class="text-center mb-8">
-        <div class="w-14 h-14 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-indigo-500/20">
+        <div class="w-14 h-14 bg-gradient-to-br from-indigo-500 via-purple-500 to-violet-600 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-indigo-500/30 border border-white/10 hover:rotate-6 transition-transform duration-300">
           <i class="pi pi-shield text-white text-2xl"></i>
         </div>
-        <h1 class="text-2xl font-extrabold text-[var(--text-primary)] tracking-tight">{{ $t('login.title') }}</h1>
-        <p class="text-[var(--text-muted)] text-sm mt-1.5 font-medium">{{ $t('login.subtitle') }}</p>
+        <h1 class="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-slate-100 via-indigo-200 to-violet-300 tracking-tight">{{ $t('login.title') }}</h1>
+        <p class="text-[var(--text-secondary)] text-sm mt-1.5 font-medium">{{ $t('login.subtitle') }}</p>
       </div>
 
       <!-- Login Form -->
       <form v-if="!showMfa" @submit.prevent="handleLogin" class="space-y-5">
         <div class="flex flex-col gap-1.5">
-          <label for="username" class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-[0.1em]">{{ $t('login.username') }}</label>
+          <label for="username" class="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-[0.12em]">{{ $t('login.username') }}</label>
           <InputText
             id="username"
             v-model="username"
             :placeholder="$t('login.usernamePlaceholder')"
-            class="!bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3"
+            class="!bg-[var(--bg-elevated)]/60 !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3 hover:!border-[var(--accent)] transition-all"
             required
           />
         </div>
 
         <div class="flex flex-col gap-1.5">
-          <label for="password" class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-[0.1em]">{{ $t('login.password') }}</label>
+          <label for="password" class="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-[0.12em]">{{ $t('login.password') }}</label>
           <Password
             id="password"
             v-model="password"
@@ -102,7 +103,7 @@ const handleMfaVerify = async () => {
             :placeholder="$t('login.passwordPlaceholder')"
             toggleMask
             class="w-full"
-            inputClass="w-full !bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3"
+            inputClass="w-full !bg-[var(--bg-elevated)]/60 !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3 hover:!border-[var(--accent)] transition-all"
             required
           />
         </div>
@@ -115,27 +116,27 @@ const handleMfaVerify = async () => {
           type="submit"
           :label="$t('login.signIn')"
           :loading="loading"
-          class="!w-full !bg-indigo-500 hover:!bg-indigo-400 !border-none !py-3 !font-extrabold !tracking-wider !text-sm !uppercase !rounded-xl !shadow-lg !shadow-indigo-500/20 !transition-all !duration-200 active:!scale-[0.98]"
+          class="!w-full !bg-indigo-600 hover:!bg-indigo-500 !border-none !py-3 !font-extrabold !tracking-wider !text-sm !uppercase !rounded-xl !shadow-lg !shadow-indigo-500/20 !transition-all !duration-200 active:!scale-[0.98] border border-white/5"
         />
       </form>
 
       <!-- MFA Form -->
       <form v-else @submit.prevent="handleMfaVerify" class="space-y-5">
         <div class="text-center mb-4">
-          <div class="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <div class="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-500/20">
             <i class="pi pi-shield text-amber-400 text-xl"></i>
           </div>
           <h2 class="text-lg font-extrabold text-[var(--text-primary)] tracking-tight mb-1">{{ $t('login.mfaTitle') }}</h2>
-          <p class="text-[var(--text-muted)] text-sm">{{ $t('login.mfaSubtitle') }}</p>
+          <p class="text-[var(--text-secondary)] text-sm">{{ $t('login.mfaSubtitle') }}</p>
         </div>
 
         <div class="flex flex-col gap-1.5">
-          <label for="mfaCode" class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-[0.1em] text-center">{{ $t('login.mfaCode') }}</label>
+          <label for="mfaCode" class="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-[0.12em] text-center">{{ $t('login.mfaCode') }}</label>
           <InputText
             id="mfaCode"
             v-model="mfaCode"
             :placeholder="$t('login.mfaPlaceholder')"
-            class="!text-center !text-2xl !tracking-[0.3em] !bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3"
+            class="!text-center !text-2xl !tracking-[0.3em] !bg-[var(--bg-elevated)]/60 !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3 hover:!border-[var(--accent)] transition-all"
             required
             maxlength="6"
             autofocus
@@ -150,7 +151,7 @@ const handleMfaVerify = async () => {
           type="submit"
           :label="$t('login.verify')"
           :loading="loading"
-          class="!w-full !bg-emerald-500 hover:!bg-emerald-400 !border-none !py-3 !font-extrabold !tracking-wider !text-sm !uppercase !rounded-xl !shadow-lg !shadow-emerald-500/20 !transition-all !duration-200 active:!scale-[0.98]"
+          class="!w-full !bg-emerald-600 hover:!bg-emerald-500 !border-none !py-3 !font-extrabold !tracking-wider !text-sm !uppercase !rounded-xl !shadow-lg !shadow-emerald-500/20 !transition-all !duration-200 active:!scale-[0.98] border border-white/5"
         />
 
         <button

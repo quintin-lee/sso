@@ -3,25 +3,37 @@
 @tailwind utilities;
 
 :root {
-  /* Dark theme design tokens */
-  --bg-primary: #0f111a;
-  --bg-secondary: #161824;
-  --bg-elevated: #1c1f2e;
-  --bg-card: #1e2235;
-  --bg-hover: #252a40;
-  --border-primary: #2a2f45;
-  --border-subtle: #1e2335;
-  --text-primary: #f1f3f9;
-  --text-secondary: #9499b3;
-  --text-muted: #5c6180;
+  /* Ultra-premium dark neon-glow theme */
+  --bg-primary: #08090f;
+  --bg-secondary: #0e111d;
+  --bg-elevated: #151829;
+  --bg-card: rgba(18, 22, 41, 0.45);
+  --bg-hover: rgba(99, 102, 241, 0.12);
+  
+  --border-primary: rgba(255, 255, 255, 0.06);
+  --border-subtle: rgba(255, 255, 255, 0.03);
+  --border-active: rgba(99, 102, 241, 0.4);
+  
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+  
   --accent: #6366f1;
-  --accent-glow: rgba(99, 102, 241, 0.15);
+  --accent-light: #a5b4fc;
+  --accent-glow: rgba(99, 102, 241, 0.25);
+  --accent-neon: #818cf8;
+  
   --success: #10b981;
+  --success-glow: rgba(16, 185, 129, 0.15);
   --warning: #f59e0b;
+  --warning-glow: rgba(245, 158, 11, 0.15);
   --danger: #f43f5e;
+  --danger-glow: rgba(244, 63, 94, 0.15);
+  
   --sidebar-width: 280px;
+  --radius-premium: 16px;
 
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
   font-size: 15px;
   line-height: 1.5;
   color-scheme: dark;
@@ -35,8 +47,32 @@ body {
   margin: 0;
   background: var(--bg-primary);
   color: var(--text-primary);
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.05) 0px, transparent 50%);
+  background-attachment: fixed;
 }
 
+/* Glassmorphism Premium Card */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-premium);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.7);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(99, 102, 241, 0.25);
+  box-shadow: 
+    0 15px 35px -8px rgba(0, 0, 0, 0.8),
+    0 0 15px -3px var(--accent-glow);
+  transform: translateY(-2px);
+}
+
+/* Custom Scrollbar */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border-primary) transparent;
@@ -52,8 +88,12 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: var(--border-primary);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
 }
 
 ::selection {
@@ -61,29 +101,31 @@ body {
   color: var(--text-primary);
 }
 
-/* Smooth transitions for theme */
-.transition-theme {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+/* PrimeVue Component Styling Customizations */
+.p-inputtext, .p-password-input {
+  transition: all 0.2s ease !important;
 }
 
-/* Fade in animation */
+.p-inputtext:focus, .p-password:focus-within .p-password-input {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-glow) !important;
+}
+
+/* Animations */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.4s ease-out;
+  animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Slide in from left */
-@keyframes slideInLeft {
-  from { opacity: 0; transform: translateX(-12px); }
-  to { opacity: 1; transform: translateX(0); }
+@keyframes pulseNeon {
+  0%, 100% { filter: drop-shadow(0 0 2px var(--accent-glow)); }
+  50% { filter: drop-shadow(0 0 10px var(--accent-glow)); }
 }
 
-/* Glow pulse */
-@keyframes glowPulse {
-  0%, 100% { box-shadow: 0 0 8px var(--accent-glow); }
-  50% { box-shadow: 0 0 20px var(--accent-glow); }
+.pulse-neon {
+  animation: pulseNeon 3s infinite ease-in-out;
 }

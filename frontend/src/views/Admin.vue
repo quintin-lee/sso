@@ -1,7 +1,7 @@
 <template>
   <div class="admin-layout flex h-screen bg-[var(--bg-primary)]">
     <!-- Sidebar -->
-    <aside class="w-[var(--sidebar-width)] bg-[var(--bg-secondary)] border-r border-[var(--border-primary)] flex flex-col flex-shrink-0">
+    <aside class="w-[var(--sidebar-width)] bg-[var(--bg-secondary)]/80 backdrop-blur-xl border-r border-[var(--border-primary)] flex flex-col flex-shrink-0">
       <!-- Brand -->
       <div class="px-6 py-7 flex items-center gap-3 border-b border-[var(--border-primary)]">
         <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
@@ -69,7 +69,7 @@
     <!-- Main Content -->
     <main class="flex-grow flex flex-col min-w-0">
       <!-- Header -->
-      <header class="h-16 bg-[var(--bg-secondary)] border-b border-[var(--border-primary)] px-8 flex items-center justify-between sticky top-0 z-10">
+      <header class="h-16 bg-[var(--bg-secondary)]/80 backdrop-blur-xl border-b border-[var(--border-primary)] px-8 flex items-center justify-between sticky top-0 z-10">
         <div>
           <h1 class="text-xl font-extrabold text-[var(--text-primary)] leading-none tracking-tight">
             {{ $t(`sidebar.${currentTab}`) }}
