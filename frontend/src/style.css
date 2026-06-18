@@ -137,3 +137,27 @@ textarea::placeholder,
 .pulse-neon {
   animation: pulseNeon 3s infinite ease-in-out;
 }
+
+/* Password wrapper & eye icon positioning */
+.p-password {
+  position: relative !important;
+  display: block !important;
+  width: 100% !important;
+}
+.p-password .p-password-input {
+  padding-right: 2.75rem !important;
+}
+.p-password-toggle-icon,
+.p-password .p-password-toggle-icon {
+  position: absolute !important;
+  right: 1rem !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  cursor: pointer !important;
+  z-index: 10 !important;
+  color: var(--text-secondary) !important;
+}
+.p-password-toggle-icon:hover,
+.p-password .p-password-toggle-icon:hover {
+  color: var(--text-primary) !important;
+}

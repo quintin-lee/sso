@@ -297,12 +297,21 @@ const handleLogout = async () => {
   @apply bg-indigo-500 border-indigo-500;
 }
 
-/* Password */
+/* Password wrapper & inputs style */
 .p-password {
-  @apply w-full;
+  @apply w-full relative block;
 }
 .p-password .p-password-input {
-  @apply bg-[var(--bg-elevated)] border border-[var(--border-primary)] text-[var(--text-primary)] placeholder-[var(--text-muted)] rounded-xl px-4 py-2.5 text-sm w-full;
+  @apply bg-[var(--bg-elevated)] border border-[var(--border-primary)] text-[var(--text-primary)] placeholder-[var(--text-muted)] rounded-xl pl-4 pr-10 py-2.5 text-sm w-full;
+}
+.p-password-toggle-icon,
+.p-password .p-password-toggle-icon {
+  position: absolute !important;
+  right: 1rem !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  cursor: pointer;
+  z-index: 10;
 }
 
 /* Select dropdown */
