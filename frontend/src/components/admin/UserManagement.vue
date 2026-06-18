@@ -62,13 +62,21 @@
              <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('users.email') }}</label>
              <InputText v-model.trim="user.email" placeholder="john@example.com" />
           </div>
-          <div v-if="!user.id" class="flex flex-col gap-1.5">
+         <div v-if="!user.id" class="flex flex-col gap-1.5">
              <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('login.password') }}</label>
              <Password v-model="user.password" :feedback="false" placeholder="••••••••" toggleMask class="w-full" inputClass="w-full !bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-lg !px-4 !py-3 hover:!border-[var(--accent)] transition-all" required />
          </div>
+         <div class="flex flex-col gap-1.5" v-if="user.id">
+             <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('users.roles') }}</label>
+             <MultiSelect v-model="selectedRoles" :options="roleOptions" optionLabel="name" optionValue="id" :loading="rolesLoading" filter class="w-full" :maxSelectedLabels="3" />
+         </div>
+         <div class="flex flex-col gap-1.5" v-if="user.id">
+             <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('users.groups') }}</label>
+             <MultiSelect v-model="selectedGroups" :options="groupOptions" optionLabel="name" optionValue="id" :loading="groupsLoading" filter class="w-full" :maxSelectedLabels="3" />
+         </div>
          <div class="flex items-center gap-2 mt-4">
-            <Checkbox v-model="userStatus" :binary="true" inputId="userStatus" />
-            <label for="userStatus" class="text-sm font-semibold text-[var(--text-primary)]">{{ $t('common.active') }}</label>
+             <Checkbox v-model="userStatus" :binary="true" inputId="userStatus" />
+             <label for="userStatus" class="text-sm font-semibold text-[var(--text-primary)]">{{ $t('common.active') }}</label>
          </div>
        </div>
         <template #footer>
@@ -84,7 +92,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { adminService, type User } from '../../services/api';
+import { adminService, type User, type Role, type Group } from '../../services/api';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
@@ -92,6 +100,7 @@ import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Password from 'primevue/password';
 import Checkbox from 'primevue/checkbox';
+import MultiSelect from 'primevue/multiselect';
 import { useToast } from 'primevue/usetoast';
 import { useConfirm } from 'primevue/useconfirm';
 
@@ -114,6 +123,12 @@ const displayedUsers = computed(() => {
 });
 const userDialog = ref(false);
 const user = ref<Partial<User>>({});
+const selectedRoles = ref<number[]>([]);
+const selectedGroups = ref<number[]>([]);
+const roleOptions = ref<Role[]>([]);
+const groupOptions = ref<Group[]>([]);
+const rolesLoading = ref(false);
+const groupsLoading = ref(false);
 
 const userStatus = computed({
   get: () => user.value.status === 1,
@@ -142,13 +157,38 @@ const onUserPage = (event: any) => {
   loadUsers(event.page + 1);
 };
 
+const loadRoleGroupOptions = async () => {
+  if (roleOptions.value.length === 0) {
+    rolesLoading.value = true;
+    try {
+      const res = await adminService.listRoles(1, 200);
+      roleOptions.value = res.items;
+    } catch (_) { /* ignore */ }
+    rolesLoading.value = false;
+  }
+  if (groupOptions.value.length === 0) {
+    groupsLoading.value = true;
+    try {
+      const res = await adminService.listGroups(1, 200);
+      groupOptions.value = res.items;
+    } catch (_) { /* ignore */ }
+    groupsLoading.value = false;
+  }
+};
+
 const openCreateDialog = () => {
   user.value = { status: 1 };
+  selectedRoles.value = [];
+  selectedGroups.value = [];
+  loadRoleGroupOptions();
   userDialog.value = true;
 };
 
 const editUser = (data: User) => {
   user.value = { ...data };
+  selectedRoles.value = (data.roles || []).map(r => r.id);
+  selectedGroups.value = (data.groups || []).map(g => g.id);
+  loadRoleGroupOptions();
   userDialog.value = true;
 };
 
@@ -192,6 +232,23 @@ const saveUser = async () => {
   try {
     if (user.value.id) {
       await adminService.updateUser(user.value.id, user.value);
+
+      // Sync role assignments
+      const oldRoleIds = (user.value.roles || []).map(r => r.id);
+      const newRoleIds = selectedRoles.value;
+      const toAdd = newRoleIds.filter(id => !oldRoleIds.includes(id));
+      const toRemove = oldRoleIds.filter(id => !newRoleIds.includes(id));
+      await Promise.all(toAdd.map(id => adminService.assignRole(id, user.value.id!)));
+      await Promise.all(toRemove.map(id => adminService.unassignRole(id, user.value.id!)));
+
+      // Sync group memberships
+      const oldGroupIds = (user.value.groups || []).map(g => g.id);
+      const newGroupIds = selectedGroups.value;
+      const toAddG = newGroupIds.filter(id => !oldGroupIds.includes(id));
+      const toRemoveG = oldGroupIds.filter(id => !newGroupIds.includes(id));
+      await Promise.all(toAddG.map(id => adminService.addGroupMember(id, user.value.id!)));
+      await Promise.all(toRemoveG.map(id => adminService.removeGroupMember(id, user.value.id!)));
+
       toast.add({ severity: 'success', summary: t('common.success'), detail: 'User updated successfully', life: 3000 });
     } else {
       await adminService.createUser(user.value);

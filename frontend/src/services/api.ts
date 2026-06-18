@@ -316,6 +316,10 @@ export const adminService = {
     const { data } = await api.post(`/roles/${roleId}/assign`, { user_id: userId });
     return data;
   },
+  async unassignRole(roleId: number, userId: number) {
+    const { data } = await api.post(`/roles/${roleId}/unassign`, { user_id: userId });
+    return data;
+  },
 
   // Groups
   async listGroups(page = 1, limit = 10, q = ''): Promise<PaginatedResponse<Group>> {
@@ -332,6 +336,14 @@ export const adminService = {
   },
   async deleteGroup(id: number) {
     const { data } = await api.delete(`/groups/${id}`);
+    return data;
+  },
+  async addGroupMember(groupId: number, userId: number) {
+    const { data } = await api.post(`/groups/${groupId}/members`, { user_id: userId });
+    return data;
+  },
+  async removeGroupMember(groupId: number, userId: number) {
+    const { data } = await api.delete(`/groups/${groupId}/members/${userId}`);
     return data;
   },
 
