@@ -6,7 +6,7 @@
       <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between group hover:border-indigo-500 transition-all duration-300">
         <div class="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl group-hover:bg-indigo-500/20 transition-all"></div>
         <div class="flex justify-between items-start">
-          <span class="text-xs font-semibold text-slate-500 uppercase tracking-widest">{{ $t('dashboard.totalEvals') }}</span>
+          <span class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('dashboard.totalEvals') }}</span>
           <div class="w-8 h-8 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400">
             <i class="pi pi-shield"></i>
           </div>
@@ -21,14 +21,14 @@
       <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between group hover:border-rose-500 transition-all duration-300">
         <div class="absolute top-0 right-0 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl group-hover:bg-rose-500/20 transition-all"></div>
         <div class="flex justify-between items-start">
-          <span class="text-xs font-semibold text-slate-500 uppercase tracking-widest">{{ $t('dashboard.interceptionRate') }}</span>
+          <span class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('dashboard.interceptionRate') }}</span>
           <div class="w-8 h-8 bg-rose-500/10 rounded-xl flex items-center justify-center text-rose-400">
             <i class="pi pi-ban"></i>
           </div>
         </div>
         <div class="mt-4 flex items-baseline gap-2">
           <h3 class="text-3xl font-extrabold text-white tracking-tight">{{ interceptionRate.toFixed(1) }}%</h3>
-          <span class="text-xs font-semibold" :class="interceptionRate > 20 ? 'text-rose-400' : 'text-slate-400'">
+          <span class="text-xs font-semibold" :class="interceptionRate > 20 ? 'text-rose-400' : 'text-[var(--text-secondary)]'">
             {{ interceptionRate > 20 ? 'High' : 'Normal' }}
           </span>
         </div>
@@ -38,7 +38,7 @@
       <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between group hover:border-amber-500 transition-all duration-300">
         <div class="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all"></div>
         <div class="flex justify-between items-start">
-          <span class="text-xs font-semibold text-slate-500 uppercase tracking-widest">{{ $t('dashboard.avgLatency') }}</span>
+          <span class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('dashboard.avgLatency') }}</span>
           <div class="w-8 h-8 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-400">
             <i class="pi pi-clock"></i>
           </div>
@@ -53,7 +53,7 @@
       <div class="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between group hover:border-emerald-500 transition-all duration-300">
         <div class="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all"></div>
         <div class="flex justify-between items-start">
-          <span class="text-xs font-semibold text-slate-500 uppercase tracking-widest">{{ $t('dashboard.cacheHitRate') }}</span>
+          <span class="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('dashboard.cacheHitRate') }}</span>
           <div class="w-8 h-8 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-400">
             <i class="pi pi-bolt"></i>
           </div>
@@ -68,7 +68,7 @@
     <!-- Charts Section -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
       <!-- Active User Trends (Line Chart) -->
-      <div class="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl">
+      <div class="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-2xl p-6 shadow-xl">
         <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
           <i class="pi pi-chart-line text-indigo-400"></i>
           <span>{{ $t('dashboard.activeUserTrends') }}</span>
@@ -105,7 +105,7 @@
       </div>
 
       <!-- Policy Latency Bar Chart -->
-      <div class="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl">
+      <div class="bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-2xl p-6 shadow-xl">
         <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
           <i class="pi pi-chart-bar text-amber-400"></i>
           <span>{{ $t('dashboard.policyLatency') }}</span>
@@ -147,9 +147,9 @@
         <i class="pi pi-exclamation-triangle text-rose-500 animate-pulse"></i>
         <span>{{ $t('dashboard.securityWarnings') }}</span>
       </h3>
-      <div v-if="alerts.length === 0" class="flex flex-col items-center justify-center py-10 border border-dashed border-slate-800 rounded-xl bg-slate-900/10">
+      <div v-if="alerts.length === 0" class="flex flex-col items-center justify-center py-10 border border-dashed border-[var(--border-primary)] rounded-xl bg-[var(--bg-elevated)]/50">
         <i class="pi pi-verified text-emerald-400 text-3xl mb-3"></i>
-        <p class="text-slate-400 text-sm font-medium">{{ $t('dashboard.noWarnings') }}</p>
+        <p class="text-[var(--text-secondary)] text-sm font-medium">{{ $t('dashboard.noWarnings') }}</p>
       </div>
       <div v-else class="space-y-4">
         <div v-for="(a, idx) in alerts" :key="idx" class="flex gap-4 p-4 border border-rose-900/30 rounded-xl" :class="a.severity === 'high' ? 'bg-rose-950/20' : 'bg-amber-950/10 border-amber-900/30'">
@@ -160,8 +160,8 @@
             <h4 class="font-bold" :class="a.severity === 'high' ? 'text-rose-400' : 'text-amber-400'">
               {{ a.severity === 'high' ? 'Access Anomaly Alert' : 'System Performance Warning' }}
             </h4>
-            <p class="text-slate-400 text-sm mt-1">{{ a.message }}</p>
-            <span class="text-[10px] text-slate-600 font-mono mt-2 block">{{ a.time }}</span>
+            <p class="text-[var(--text-secondary)] text-sm mt-1">{{ a.message }}</p>
+            <span class="text-[10px] text-[var(--text-muted)] font-mono mt-2 block">{{ a.time }}</span>
           </div>
         </div>
       </div>

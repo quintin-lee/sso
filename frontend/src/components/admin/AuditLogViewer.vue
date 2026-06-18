@@ -1,17 +1,17 @@
 <template>
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+  <div class="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] overflow-hidden">
     <DataTable :value="logs" paginator :rows="20" :loading="loading">
       <!-- Time Column -->
       <Column field="timestamp_ms" :header="$t('sidebar.logs')" class="w-48">
         <template #body="slotProps">
-          <span class="text-xs text-slate-500 font-mono">
+          <span class="text-xs text-[var(--text-muted)] font-mono">
             {{ new Date(slotProps.data.timestamp_ms).toLocaleString() }}
           </span>
         </template>
       </Column>
 
       <!-- User ID Column -->
-      <Column field="user_id" :header="$t('users.username')" class="w-24 font-mono text-xs text-slate-700">
+      <Column field="user_id" :header="$t('users.username')" class="w-24 font-mono text-xs text-[var(--text-secondary)]">
         <template #body="slotProps">
           <span>ID: {{ slotProps.data.user_id }}</span>
         </template>
@@ -20,7 +20,7 @@
       <!-- Decision Column -->
       <Column field="decision" :header="$t('policies.effect')" class="w-32">
         <template #body="slotProps">
-          <span :class="slotProps.data.decision === 'ALLOW' ? 'text-green-600 bg-green-50 px-2.5 py-1 rounded-lg text-xs font-extrabold' : 'text-red-600 bg-red-50 px-2.5 py-1 rounded-lg text-xs font-extrabold'">
+           <span :class="slotProps.data.decision === 'ALLOW' ? 'text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg text-xs font-extrabold' : 'text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-lg text-xs font-extrabold'">
             {{ slotProps.data.decision }}
           </span>
         </template>
@@ -29,7 +29,7 @@
       <!-- Cache Hit Column -->
       <Column field="cache_hit" :header="$t('dashboard.cacheHitRate')" class="w-32">
         <template #body="slotProps">
-          <span :class="slotProps.data.cache_hit ? 'text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-xs font-semibold' : 'text-slate-500 bg-slate-50 px-2 py-0.5 rounded text-xs font-semibold'">
+           <span :class="slotProps.data.cache_hit ? 'text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded text-xs font-semibold' : 'text-[var(--text-muted)] bg-[var(--bg-elevated)] px-2 py-0.5 rounded text-xs font-semibold'">
             {{ slotProps.data.cache_hit ? 'HIT' : 'MISS' }}
           </span>
         </template>
@@ -38,14 +38,14 @@
       <!-- Duration Column -->
       <Column field="duration_ms" :header="$t('dashboard.avgLatency')" class="w-32">
         <template #body="slotProps">
-          <span class="text-xs font-semibold font-mono text-slate-600">
+          <span class="text-xs font-semibold font-mono text-[var(--text-secondary)]">
             {{ slotProps.data.duration_ms }} ms
           </span>
         </template>
       </Column>
 
       <!-- Trace/Details Column -->
-      <Column field="trace" :header="$t('policies.rules')" class="font-mono text-xs text-slate-400 truncate max-w-xs"></Column>
+      <Column field="trace" :header="$t('policies.rules')" class="font-mono text-xs text-[var(--text-muted)] truncate max-w-xs"></Column>
     </DataTable>
   </div>
 </template>

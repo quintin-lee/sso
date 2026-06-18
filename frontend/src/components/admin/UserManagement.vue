@@ -1,16 +1,16 @@
 <template>
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+  <div class="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] overflow-hidden">
     <DataTable :value="users" paginator :rows="10" :totalRecords="totalUsers" lazy @page="onUserPage" :loading="loading" class="p-datatable-sm">
       <Column field="id" :header="$t('common.id')" class="w-20 font-mono text-xs"></Column>
       <Column field="username" :header="$t('users.username')" class="font-semibold">
         <template #body="slotProps">
           <div class="flex items-center gap-3">
-            <div class="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-xs font-bold text-indigo-600">
+            <div class="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-xs font-bold text-indigo-400">
               {{ slotProps.data.username[0].toUpperCase() }}
             </div>
             <div>
-              <div class="text-gray-900">{{ slotProps.data.username }}</div>
-              <div class="text-xs text-gray-400">{{ slotProps.data.email }}</div>
+              <div class="text-[var(--text-primary)]">{{ slotProps.data.username }}</div>
+              <div class="text-xs text-[var(--text-muted)]">{{ slotProps.data.email }}</div>
             </div>
           </div>
         </template>
@@ -25,7 +25,7 @@
       </Column>
       <Column field="created_at" :header="$t('common.created')">
         <template #body="slotProps">
-          <span class="text-gray-500 text-sm">
+          <span class="text-[var(--text-muted)] text-sm">
             {{ new Date(slotProps.data.created_at * 1000).toLocaleDateString() }}
           </span>
         </template>
@@ -40,31 +40,31 @@
       </Column>
     </DataTable>
 
-    <Dialog v-model:visible="userDialog" :header="user.id ? $t('users.update') : $t('users.create')" modal class="w-full max-w-lg" :pt="{ mask: { style: 'backdrop-filter: blur(4px)' } }">
-       <div class="space-y-4 py-4">
-         <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">{{ $t('users.username') }}</label>
-            <InputText v-model.trim="user.username" class="rounded-xl border-gray-200" placeholder="johndoe" autofocus />
+    <Dialog v-model:visible="userDialog" :header="user.id ? $t('users.update') : $t('users.create')" modal class="w-full max-w-lg">
+       <div class="space-y-4">
+         <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('users.username') }}</label>
+            <InputText v-model.trim="user.username" placeholder="johndoe" autofocus />
          </div>
-         <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">{{ $t('users.displayName') }}</label>
-            <InputText v-model.trim="user.display_name" class="rounded-xl border-gray-200" placeholder="John Doe" />
+         <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('users.displayName') }}</label>
+            <InputText v-model.trim="user.display_name" placeholder="John Doe" />
          </div>
-         <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">{{ $t('users.email') }}</label>
-            <InputText v-model.trim="user.email" class="rounded-xl border-gray-200" placeholder="john@example.com" />
+         <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('users.email') }}</label>
+            <InputText v-model.trim="user.email" placeholder="john@example.com" />
          </div>
          <div class="flex items-center gap-2 mt-4">
             <Checkbox v-model="userStatus" :binary="true" inputId="userStatus" />
-            <label for="userStatus" class="text-sm font-semibold text-gray-700">{{ $t('common.active') }}</label>
+            <label for="userStatus" class="text-sm font-semibold text-[var(--text-primary)]">{{ $t('common.active') }}</label>
          </div>
        </div>
-       <template #footer>
-          <div class="flex gap-2 justify-end pt-4">
-            <Button :label="$t('common.cancel')" text severity="secondary" @click="userDialog = false" class="rounded-xl" />
-            <Button :label="$t('common.save')" @click="saveUser" class="p-button-primary rounded-xl px-6" />
-          </div>
-       </template>
+        <template #footer>
+           <div class="flex gap-2 justify-end">
+             <Button :label="$t('common.cancel')" text severity="secondary" @click="userDialog = false" class="!rounded-xl !text-[var(--text-muted)] hover:!text-[var(--text-primary)]" />
+             <Button :label="$t('common.save')" @click="saveUser" class="!rounded-xl !px-6 !bg-indigo-500 hover:!bg-indigo-400 !text-white !border-none" />
+           </div>
+        </template>
     </Dialog>
   </div>
 </template>
@@ -96,7 +96,7 @@ const userStatus = computed({
 
 const statusBadgeClass = (status: number) => [
   'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider',
-  status === 1 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+  status === 1 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
 ];
 
 const loadUsers = async (page = 1) => {

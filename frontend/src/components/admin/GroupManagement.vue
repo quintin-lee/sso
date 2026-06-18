@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+  <div class="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] overflow-hidden">
     <DataTable :value="groups" paginator :rows="10" :loading="loading">
       <Column field="id" :header="$t('common.id')" class="w-20 font-mono text-xs"></Column>
       <Column field="name" :header="$t('common.name')" class="font-semibold"></Column>
@@ -15,21 +15,21 @@
     </DataTable>
 
     <Dialog v-model:visible="groupDialog" :header="group.id ? $t('groups.update') : $t('groups.create')" modal class="w-full max-w-lg">
-       <div class="space-y-4 py-4">
-         <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">{{ $t('common.name') }}</label>
-            <InputText v-model.trim="group.name" class="rounded-xl border-gray-200" placeholder="Engineering" />
+       <div class="space-y-4">
+         <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('common.name') }}</label>
+            <InputText v-model.trim="group.name" placeholder="Engineering" />
          </div>
-         <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">{{ $t('common.description') }}</label>
-            <InputText v-model.trim="group.description" class="rounded-xl border-gray-200" placeholder="Engineering department" />
+         <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('common.description') }}</label>
+            <InputText v-model.trim="group.description" placeholder="Engineering department" />
          </div>
        </div>
        <template #footer>
-          <div class="flex gap-2 justify-end pt-4">
-            <Button :label="$t('common.cancel')" text severity="secondary" @click="groupDialog = false" />
-            <Button :label="$t('common.save')" @click="saveGroup" class="p-button-primary rounded-xl px-6" />
-          </div>
+         <div class="flex gap-2 justify-end">
+            <Button :label="$t('common.cancel')" text severity="secondary" @click="groupDialog = false" class="!rounded-xl !text-[var(--text-muted)] hover:!text-[var(--text-primary)]" />
+            <Button :label="$t('common.save')" @click="saveGroup" class="!rounded-xl !px-6 !bg-indigo-500 hover:!bg-indigo-400 !text-white !border-none" />
+         </div>
        </template>
     </Dialog>
   </div>

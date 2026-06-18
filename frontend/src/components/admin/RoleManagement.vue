@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+  <div class="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] overflow-hidden">
     <DataTable :value="roles" paginator :rows="10" :loading="loading">
       <Column field="id" :header="$t('common.id')" class="w-20 font-mono text-xs"></Column>
       <Column field="name" :header="$t('common.name')" class="font-semibold"></Column>
@@ -22,21 +22,21 @@
     </DataTable>
 
     <Dialog v-model:visible="roleDialog" :header="role.id ? $t('roles.update') : $t('roles.create')" modal class="w-full max-w-lg">
-       <div class="space-y-4 py-4">
-         <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">{{ $t('common.name') }}</label>
-            <InputText v-model.trim="role.name" class="rounded-xl border-gray-200" placeholder="admin" />
+       <div class="space-y-4">
+         <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('common.name') }}</label>
+            <InputText v-model.trim="role.name" placeholder="admin" />
          </div>
-         <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">{{ $t('common.description') }}</label>
-            <InputText v-model.trim="role.description" class="rounded-xl border-gray-200" placeholder="Administrator role" />
+         <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('common.description') }}</label>
+            <InputText v-model.trim="role.description" placeholder="Administrator role" />
          </div>
        </div>
        <template #footer>
-          <div class="flex gap-2 justify-end pt-4">
-            <Button :label="$t('common.cancel')" text severity="secondary" @click="roleDialog = false" />
-            <Button :label="$t('common.save')" @click="saveRole" class="p-button-primary rounded-xl px-6" />
-          </div>
+         <div class="flex gap-2 justify-end">
+            <Button :label="$t('common.cancel')" text severity="secondary" @click="roleDialog = false" class="!rounded-xl !text-[var(--text-muted)] hover:!text-[var(--text-primary)]" />
+            <Button :label="$t('common.save')" @click="saveRole" class="!rounded-xl !px-6 !bg-indigo-500 hover:!bg-indigo-400 !text-white !border-none" />
+         </div>
        </template>
     </Dialog>
   </div>
@@ -62,7 +62,7 @@ const role = ref<Partial<Role>>({});
 
 const statusBadgeClass = (status: number) => [
   'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider',
-  status === 1 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+  status === 1 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
 ];
 
 const loadRoles = async () => {

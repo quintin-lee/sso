@@ -1,18 +1,18 @@
 <template>
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+  <div class="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-primary)] overflow-hidden">
     <DataTable :value="policies" paginator :rows="10" :loading="loading">
       <Column field="id" :header="$t('common.id')" class="w-20 font-mono text-xs"></Column>
       <Column field="name" :header="$t('common.name')" class="font-semibold"></Column>
       <Column field="strategy_name" :header="$t('policies.strategy')">
         <template #body="slotProps">
-          <span class="px-2 py-1 bg-indigo-55 bg-indigo-50 text-indigo-600 text-xs font-bold rounded uppercase">
+          <span class="px-2 py-1 bg-indigo-500/10 text-indigo-400 text-xs font-bold rounded uppercase">
             {{ getStrategyName(slotProps.data.strategy_type) }}
           </span>
         </template>
       </Column>
       <Column field="effect" :header="$t('policies.effect')">
         <template #body="slotProps">
-          <span :class="slotProps.data.effect === 1 ? 'text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold' : 'text-red-600 bg-red-50 px-2 py-1 rounded text-xs font-bold'">
+          <span :class="slotProps.data.effect === 1 ? 'text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded text-xs font-bold' : 'text-rose-400 bg-rose-500/10 px-2 py-1 rounded text-xs font-bold'">
             {{ slotProps.data.effect === 1 ? $t('policies.allow') : $t('policies.deny') }}
           </span>
         </template>
@@ -28,19 +28,19 @@
     </DataTable>
 
     <!-- Dialog for Edit/Create -->
-    <Dialog v-model:visible="policyDialog" :header="policy.id ? $t('policies.update') : $t('policies.create')" modal class="w-full max-w-2xl" :pt="{ mask: { style: 'backdrop-filter: blur(4px)' } }">
-       <div class="space-y-6 py-4">
+    <Dialog v-model:visible="policyDialog" :header="policy.id ? $t('policies.update') : $t('policies.create')" modal class="w-full max-w-2xl">
+       <div class="space-y-5">
          <!-- Name -->
-         <div class="flex flex-col gap-2">
-            <label class="text-sm font-bold text-gray-700">{{ $t('common.name') }}</label>
-            <InputText v-model.trim="policy.name" class="rounded-xl border-gray-200" placeholder="Allow Dashboard View" />
+         <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('common.name') }}</label>
+            <InputText v-model.trim="policy.name" placeholder="Allow Dashboard View" />
          </div>
 
          <!-- Strategy Type & Effect Grid -->
          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-           <div class="flex flex-col gap-2">
-              <label class="text-sm font-bold text-gray-700">{{ $t('policies.strategy') }}</label>
-              <select v-model="policy.strategy_type" class="p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+           <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.strategy') }}</label>
+              <select v-model="policy.strategy_type" class="!bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !rounded-xl !px-3 !py-2.5 !text-sm">
                 <option :value="1">Functional (功能权限)</option>
                 <option :value="2">API (接口权限)</option>
                 <option :value="3">Data (数据权限)</option>
@@ -51,9 +51,9 @@
               </select>
            </div>
 
-           <div class="flex flex-col gap-2">
-              <label class="text-sm font-bold text-gray-700">{{ $t('policies.effect') }}</label>
-              <select v-model="policy.effect" class="p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+           <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.effect') }}</label>
+              <select v-model="policy.effect" class="!bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !rounded-xl !px-3 !py-2.5 !text-sm">
                 <option :value="1">{{ $t('policies.allow') }}</option>
                 <option :value="2">{{ $t('policies.deny') }}</option>
               </select>
@@ -61,30 +61,30 @@
          </div>
 
          <!-- Editor Mode Switch -->
-         <div class="flex items-center justify-between border-t border-gray-100 pt-4">
-           <span class="text-sm font-bold text-gray-700">{{ $t('policies.rules') }}</span>
-           <div class="flex bg-gray-100 p-1 rounded-xl">
-             <button @click="editorMode = 'visual'" class="py-1 px-3 text-xs font-bold rounded-lg transition-all" :class="editorMode === 'visual' ? 'bg-white text-indigo-700 shadow' : 'text-gray-500 hover:text-gray-900'">
-               {{ $t('policies.visualEditor') }}
+         <div class="flex items-center justify-between border-t border-[var(--border-primary)] pt-4">
+           <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.rules') }}</span>
+           <div class="flex bg-[var(--bg-elevated)] p-1 rounded-xl border border-[var(--border-primary)]">
+             <button @click="editorMode = 'visual'" class="py-1.5 px-3.5 text-xs font-bold rounded-lg transition-all" :class="editorMode === 'visual' ? 'bg-indigo-500/15 text-indigo-400 shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'">
+                {{ $t('policies.visualEditor') }}
              </button>
-             <button @click="editorMode = 'code'" class="py-1 px-3 text-xs font-bold rounded-lg transition-all" :class="editorMode === 'code' ? 'bg-white text-indigo-700 shadow' : 'text-gray-500 hover:text-gray-900'">
-               {{ $t('policies.codeEditor') }}
+             <button @click="editorMode = 'code'" class="py-1.5 px-3.5 text-xs font-bold rounded-lg transition-all" :class="editorMode === 'code' ? 'bg-indigo-500/15 text-indigo-400 shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'">
+                {{ $t('policies.codeEditor') }}
              </button>
            </div>
          </div>
 
          <!-- Visual Editor -->
-         <div v-if="editorMode === 'visual'" class="bg-gray-50 border border-gray-100 rounded-2xl p-5 space-y-4">
-           
+         <div v-if="editorMode === 'visual'" class="bg-[var(--bg-elevated)] border border-[var(--border-primary)] rounded-2xl p-5 space-y-4">
+
            <!-- 1. Functional Strategy Visual Builder -->
            <div v-if="policy.strategy_type === 1" class="space-y-3">
              <div class="flex justify-between items-center">
-               <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">{{ $t('policies.functionalCode') }}</span>
+               <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('policies.functionalCode') }}</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('functions')" />
              </div>
              <div v-for="(row, idx) in visualState.functions" :key="idx" class="flex gap-2 items-center">
-               <InputText v-model="row.code" class="flex-grow rounded-xl border-gray-200 text-sm" placeholder="menu_admin_dashboard" />
-               <select v-model="row.effect" class="p-2.5 bg-white border border-gray-250 rounded-xl text-xs font-bold">
+               <InputText v-model="row.code" class="flex-grow text-sm" placeholder="menu_admin_dashboard" />
+               <select v-model="row.effect" class="!p-2 !text-xs !font-bold">
                  <option value="allow">ALLOW</option>
                  <option value="deny">DENY</option>
                </select>
@@ -95,19 +95,19 @@
            <!-- 2. API Strategy Visual Builder -->
            <div v-else-if="policy.strategy_type === 2" class="space-y-3">
              <div class="flex justify-between items-center">
-               <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">API Endpoint Rules</span>
+               <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">API Endpoint Rules</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('endpoints')" />
              </div>
              <div v-for="(row, idx) in visualState.endpoints" :key="idx" class="flex gap-2 items-center">
-               <select v-model="row.method" class="p-2.5 bg-white border border-gray-250 rounded-xl text-xs font-bold">
+               <select v-model="row.method" class="!p-2 !text-xs !font-bold">
                  <option value="GET">GET</option>
                  <option value="POST">POST</option>
                  <option value="PUT">PUT</option>
                  <option value="DELETE">DELETE</option>
                  <option value="*">*</option>
                </select>
-               <InputText v-model="row.path" class="flex-grow rounded-xl border-gray-200 text-sm" placeholder="/api/v1/users/*" />
-               <select v-model="row.effect" class="p-2.5 bg-white border border-gray-255 rounded-xl text-xs font-bold">
+               <InputText v-model="row.path" class="flex-grow text-sm" placeholder="/api/v1/users/*" />
+               <select v-model="row.effect" class="!p-2 !text-xs !font-bold">
                  <option value="allow">ALLOW</option>
                  <option value="deny">DENY</option>
                </select>
@@ -118,25 +118,25 @@
            <!-- 3. Data Strategy Visual Builder -->
            <div v-else-if="policy.strategy_type === 3" class="space-y-4">
              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div class="flex flex-col gap-2">
-                 <label class="text-xs font-bold text-gray-700">{{ $t('policies.resourceType') }}</label>
-                 <InputText v-model="visualState.resource_type" class="rounded-xl border-gray-200 text-sm" placeholder="user" />
+               <div class="flex flex-col gap-1.5">
+                 <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.resourceType') }}</label>
+                 <InputText v-model="visualState.resource_type" class="text-sm" placeholder="user" />
                </div>
-               <div class="flex flex-col gap-2">
-                 <label class="text-xs font-bold text-gray-700">{{ $t('policies.allowedFields') }} (comma-separated)</label>
-                 <InputText v-model="visualState.allowed_fields" class="rounded-xl border-gray-200 text-sm" placeholder="id, username, email" />
+               <div class="flex flex-col gap-1.5">
+                 <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.allowedFields') }} (comma-separated)</label>
+                 <InputText v-model="visualState.allowed_fields" class="text-sm" placeholder="id, username, email" />
                </div>
              </div>
 
              <!-- Conditions -->
-             <div class="border-t border-gray-100 pt-3 space-y-3">
+             <div class="border-t border-[var(--border-primary)] pt-3 space-y-3">
                <div class="flex justify-between items-center">
-                 <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">{{ $t('policies.conditions') }}</span>
+                 <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('policies.conditions') }}</span>
                  <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('data_conditions')" />
                </div>
                <div v-for="(row, idx) in visualState.data_conditions" :key="idx" class="flex gap-2 items-center">
-                 <InputText v-model="row.field" class="w-1/3 rounded-xl border-gray-200 text-sm" placeholder="field" />
-                 <select v-model="row.op" class="p-2.5 bg-white border border-gray-250 rounded-xl text-xs font-bold">
+                 <InputText v-model="row.field" class="w-1/3 text-sm" placeholder="field" />
+                 <select v-model="row.op" class="!p-2 !text-xs !font-bold">
                    <option value="eq">== (eq)</option>
                    <option value="neq">!= (neq)</option>
                    <option value="contains">contains</option>
@@ -146,8 +146,8 @@
                    <option value="lt">&lt; (lt)</option>
                    <option value="lte">&lt;= (lte)</option>
                  </select>
-                 <InputText v-model="row.value" class="flex-grow rounded-xl border-gray-200 text-sm" placeholder="value" />
-                 <Button icon="pi pi-trash" severity="danger" text rounded @click="removeVisualRow('data_conditions', idx)" />
+                 <InputText v-model="row.value" class="flex-grow text-sm" placeholder="value" />
+                 <Button icon="pi pi-trash" severity="danger" text rounded @click="removeVisualRow('data_conditions', idx)" class="!text-rose-400" />
                </div>
              </div>
            </div>
@@ -155,12 +155,12 @@
            <!-- 4. RBAC Strategy Visual Builder -->
            <div v-else-if="policy.strategy_type === 4" class="space-y-3">
              <div class="flex justify-between items-center">
-               <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">Role Membership</span>
+               <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Role Membership</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('roles')" />
              </div>
              <div v-for="(row, idx) in visualState.roles" :key="idx" class="flex gap-2 items-center">
-               <InputText v-model="row.name" class="flex-grow rounded-xl border-gray-200 text-sm" placeholder="admin" />
-               <select v-model="row.effect" class="p-2.5 bg-white border border-gray-250 rounded-xl text-xs font-bold">
+               <InputText v-model="row.name" class="flex-grow text-sm" placeholder="admin" />
+               <select v-model="row.effect" class="!p-2 !text-xs !font-bold">
                  <option value="allow">ALLOW</option>
                  <option value="deny">DENY</option>
                </select>
@@ -171,17 +171,17 @@
            <!-- 5. Location Strategy Visual Builder -->
            <div v-else-if="policy.strategy_type === 5" class="space-y-3">
              <div class="flex justify-between items-center">
-               <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">Location Rules</span>
+               <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Location Rules</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('locations')" />
              </div>
              <div v-for="(row, idx) in visualState.locations" :key="idx" class="flex gap-2 items-center">
-               <select v-model="row.type" class="p-2.5 bg-white border border-gray-250 rounded-xl text-xs font-bold">
+               <select v-model="row.type" class="!p-2 !text-xs !font-bold">
                  <option value="ip">IP</option>
                  <option value="cidr">CIDR</option>
                  <option value="country">Country</option>
                </select>
-               <InputText v-model="row.value" class="flex-grow rounded-xl border-gray-200 text-sm" placeholder="192.168.1.1 or CN" />
-               <select v-model="row.effect" class="p-2.5 bg-white border border-gray-255 rounded-xl text-xs font-bold">
+               <InputText v-model="row.value" class="flex-grow text-sm" placeholder="192.168.1.1 or CN" />
+               <select v-model="row.effect" class="!p-2 !text-xs !font-bold">
                  <option value="allow">ALLOW</option>
                  <option value="deny">DENY</option>
                </select>
@@ -189,20 +189,19 @@
              </div>
            </div>
 
-           <!-- 6. ABAC Strategy (Lace Tree/Condition Editor) -->
+           <!-- 6. ABAC Strategy (Condition Editor) -->
            <div v-else-if="policy.strategy_type === 6" class="space-y-4">
-             <!-- ABAC Options -->
              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div class="flex flex-col gap-2">
-                 <label class="text-xs font-bold text-gray-700">{{ $t('policies.logic') }}</label>
-                 <select v-model="visualState.abac_logic" class="p-2 bg-white border border-gray-200 rounded-xl text-xs font-bold">
+               <div class="flex flex-col gap-1.5">
+                 <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.logic') }}</label>
+                 <select v-model="visualState.abac_logic" class="!p-2 !text-xs !font-bold">
                    <option value="and">AND (All match)</option>
                    <option value="or">OR (Any match)</option>
                  </select>
                </div>
-               <div class="flex flex-col gap-2">
-                 <label class="text-xs font-bold text-gray-700">{{ $t('policies.effect') }}</label>
-                 <select v-model="visualState.abac_effect" class="p-2 bg-white border border-gray-200 rounded-xl text-xs font-bold">
+               <div class="flex flex-col gap-1.5">
+                 <label class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">{{ $t('policies.effect') }}</label>
+                 <select v-model="visualState.abac_effect" class="!p-2 !text-xs !font-bold">
                    <option value="allow">ALLOW</option>
                    <option value="deny">DENY</option>
                  </select>
@@ -210,24 +209,19 @@
              </div>
 
              <!-- ABAC Conditions List -->
-             <div class="border-t border-gray-100 pt-3 space-y-3">
+             <div class="border-t border-[var(--border-primary)] pt-3 space-y-3">
                <div class="flex justify-between items-center">
-                 <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">{{ $t('policies.conditions') }}</span>
+                 <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('policies.conditions') }}</span>
                  <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('abac_conditions')" />
                </div>
-               <div v-for="(row, idx) in visualState.abac_conditions" :key="idx" class="flex gap-2 items-center flex-wrap md:flex-nowrap bg-white p-3 rounded-xl border border-gray-200">
-                 <!-- Attribute Source -->
-                 <select v-model="row.source" class="p-2.5 bg-gray-50 border border-gray-250 rounded-xl text-xs font-semibold">
+               <div v-for="(row, idx) in visualState.abac_conditions" :key="idx" class="flex gap-2 items-center flex-wrap md:flex-nowrap bg-[var(--bg-card)] p-3 rounded-xl border border-[var(--border-primary)]">
+                 <select v-model="row.source" class="!p-2 !text-xs !font-semibold">
                    <option value="subject">Subject (User)</option>
                    <option value="resource">Resource</option>
                    <option value="environment">Environment</option>
                  </select>
-                 
-                 <!-- Attribute Name -->
-                 <InputText v-model="row.attr" class="w-full md:w-36 rounded-xl border-gray-200 text-sm" placeholder="age, dept, time" />
-                 
-                 <!-- Operator -->
-                 <select v-model="row.op" class="p-2.5 bg-gray-50 border border-gray-250 rounded-xl text-xs font-bold">
+                 <InputText v-model="row.attr" class="w-full md:w-36 text-sm" placeholder="age, dept, time" />
+                 <select v-model="row.op" class="!p-2 !text-xs !font-bold">
                    <option value="eq">== (eq)</option>
                    <option value="neq">!= (neq)</option>
                    <option value="contains">contains</option>
@@ -237,10 +231,7 @@
                    <option value="lt">&lt; (lt)</option>
                    <option value="lte">&lt;= (lte)</option>
                  </select>
-
-                 <!-- Expected Value -->
-                 <InputText v-model="row.value" class="flex-grow rounded-xl border-gray-200 text-sm" placeholder="18, HR, etc." />
-                 
+                 <InputText v-model="row.value" class="flex-grow text-sm" placeholder="18, HR, etc." />
                  <Button icon="pi pi-trash" severity="danger" text rounded @click="removeVisualRow('abac_conditions', idx)" />
                </div>
              </div>
@@ -249,12 +240,12 @@
            <!-- 7. LBAC Strategy Visual Builder -->
            <div v-else-if="policy.strategy_type === 7" class="space-y-3">
              <div class="flex justify-between items-center">
-               <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">{{ $t('policies.labelName') }}</span>
+               <span class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">{{ $t('policies.labelName') }}</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('labels')" />
              </div>
              <div v-for="(row, idx) in visualState.labels" :key="idx" class="flex gap-2 items-center">
-               <InputText v-model="row.name" class="flex-grow rounded-xl border-gray-200 text-sm" placeholder="CONFIDENTIAL" />
-               <select v-model="row.effect" class="p-2.5 bg-white border border-gray-250 rounded-xl text-xs font-bold">
+               <InputText v-model="row.name" class="flex-grow text-sm" placeholder="CONFIDENTIAL" />
+               <select v-model="row.effect" class="!p-2 !text-xs !font-bold">
                  <option value="allow">ALLOW</option>
                  <option value="deny">DENY</option>
                </select>
@@ -266,17 +257,17 @@
 
          <!-- Code/JSON Editor -->
          <div v-else class="flex flex-col gap-2">
-            <textarea v-model.trim="policy.rules" class="w-full h-64 rounded-xl border-gray-200 p-3 font-mono text-sm" placeholder='{"action": "read", "resource": "dashboard"}'></textarea>
+             <textarea v-model.trim="policy.rules" class="w-full h-64 bg-[var(--bg-elevated)] border border-[var(--border-primary)] text-[var(--text-primary)] rounded-xl p-4 font-mono text-sm" placeholder='{"action": "read", "resource": "dashboard"}'></textarea>
          </div>
        </div>
 
        <!-- Modal Footer -->
-       <template #footer>
-          <div class="flex gap-2 justify-end pt-4">
-            <Button :label="$t('common.cancel')" text severity="secondary" @click="policyDialog = false" />
-            <Button :label="$t('common.save')" @click="savePolicy" class="p-button-primary rounded-xl px-6" />
-          </div>
-       </template>
+        <template #footer>
+           <div class="flex gap-2 justify-end">
+             <Button :label="$t('common.cancel')" text severity="secondary" @click="policyDialog = false" class="!rounded-xl !text-[var(--text-muted)] hover:!text-[var(--text-primary)]" />
+             <Button :label="$t('common.save')" @click="savePolicy" class="!rounded-xl !px-6 !bg-indigo-500 hover:!bg-indigo-400 !text-white !border-none" />
+           </div>
+        </template>
     </Dialog>
   </div>
 </template>

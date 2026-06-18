@@ -1,24 +1,28 @@
 <template>
-  <div class="admin-layout flex h-screen bg-gray-50 font-sans">
+  <div class="admin-layout flex h-screen bg-[var(--bg-primary)]">
     <!-- Sidebar -->
-    <aside class="w-72 bg-white border-r border-gray-200 flex flex-col shadow-sm">
-      <div class="p-8 flex items-center gap-3 border-b border-gray-100">
-        <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100">
-          <i class="pi pi-shield text-white text-xl"></i>
+    <aside class="w-[var(--sidebar-width)] bg-[var(--bg-secondary)] border-r border-[var(--border-primary)] flex flex-col flex-shrink-0">
+      <!-- Brand -->
+      <div class="px-6 py-7 flex items-center gap-3 border-b border-[var(--border-primary)]">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <i class="pi pi-shield text-white text-lg"></i>
         </div>
         <div>
-          <h2 class="text-lg font-bold text-gray-900 leading-none">SSO Admin</h2>
-          <span class="text-xs text-gray-500 font-medium">{{ $t('sidebar.controlCenter') }}</span>
+          <h2 class="text-lg font-extrabold text-[var(--text-primary)] leading-none tracking-tight">SSO Admin</h2>
+          <span class="text-[11px] text-[var(--text-muted)] font-medium tracking-wider uppercase">{{ $t('sidebar.controlCenter') }}</span>
         </div>
       </div>
-      
-      <nav class="flex-grow py-6 px-4 space-y-1">
+
+      <!-- Navigation -->
+      <nav class="flex-grow py-5 px-3 space-y-0.5 overflow-y-auto">
+        <!-- Dashboard -->
         <button @click="currentTab = 'dashboard'" :class="tabClass('dashboard')">
           <i class="pi pi-chart-bar text-lg"></i>
           <span>{{ $t('sidebar.dashboard') }}</span>
         </button>
 
-        <div class="px-4 pt-6 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">{{ $t('sidebar.management') }}</div>
+        <!-- Management Section -->
+        <div class="px-4 pt-6 pb-2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.12em]">{{ $t('sidebar.management') }}</div>
         <button @click="currentTab = 'users'" :class="tabClass('users')">
           <i class="pi pi-users text-lg"></i>
           <span>{{ $t('sidebar.users') }}</span>
@@ -31,8 +35,9 @@
           <i class="pi pi-sitemap text-lg"></i>
           <span>{{ $t('sidebar.groups') }}</span>
         </button>
-        
-        <div class="px-4 pt-6 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">{{ $t('sidebar.security') }}</div>
+
+        <!-- Security Section -->
+        <div class="px-4 pt-6 pb-2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.12em]">{{ $t('sidebar.security') }}</div>
         <button @click="currentTab = 'policies'" :class="tabClass('policies')">
           <i class="pi pi-lock text-lg"></i>
           <span>{{ $t('sidebar.policies') }}</span>
@@ -43,17 +48,18 @@
         </button>
       </nav>
 
-      <div class="p-6 border-t border-gray-100 mt-auto">
-        <div class="flex items-center gap-3 mb-6 px-2">
-          <div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600">
+      <!-- User area -->
+      <div class="p-5 border-t border-[var(--border-primary)]">
+        <div class="flex items-center gap-3 mb-4 px-2">
+          <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-sm font-bold text-white shadow-md">
             A
           </div>
           <div class="overflow-hidden">
-            <p class="text-sm font-semibold text-gray-900 truncate">{{ $t('sidebar.administrator') }}</p>
-            <p class="text-xs text-gray-500 truncate">admin@sso.local</p>
+            <p class="text-sm font-semibold text-[var(--text-primary)] truncate">{{ $t('sidebar.administrator') }}</p>
+            <p class="text-[11px] text-[var(--text-muted)] truncate font-mono">admin@sso.local</p>
           </div>
         </div>
-        <button @click="handleLogout" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors">
+        <button @click="handleLogout" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-semibold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 rounded-xl transition-all">
           <i class="pi pi-sign-out"></i>
           <span>{{ $t('sidebar.signOut') }}</span>
         </button>
@@ -62,37 +68,41 @@
 
     <!-- Main Content -->
     <main class="flex-grow flex flex-col min-w-0">
-      <header class="h-20 bg-white border-b border-gray-200 px-10 flex items-center justify-between sticky top-0 z-10">
+      <!-- Header -->
+      <header class="h-16 bg-[var(--bg-secondary)] border-b border-[var(--border-primary)] px-8 flex items-center justify-between sticky top-0 z-10">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900 leading-none">
+          <h1 class="text-xl font-extrabold text-[var(--text-primary)] leading-none tracking-tight">
             {{ $t(`sidebar.${currentTab}`) }}
           </h1>
-          <nav class="flex text-xs text-gray-400 mt-1 font-medium">
-            <span class="hover:text-indigo-600 cursor-pointer" @click="currentTab = 'dashboard'">SSO Admin</span>
-            <span class="mx-2">/</span>
-            <span class="text-gray-600">{{ $t(`sidebar.${currentTab}`) }}</span>
+          <nav class="flex text-[11px] text-[var(--text-muted)] mt-1 font-medium">
+            <span class="hover:text-[var(--accent)] cursor-pointer transition-colors" @click="currentTab = 'dashboard'">SSO Admin</span>
+            <span class="mx-2 text-[var(--border-primary)]">/</span>
+            <span class="text-[var(--text-secondary)]">{{ $t(`sidebar.${currentTab}`) }}</span>
           </nav>
         </div>
-        
-        <div class="flex items-center gap-4">
+
+        <div class="flex items-center gap-3">
           <!-- Search -->
           <div class="relative">
-            <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-            <input type="text" :placeholder="$t('common.search')" class="pl-10 pr-4 py-2 bg-gray-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 w-64 transition-all" />
+            <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm"></i>
+            <input type="text" :placeholder="$t('common.search')" class="pl-9 pr-4 py-2 bg-[var(--bg-elevated)] border border-[var(--border-primary)] rounded-xl text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] w-56 transition-all" />
           </div>
 
-          <!-- Language Selector Switcher -->
-          <button @click="toggleLanguage" class="flex items-center gap-2 py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs uppercase transition-all select-none">
+          <!-- Language Toggle -->
+          <button @click="toggleLanguage" class="flex items-center gap-2 py-2 px-3 bg-[var(--bg-elevated)] border border-[var(--border-primary)] hover:border-[var(--accent)] text-[var(--text-secondary)] hover:text-[var(--accent)] rounded-xl font-bold text-xs uppercase transition-all">
             <i class="pi pi-globe text-sm"></i>
             <span>{{ locale === 'en' ? '中文' : 'EN' }}</span>
           </button>
 
-          <!-- Add Action Button -->
-          <Button v-if="currentTab !== 'logs' && currentTab !== 'dashboard'" :label="$t('common.add')" icon="pi pi-plus" class="p-button-primary shadow-lg shadow-indigo-100 rounded-xl" @click="handleCreate" />
+          <!-- Add button -->
+          <Button v-if="currentTab !== 'logs' && currentTab !== 'dashboard'" :label="$t('common.add')" icon="pi pi-plus"
+            class="!bg-[var(--accent)] !border-none hover:!bg-indigo-500 !shadow-lg !shadow-indigo-500/20 !rounded-xl !px-4 !py-2 !text-sm !font-bold"
+            @click="handleCreate" />
         </div>
       </header>
 
-      <div class="p-10 flex-grow overflow-y-auto">
+      <!-- Content -->
+      <div class="flex-grow overflow-y-auto p-8 bg-[var(--bg-primary)]">
         <Dashboard v-if="currentTab === 'dashboard'" />
         <UserManagement v-else-if="currentTab === 'users'" ref="userRef" />
         <RoleManagement v-else-if="currentTab === 'roles'" ref="roleRef" />
@@ -132,10 +142,10 @@ const toggleLanguage = () => {
 };
 
 const tabClass = (tab: string) => [
-  'w-full flex items-center gap-3 py-3 px-4 rounded-xl transition-all font-semibold text-sm',
-  currentTab.value === tab 
-    ? 'bg-indigo-50 text-indigo-700 shadow-sm shadow-indigo-50' 
-    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+  'w-full flex items-center gap-3 py-2.5 px-4 rounded-xl transition-all font-semibold text-sm',
+  currentTab.value === tab
+    ? 'bg-indigo-500/10 text-indigo-400 shadow-sm shadow-indigo-500/5 border border-indigo-500/10'
+    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border border-transparent'
 ];
 
 const handleCreate = () => {
@@ -156,29 +166,117 @@ const handleLogout = async () => {
 </script>
 
 <style>
-/* Custom PrimeVue styles override */
+/* PrimeVue global dark theme overrides */
+
+/* DataTable */
+.p-datatable {
+  @apply rounded-xl overflow-hidden border border-[var(--border-primary)];
+}
 .p-datatable .p-datatable-thead > tr > th {
-  @apply bg-gray-50 text-gray-500 font-bold text-xs uppercase tracking-wider py-4 border-b border-gray-100;
+  @apply bg-[var(--bg-elevated)] text-[var(--text-muted)] font-bold text-[10px] uppercase tracking-[0.12em] py-4 px-5 border-b border-[var(--border-primary)] text-left;
 }
 .p-datatable .p-datatable-tbody > tr {
-  @apply transition-colors hover:bg-gray-50/50;
+  @apply bg-[var(--bg-card)] text-[var(--text-secondary)] transition-colors;
+}
+.p-datatable .p-datatable-tbody > tr:hover {
+  @apply bg-[var(--bg-hover)];
 }
 .p-datatable .p-datatable-tbody > tr > td {
-  @apply py-4 border-b border-gray-50;
+  @apply py-4 px-5 border-b border-[var(--border-subtle)];
 }
+.p-datatable .p-datatable-tbody > tr:last-child > td {
+  @apply border-b-0;
+}
+
+/* Paginator */
 .p-paginator {
-  @apply border-none py-4;
+  @apply bg-[var(--bg-elevated)] border-t border-[var(--border-primary)] py-3 px-4 flex items-center justify-end gap-1;
 }
-.p-button {
-  @apply transition-all duration-200 active:scale-95;
+.p-paginator .p-paginator-pages {
+  @apply flex gap-1;
+}
+.p-paginator .p-paginator-page {
+  @apply w-8 h-8 flex items-center justify-center rounded-lg text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer;
+}
+.p-paginator .p-paginator-page.p-highlight {
+  @apply bg-indigo-500/15 text-indigo-400;
+}
+
+/* Dialog */
+.p-dialog {
+  @apply bg-[var(--bg-card)] border border-[var(--border-primary)] rounded-2xl shadow-2xl;
+}
+.p-dialog-mask {
+  @apply bg-black/60;
+  backdrop-filter: blur(8px);
 }
 .p-dialog-header {
-  @apply p-8 border-b border-gray-100;
+  @apply p-6 border-b border-[var(--border-primary)];
+}
+.p-dialog-title {
+  @apply text-lg font-extrabold text-[var(--text-primary)] tracking-tight;
 }
 .p-dialog-content {
-  @apply px-8;
+  @apply p-6;
 }
 .p-dialog-footer {
-  @apply p-8 border-t border-gray-100;
+  @apply p-6 border-t border-[var(--border-primary)] pt-4;
+}
+
+/* Button */
+.p-button {
+  @apply transition-all duration-200 active:scale-95 rounded-xl font-bold;
+}
+.p-button.p-button-primary:not(.p-button-text):not(.p-button-outlined) {
+  @apply bg-indigo-500 hover:bg-indigo-400 text-white border-none;
+}
+
+/* InputText */
+.p-inputtext {
+  @apply bg-[var(--bg-elevated)] border border-[var(--border-primary)] text-[var(--text-primary)] placeholder-[var(--text-muted)] rounded-xl px-4 py-2.5 text-sm transition-all;
+}
+.p-inputtext:focus {
+  @apply border-[var(--accent)] ring-1 ring-[var(--accent)] outline-none;
+}
+
+/* Message */
+.p-message {
+  @apply rounded-xl text-sm;
+}
+.p-message.p-message-error {
+  @apply bg-rose-500/10 border border-rose-500/20 text-rose-400;
+}
+
+/* Checkbox */
+.p-checkbox {
+  @apply w-5 h-5;
+}
+.p-checkbox .p-checkbox-box {
+  @apply w-5 h-5 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-primary)] transition-colors;
+}
+.p-checkbox.p-highlight .p-checkbox-box {
+  @apply bg-indigo-500 border-indigo-500;
+}
+
+/* Password */
+.p-password {
+  @apply w-full;
+}
+.p-password .p-password-input {
+  @apply bg-[var(--bg-elevated)] border border-[var(--border-primary)] text-[var(--text-primary)] placeholder-[var(--text-muted)] rounded-xl px-4 py-2.5 text-sm w-full;
+}
+
+/* Select dropdown */
+select {
+  @apply bg-[var(--bg-elevated)] border border-[var(--border-primary)] text-[var(--text-primary)] rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all;
+}
+
+/* Textarea */
+textarea {
+  @apply bg-[var(--bg-elevated)] border border-[var(--border-primary)] text-[var(--text-primary)] placeholder-[var(--text-muted)] rounded-xl text-sm transition-all;
+}
+textarea:focus,
+input:focus {
+  @apply border-[var(--accent)] ring-1 ring-[var(--accent)] outline-none;
 }
 </style>
