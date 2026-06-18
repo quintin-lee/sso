@@ -38,6 +38,14 @@
           </div>
         </template>
       </Column>
+      <!-- Empty State -->
+      <template #empty>
+        <div class="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
+          <i class="pi pi-users text-4xl mb-3 opacity-40"></i>
+          <p class="text-sm font-medium">{{ $t('common.noData') || 'No users found' }}</p>
+          <p class="text-xs mt-1 opacity-60">{{ $t('common.addNewHint') || 'Click Add to create a new user' }}</p>
+        </div>
+      </template>
     </DataTable>
 
     <Dialog v-model:visible="userDialog" :header="user.id ? $t('users.update') : $t('users.create')" modal class="w-full max-w-lg">

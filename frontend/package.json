@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@primevue/themes": "^4.5.4",
     "autoprefixer": "^10.5.0",
     "axios": "^1.18.0",
     "postcss": "^8.5.15",

@@ -25,6 +25,14 @@
           </div>
         </template>
       </Column>
+      <!-- Empty State -->
+      <template #empty>
+        <div class="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
+          <i class="pi pi-lock text-4xl mb-3 opacity-40"></i>
+          <p class="text-sm font-medium">No policies found</p>
+          <p class="text-xs mt-1 opacity-60">Click Add to create a new policy</p>
+        </div>
+      </template>
     </DataTable>
 
     <!-- Dialog for Edit/Create -->

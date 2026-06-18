@@ -46,6 +46,14 @@
 
       <!-- Trace/Details Column -->
       <Column field="trace" :header="$t('policies.rules')" class="font-mono text-xs text-[var(--text-muted)] truncate max-w-xs"></Column>
+      <!-- Empty State -->
+      <template #empty>
+        <div class="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
+          <i class="pi pi-history text-4xl mb-3 opacity-40"></i>
+          <p class="text-sm font-medium">No audit logs found</p>
+          <p class="text-xs mt-1 opacity-60">Logs will appear when permission check events are recorded</p>
+        </div>
+      </template>
     </DataTable>
   </div>
 </template>

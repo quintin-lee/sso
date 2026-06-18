@@ -19,6 +19,14 @@
           </div>
         </template>
       </Column>
+      <!-- Empty State -->
+      <template #empty>
+        <div class="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
+          <i class="pi pi-tags text-4xl mb-3 opacity-40"></i>
+          <p class="text-sm font-medium">No roles found</p>
+          <p class="text-xs mt-1 opacity-60">Click Add to create a new role</p>
+        </div>
+      </template>
     </DataTable>
 
     <Dialog v-model:visible="roleDialog" :header="role.id ? $t('roles.update') : $t('roles.create')" modal class="w-full max-w-lg">

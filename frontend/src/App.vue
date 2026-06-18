@@ -3,6 +3,8 @@ import Toast from 'primevue/toast';
 </script>
 
 <template>
-  <Toast />
-  <router-view />
+  <div class="sso-dark min-h-screen">
+    <Toast />
+    <router-view />
+  </div>
 </template>
