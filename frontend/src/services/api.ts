@@ -11,27 +11,52 @@ const api = axios.create({
 
 // Request interceptor to add access token
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
+  const token = localStorage.getItem('access_token') || localStorage.getItem('sso_token');
   if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`;
+    if (config.headers && typeof config.headers.set === 'function') {
+      config.headers.set('Authorization', `Bearer ${token}`);
+    } else {
+      config.headers = config.headers || {};
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
   }
   return config;
 });
 
 // Response interceptor to capture tokens from headers
-api.interceptors.response.use((response) => {
-  const accessToken = response.headers['x-sso-access-token'];
-  const refreshToken = response.headers['x-sso-refresh-token'];
+api.interceptors.response.use(
+  (response) => {
+    const getHeader = (name: string) => {
+      if (response.headers && typeof response.headers.get === 'function') {
+        return response.headers.get(name);
+      }
+      return response.headers ? (response.headers[name] || response.headers[name.toLowerCase()]) : undefined;
+    };
 
-  if (accessToken) {
-    localStorage.setItem('access_token', accessToken);
-  }
-  if (refreshToken) {
-    localStorage.setItem('refresh_token', refreshToken);
-  }
+    const accessToken = getHeader('X-SSO-Access-Token') || getHeader('x-sso-access-token');
+    const refreshToken = getHeader('X-SSO-Refresh-Token') || getHeader('x-sso-refresh-token');
 
-  return response;
-});
+    if (accessToken) {
+      localStorage.setItem('access_token', accessToken);
+      localStorage.setItem('sso_token', accessToken);
+    }
+    if (refreshToken) {
+      localStorage.setItem('refresh_token', refreshToken);
+    }
+
+    return response;
+  },
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('sso_token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
 
 export interface LoginResponse {
   mfa_required?: boolean;
@@ -143,10 +168,11 @@ export const authService = {
     await api.post('/auth/logout');
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem('sso_token');
   },
 
   isAuthenticated(): boolean {
-    return !!localStorage.getItem('access_token');
+    return !!(localStorage.getItem('access_token') || localStorage.getItem('sso_token'));
   }
 };
 
