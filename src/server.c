@@ -357,6 +357,7 @@ static void send_response(conn_t *c, const http_response_t *resp) {
         "Access-Control-Expose-Headers: X-SSO-User, X-SSO-Access-Token, X-SSO-Refresh-Token\r\n"
         "X-Content-Type-Options: nosniff\r\n"
         "X-Frame-Options: SAMEORIGIN\r\n"
+        "Permissions-Policy: geolocation=(), microphone=(), camera=()\r\n"
         "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';\r\n"
         "Cache-Control: no-cache, no-store, must-revalidate\r\n"
         "Pragma: no-cache\r\n"

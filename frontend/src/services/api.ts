@@ -9,7 +9,18 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to add access token
+function generateRequestId(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  const randomValues = new Uint32Array(16);
+  window.crypto.getRandomValues(randomValues);
+  for (let i = 0; i < 16; i++) {
+    result += chars[randomValues[i] % chars.length];
+  }
+  return result;
+}
+
+// Request interceptor to add access token and X-Request-ID
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token') || localStorage.getItem('sso_token');
   if (token) {
@@ -19,6 +30,14 @@ api.interceptors.request.use((config) => {
       config.headers = config.headers || {};
       config.headers['Authorization'] = `Bearer ${token}`;
     }
+  }
+  // Propagate X-Request-ID for distributed tracing
+  const requestId = config.headers?.['X-Request-ID'] || generateRequestId();
+  if (config.headers && typeof config.headers.set === 'function') {
+    config.headers.set('X-Request-ID', requestId);
+  } else {
+    config.headers = config.headers || {};
+    config.headers['X-Request-ID'] = requestId;
   }
   return config;
 });

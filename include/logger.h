@@ -11,7 +11,13 @@ typedef enum {
     LOG_ERROR = 3
 } log_level_t;
 
+typedef enum {
+    LOG_FORMAT_TEXT = 0,
+    LOG_FORMAT_JSON = 1
+} log_format_t;
+
 void log_set_level(log_level_t level);
+void log_set_format(log_format_t fmt);
 void log_set_file(FILE *fp);
 void log_write(log_level_t level, const char *file, int line,
                int saved_errno, const char *fmt, ...);

@@ -317,12 +317,21 @@ send_response:
     /* Security headers */
     MHD_add_response_header(mhd_resp, "X-Content-Type-Options", "nosniff");
     MHD_add_response_header(mhd_resp, "X-Frame-Options", "SAMEORIGIN");
+    MHD_add_response_header(mhd_resp, "Permissions-Policy",
+        "geolocation=(), microphone=(), camera=()");
     MHD_add_response_header(mhd_resp, "Content-Security-Policy",
         "default-src 'self'; style-src 'self' 'unsafe-inline'; "
         "script-src 'self' 'unsafe-inline'");
     MHD_add_response_header(mhd_resp, "Cache-Control",
                             "no-cache, no-store, must-revalidate");
     MHD_add_response_header(mhd_resp, "Pragma", "no-cache");
+
+    /* HSTS: only when TLS is enabled */
+    sso_config_t *cfg = (sso_config_t *)server->sso_ctx->config;
+    if (cfg && cfg->tls_enabled) {
+        MHD_add_response_header(mhd_resp, "Strict-Transport-Security",
+                                "max-age=31536000; includeSubDomains");
+    }
 
     /* Vary: Origin when origin-aware CORS is active */
     if (resp.cors_origin[0]) {

@@ -14,12 +14,32 @@
 
 sso_error_t handle_health(sso_context_t *ctx, const http_request_t *req,
                                   http_response_t *resp) {
-    (void)ctx; (void)req;
-    sso_response_ok(resp, "{"
+    (void)req;
+    /* Check storage backend readiness */
+    bool db_ready = false;
+    if (ctx && ctx->storage_backend) {
+        storage_backend_t *sb = ctx->storage_backend;
+        /* Use a lightweight ping: try to list users with limit=0 */
+        sso_id_t dummy_ids[1];
+        size_t count = 0, total = 0;
+        if (sb->user_list) {
+            sso_error_t err = sb->user_list(sb, NULL, -1, 0, 0, dummy_ids, &count, &total);
+            db_ready = (err == SSO_OK || err == SSO_ERR_NOT_FOUND);
+        }
+    }
+
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "{"
         "\"status\":\"ok\","
         "\"service\":\"sso\","
-        "\"version\":\"1.0.0\""
-    "}");
+        "\"version\":\"1.1.0\","
+        "\"checks\":{"
+        "\"database\":{\"status\":\"%s\"}"
+        "}"
+        "}",
+        db_ready ? "ready" : "unavailable");
+    sso_response_ok(resp, buf);
     return SSO_OK;
 }
 
