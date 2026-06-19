@@ -108,9 +108,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { useI18n } from 'vue-i18n';
-import { adminService, authService } from '../../services/api';
+import { ref, onMounted } from 'vue';
+import { adminService } from '../../services/api';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import Button from 'primevue/button';
@@ -118,8 +117,6 @@ import Badge from 'primevue/badge';
 import Tag from 'primevue/tag';
 import SelectButton from 'primevue/selectbutton';
 import ProgressSpinner from 'primevue/progressspinner';
-
-const { t } = useI18n();
 
 /* ------------------------------------------------------------------ */
 /*  Local state                                                         */
