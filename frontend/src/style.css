@@ -22,6 +22,9 @@
   --accent-strong: #6366f1;
   --accent-light: #a5b4fc;
   --accent-glow: rgba(129, 140, 248, 0.22);
+  --accent-translucent: rgba(129, 140, 248, 0.15);
+
+  --bg-elevated-translucent: rgba(22, 29, 51, 0.6);
 
   --success: #34d399;
   --warning: #fbbf24;
@@ -111,4 +114,14 @@ body {
 
 .pulse-neon {
   animation: pulseNeon 3s infinite ease-in-out;
+}
+
+/* Autofill styling overrides */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #161d33 inset !important;
+  -webkit-text-fill-color: #f1f5f9 !important;
+  transition: background-color 5000s ease-in-out 0s;
 }

@@ -72,10 +72,10 @@
          <div class="flex items-center justify-between border-t border-[var(--border-primary)] pt-4">
             <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policies.rules') }}</span>
            <div class="flex bg-[var(--bg-elevated)] p-1 rounded-xl border border-[var(--border-primary)]">
-              <button @click="editorMode = 'visual'" class="py-1.5 px-3.5 text-xs font-bold rounded-lg transition-all" :class="editorMode === 'visual' ? 'bg-[var(--accent)]/15 text-[var(--accent)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'">
+              <button @click="editorMode = 'visual'" class="py-1.5 px-3.5 text-xs font-bold rounded-lg transition-all" :class="editorMode === 'visual' ? 'bg-[var(--accent-translucent)] text-[var(--accent)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'">
                  {{ $t('policies.visualEditor') }}
               </button>
-              <button @click="editorMode = 'code'" class="py-1.5 px-3.5 text-xs font-bold rounded-lg transition-all" :class="editorMode === 'code' ? 'bg-[var(--accent)]/15 text-[var(--accent)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'">
+              <button @click="editorMode = 'code'" class="py-1.5 px-3.5 text-xs font-bold rounded-lg transition-all" :class="editorMode === 'code' ? 'bg-[var(--accent-translucent)] text-[var(--accent)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'">
                 {{ $t('policies.codeEditor') }}
              </button>
            </div>

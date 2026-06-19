@@ -145,7 +145,7 @@ const handleMfaVerify = async () => {
             id="username"
             v-model="username"
             :placeholder="$t('login.usernamePlaceholder')"
-            class="!bg-[var(--bg-elevated)]/60 !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3 hover:!border-[var(--accent)] transition-all"
+            class="!bg-[var(--bg-elevated-translucent)] !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3 hover:!border-[var(--accent)] transition-all"
             required
           />
         </div>
@@ -159,7 +159,7 @@ const handleMfaVerify = async () => {
             :placeholder="$t('login.passwordPlaceholder')"
             toggleMask
             class="w-full"
-            inputClass="w-full !bg-[var(--bg-elevated)]/60 !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3 hover:!border-[var(--accent)] transition-all"
+            inputClass="w-full !bg-[var(--bg-elevated-translucent)] !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-xl !px-4 !py-3 hover:!border-[var(--accent)] transition-all"
             required
           />
         </div>
@@ -197,7 +197,7 @@ const handleMfaVerify = async () => {
               type="text"
               maxlength="1"
               pattern="[0-9]"
-              class="w-12 h-14 text-center text-2xl font-bold bg-[var(--bg-elevated)]/60 border border-[var(--border-primary)] text-[var(--text-primary)] rounded-xl focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] outline-none transition-all hover:border-[var(--accent)]/50"
+              class="w-12 h-14 text-center text-2xl font-bold bg-[var(--bg-elevated-translucent)] border border-[var(--border-primary)] text-[var(--text-primary)] rounded-xl focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] outline-none transition-all hover:border-[var(--accent)]/50"
               required
               @input="handleOtpInput($event, idx)"
               @keydown.delete="handleOtpDelete($event, idx)"
