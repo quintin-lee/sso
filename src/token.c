@@ -285,6 +285,9 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     cJSON *header = cJSON_CreateObject();
     cJSON_AddStringToObject(header, "alg", mgr->mode == SSO_TOKEN_MODE_RS256 ? "RS256" : "HS256");
     cJSON_AddStringToObject(header, "typ", "JWT");
+    if (mgr->mode == SSO_TOKEN_MODE_RS256) {
+        cJSON_AddStringToObject(header, "kid", "sso-key-1");
+    }
     char *header_str = cJSON_PrintUnformatted(header);
     cJSON_Delete(header);
  

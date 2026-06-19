@@ -6,6 +6,9 @@
 #include "user.h"
 #include "logger.h"
 #include "cJSON.h"
+#include <openssl/evp.h>
+#include <openssl/rsa.h>
+#include <openssl/bn.h>
 #include <sodium.h>
 #include <string.h>
 #include <stdio.h>
@@ -715,35 +718,76 @@ sso_error_t handle_jwks(sso_context_t *ctx,
         return SSO_OK;
     }
 
-    /* For HS256 mode, return an empty keys array */
-    char *pubkey_pem = token_manager_get_public_key_pem(tmgr);
-    if (!pubkey_pem) {
+    if (tmgr->mode != SSO_TOKEN_MODE_RS256 || !tmgr->keys.rsa.pub_key) {
         sso_response_ok(resp, "{\"keys\":[]}");
         return SSO_OK;
     }
 
-    /* For RS256 mode, we embed the PEM as a field.
-     * A proper JWKS would parse and expose n/e/kid per RFC 7517,
-     * but this provides the raw key for verification. */
-    char buf[8192];
-    /* Escape the PEM for JSON embedding */
-    char escaped[4096];
-    size_t j = 0;
-    for (size_t i = 0; pubkey_pem[i] && j < sizeof(escaped) - 2; i++) {
-        if (pubkey_pem[i] == '\n') {
-            escaped[j++] = '\\';
-            escaped[j++] = 'n';
-        } else if (pubkey_pem[i] == '"') {
-            escaped[j++] = '\\';
-            escaped[j++] = '"';
-        } else {
-            escaped[j++] = pubkey_pem[i];
-        }
+    EVP_PKEY *pkey = (EVP_PKEY *)tmgr->keys.rsa.pub_key;
+    RSA *rsa = EVP_PKEY_get1_RSA(pkey);
+    if (!rsa) {
+        json_error_response(resp, 500, "server_error");
+        return SSO_OK;
     }
-    escaped[j] = '\0';
 
-    snprintf(buf, sizeof(buf), "{\"keys\":[{\"pem\":\"%s\"}]}", escaped);
-    free(pubkey_pem);
+    const BIGNUM *n_bn = NULL;
+    const BIGNUM *e_bn = NULL;
+    RSA_get0_key(rsa, &n_bn, &e_bn, NULL);
+    if (!n_bn || !e_bn) {
+        RSA_free(rsa);
+        json_error_response(resp, 500, "server_error");
+        return SSO_OK;
+    }
+
+    unsigned char *n_bytes = malloc(BN_num_bytes(n_bn));
+    unsigned char *e_bytes = malloc(BN_num_bytes(e_bn));
+    if (!n_bytes || !e_bytes) {
+        free(n_bytes);
+        free(e_bytes);
+        RSA_free(rsa);
+        json_error_response(resp, 500, "server_error");
+        return SSO_OK;
+    }
+
+    int n_len = BN_bn2bin(n_bn, n_bytes);
+    int e_len = BN_bn2bin(e_bn, e_bytes);
+
+    /* Allocate buffer for base64url encoding (around 2x binary size is safe) */
+    char *n_b64 = malloc(n_len * 2 + 10);
+    char *e_b64 = malloc(e_len * 2 + 10);
+    if (!n_b64 || !e_b64) {
+        free(n_bytes);
+        free(e_bytes);
+        free(n_b64);
+        free(e_b64);
+        RSA_free(rsa);
+        json_error_response(resp, 500, "server_error");
+        return SSO_OK;
+    }
+
+    base64url_encode(n_bytes, n_len, n_b64, n_len * 2 + 10);
+    base64url_encode(e_bytes, e_len, e_b64, e_len * 2 + 10);
+
+    char buf[4096];
+    snprintf(buf, sizeof(buf),
+        "{"
+        "\"keys\":[{"
+        "\"kty\":\"RSA\","
+        "\"alg\":\"RS256\","
+        "\"use\":\"sig\","
+        "\"kid\":\"sso-key-1\","
+        "\"n\":\"%s\","
+        "\"e\":\"%s\""
+        "}]"
+        "}",
+        n_b64, e_b64);
+
+    free(n_bytes);
+    free(e_bytes);
+    free(n_b64);
+    free(e_b64);
+    RSA_free(rsa);
+
     sso_response_ok(resp, buf);
     return SSO_OK;
 }
