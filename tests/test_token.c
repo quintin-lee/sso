@@ -130,7 +130,7 @@ static const char *test_token_revoked() {
     token_t issued;
     token_issue(tmgr, &user, NULL, 0, NULL, 0, NULL, 3600000LL, &issued);
 
-    token_revoke(tmgr, issued.jti);
+    token_revoke(tmgr, issued.jti, issued.expires_at);
     ASSERT_TRUE(token_is_revoked(tmgr, issued.jti));
 
     token_destroy(&issued);

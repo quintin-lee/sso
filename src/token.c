@@ -10,6 +10,7 @@
 
 #include "sso.h"
 #include "token.h"
+#include "storage.h"
 #include "user.h"
 #include "cJSON.h"
 
@@ -666,9 +667,19 @@ static int compare_jtis(const void *a, const void *b) {
     return strcmp((const char *)a, (const char *)b);
 }
 
-sso_error_t token_revoke(token_manager_t *mgr, const char *jti) {
+sso_error_t token_revoke(token_manager_t *mgr, const char *jti, sso_timestamp_t expires_at) {
     if (!mgr || !jti) return SSO_ERR_INVALID_PARAM;
 
+    /* 1. Persist to storage backend if available */
+    if (mgr->storage) {
+        storage_backend_t *sb = (storage_backend_t *)mgr->storage;
+        if (sb->jti_revoke) {
+            sso_error_t err = sb->jti_revoke(sb, jti, expires_at);
+            if (err != SSO_OK) return err;
+        }
+    }
+
+    /* 2. Also keep in-memory for fast check / fallback */
     pthread_mutex_lock(&mgr->rev_lock);
 
     if (mgr->jtis == NULL) {
@@ -705,21 +716,30 @@ sso_error_t token_revoke(token_manager_t *mgr, const char *jti) {
 bool token_is_revoked(token_manager_t *mgr, const char *jti) {
     if (!mgr || !jti) return false;
 
+    /* 1. Check in-memory list first */
     pthread_mutex_lock(&mgr->rev_lock);
-
-    if (!mgr->jtis || mgr->rev_count == 0) {
-        pthread_mutex_unlock(&mgr->rev_lock);
-        return false;
+    if (mgr->jtis && mgr->rev_count > 0) {
+        if (!mgr->rev_sorted) {
+            qsort(mgr->jtis, mgr->rev_count, TOKEN_REVOCATION_STR_LEN, compare_jtis);
+            mgr->rev_sorted = true;
+        }
+        bool found = bsearch(jti, mgr->jtis, mgr->rev_count, TOKEN_REVOCATION_STR_LEN, compare_jtis) != NULL;
+        if (found) {
+            pthread_mutex_unlock(&mgr->rev_lock);
+            return true;
+        }
     }
-
-    if (!mgr->rev_sorted) {
-        qsort(mgr->jtis, mgr->rev_count, TOKEN_REVOCATION_STR_LEN, compare_jtis);
-        mgr->rev_sorted = true;
-    }
-
-    bool found = bsearch(jti, mgr->jtis, mgr->rev_count, TOKEN_REVOCATION_STR_LEN, compare_jtis) != NULL;
     pthread_mutex_unlock(&mgr->rev_lock);
-    return found;
+
+    /* 2. Fall back to storage backend if available */
+    if (mgr->storage) {
+        storage_backend_t *sb = (storage_backend_t *)mgr->storage;
+        if (sb->jti_is_revoked) {
+            return sb->jti_is_revoked(sb, jti);
+        }
+    }
+
+    return false;
 }
 
 /*           ==

@@ -90,6 +90,7 @@ struct token_manager {
     size_t   rev_capacity;                          /**< Capacity of revoked JTIs array */
     bool     rev_sorted;                            /**< True if array is sorted for binary search */
     pthread_mutex_t rev_lock;                       /**< Mutex guarding revocation blocklist */
+    void    *storage;                               /**< Pointer to storage backend */
 };
 
 /* -----------------------------------------------------------------------
@@ -254,8 +255,9 @@ size_t base64url_decode(const char *input, unsigned char *output,
  * 
  * @param mgr Token manager.
  * @param jti JTI identifier string.
+ * @param expires_at Token expiry timestamp (epoch ms).
  */
-sso_error_t token_revoke(token_manager_t *mgr, const char *jti);
+sso_error_t token_revoke(token_manager_t *mgr, const char *jti, sso_timestamp_t expires_at);
 
 /**
  * @brief Checks if a token has been explicitly revoked.

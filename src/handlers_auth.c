@@ -646,7 +646,7 @@ sso_error_t handle_logout(sso_context_t *ctx, const http_request_t *req,
     }
 
     token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
-    sso_error_t err = token_revoke(tmgr, auth->token.jti);
+    sso_error_t err = token_revoke(tmgr, auth->token.jti, auth->token.expires_at);
     if (err != SSO_OK) {
         sso_response_error(resp, 500, "Failed to revoke token");
         return SSO_OK;

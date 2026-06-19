@@ -163,6 +163,11 @@ static const char *SCHEMA_SQL =
     "  expires_at INTEGER NOT NULL,"
     "  issued_at INTEGER NOT NULL,"
     "  revoked INTEGER DEFAULT 0"
+    ");"
+
+    "CREATE TABLE IF NOT EXISTS revoked_jtis ("
+    "  jti TEXT PRIMARY KEY,"
+    "  expires_at INTEGER NOT NULL"
     ");";
 
 /* ========================================================================
@@ -344,12 +349,12 @@ static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
     }
 
     if (current_version == 0) {
-        /* New database: set current version to latest (v2) to skip existing migrations */
-        sqlite3_prepare_v2(priv->db, "INSERT INTO _migrations (version, applied_at) VALUES (2, ?1)", -1, &s, NULL);
+        /* New database: set current version to latest (v3) to skip existing migrations */
+        sqlite3_prepare_v2(priv->db, "INSERT INTO _migrations (version, applied_at) VALUES (3, ?1)", -1, &s, NULL);
         sqlite3_bind_int64(s, 1, (sqlite3_int64)sso_timestamp_now());
         sqlite3_step(s);
         sqlite3_finalize(s);
-        current_version = 2;
+        current_version = 3;
     }
 
     /* Run pending migrations (if any) */
@@ -373,6 +378,11 @@ static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
                         "  expires_at INTEGER NOT NULL,"
                         "  issued_at INTEGER NOT NULL,"
                         "  revoked INTEGER DEFAULT 0"
+                        ");";
+        } else if (v == 3) {
+            migration = "CREATE TABLE IF NOT EXISTS revoked_jtis ("
+                        "  jti TEXT PRIMARY KEY,"
+                        "  expires_at INTEGER NOT NULL"
                         ");";
         } else {
             break;
@@ -1438,6 +1448,36 @@ static sso_error_t sqlite_refresh_token_revoke(storage_backend_t *self, const ch
     return err;
 }
 
+static sso_error_t sqlite_jti_revoke(storage_backend_t *self, const char *jti, sso_timestamp_t expires_at) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    sqlite3_stmt *stmt;
+    const char *sql = "INSERT OR REPLACE INTO revoked_jtis (jti, expires_at) VALUES (?, ?)";
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) return SSO_ERR_STORAGE;
+    sqlite3_bind_text(stmt, 1, jti, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 2, expires_at);
+    sso_error_t err = (sqlite3_step(stmt) == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+    sqlite3_finalize(stmt);
+    return err;
+}
+
+static bool sqlite_jti_is_revoked(storage_backend_t *self, const char *jti) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT expires_at FROM revoked_jtis WHERE jti = ?";
+    if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK) return false;
+    sqlite3_bind_text(stmt, 1, jti, -1, SQLITE_STATIC);
+    bool found = false;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        sso_timestamp_t expires_at = sqlite3_column_int64(stmt, 0);
+        sso_timestamp_t now = sso_timestamp_now();
+        if (expires_at > now) {
+            found = true;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return found;
+}
+
 /* ========================================================================
  * Backend constructor
  * ======================================================================== */
@@ -1538,6 +1578,8 @@ sso_error_t storage_sqlite_create(storage_backend_t **backend) {
     (*backend)->refresh_token_create = sqlite_refresh_token_create;
     (*backend)->refresh_token_get    = sqlite_refresh_token_get;
     (*backend)->refresh_token_revoke = sqlite_refresh_token_revoke;
+    (*backend)->jti_revoke           = sqlite_jti_revoke;
+    (*backend)->jti_is_revoked       = sqlite_jti_is_revoked;
 
     (*backend)->handle = priv;
     return SSO_OK;

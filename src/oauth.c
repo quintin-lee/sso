@@ -703,7 +703,7 @@ sso_error_t handle_oauth_revoke(sso_context_t *ctx,
     sso_error_t verr = token_verify(tmgr, token_str, &decoded);
 
     if (verr == SSO_OK) {
-        token_revoke(tmgr, decoded.jti);
+        token_revoke(tmgr, decoded.jti, decoded.expires_at);
     }
 
     /* Always return 200 to prevent token enumeration */

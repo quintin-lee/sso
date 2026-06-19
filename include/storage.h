@@ -117,6 +117,9 @@ typedef sso_error_t (*storage_refresh_token_create_fn)(storage_backend_t *self, 
 typedef sso_error_t (*storage_refresh_token_get_fn)(storage_backend_t *self, const char *token_hash, refresh_token_t *out);
 typedef sso_error_t (*storage_refresh_token_revoke_fn)(storage_backend_t *self, const char *token_hash);
 
+typedef sso_error_t (*storage_jti_revoke_fn)(storage_backend_t *self, const char *jti, sso_timestamp_t expires_at);
+typedef bool (*storage_jti_is_revoked_fn)(storage_backend_t *self, const char *jti);
+
 /* OAuth authorization code */
 typedef struct {
     char              code[128];
@@ -251,6 +254,9 @@ struct storage_backend {
     storage_refresh_token_create_fn refresh_token_create;
     storage_refresh_token_get_fn    refresh_token_get;
     storage_refresh_token_revoke_fn refresh_token_revoke;
+
+    storage_jti_revoke_fn           jti_revoke;
+    storage_jti_is_revoked_fn       jti_is_revoked;
 
     /* Opaque backend-private data (e.g. sqlite3*, FILE*, hashtable*) */
     void *handle;

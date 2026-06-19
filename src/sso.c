@@ -254,6 +254,7 @@ sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
         sodium_memzero(config->private_key_pem, sizeof(config->private_key_pem));
     }
 
+    tmgr->storage = ctx->storage_backend;
     ctx->token_mgr = tmgr;
 
     /* 3. Managers */

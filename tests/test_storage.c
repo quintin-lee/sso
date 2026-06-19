@@ -182,6 +182,22 @@ static const char *test_generic_refresh_tokens(storage_backend_t *s) {
     return 0;
 }
 
+static const char *test_generic_revoked_jtis(storage_backend_t *s) {
+    printf("    Running revoked_jtis...\n");
+    const char *jti = "test_jti_uuid_12345";
+    sso_timestamp_t expiry = sso_timestamp_now() + 10000;
+
+    ASSERT_TRUE(!s->jti_is_revoked(s, jti));
+    ASSERT_INT_EQUAL(s->jti_revoke(s, jti, expiry), SSO_OK);
+    ASSERT_TRUE(s->jti_is_revoked(s, jti));
+
+    const char *jti_expired = "test_jti_expired";
+    sso_timestamp_t expired_time = sso_timestamp_now() - 1000;
+    ASSERT_INT_EQUAL(s->jti_revoke(s, jti_expired, expired_time), SSO_OK);
+    ASSERT_TRUE(!s->jti_is_revoked(s, jti_expired));
+    return 0;
+}
+
 static const char *test_generic_oauth_clients(storage_backend_t *s) {
     printf("    Running oauth_clients...\n");
     oauth_client_t client;
@@ -221,6 +237,7 @@ static const char *run_storage_suite(storage_backend_t *s, const char *dsn) {
     mu_run_test_arg(test_generic_not_found, s);
     mu_run_test_arg(test_generic_duplicate, s);
     mu_run_test_arg(test_generic_refresh_tokens, s);
+    mu_run_test_arg(test_generic_revoked_jtis, s);
     mu_run_test_arg(test_generic_oauth_clients, s);
 
     s->close(s);

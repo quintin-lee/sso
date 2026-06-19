@@ -1807,6 +1807,33 @@ static sso_error_t redis_refresh_token_revoke(storage_backend_t *self, const cha
     return redis_ok(priv->ctx, r);
 }
 
+static sso_error_t redis_jti_revoke(storage_backend_t *self, const char *jti, sso_timestamp_t expires_at) {
+    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
+
+    sso_timestamp_t now = sso_timestamp_now();
+    if (expires_at <= now) return SSO_OK;
+    int ttl_sec = (int)((expires_at - now) / 1000);
+    if (ttl_sec <= 0) ttl_sec = 1;
+
+    redisReply *r = redis_cmd(priv->ctx, "SETEX revoked_jti:%s %d 1", jti, ttl_sec);
+    return redis_ok(priv->ctx, r);
+}
+
+static bool redis_jti_is_revoked(storage_backend_t *self, const char *jti) {
+    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    if (!priv || !priv->ctx) return false;
+
+    redisReply *r = redis_cmd(priv->ctx, "EXISTS revoked_jti:%s", jti);
+    if (!r) return false;
+    bool exists = false;
+    if (r->type == REDIS_REPLY_INTEGER) {
+        exists = (r->integer == 1);
+    }
+    freeReplyObject(r);
+    return exists;
+}
+
 /* ========================================================================
  * Vtable setup
  * ======================================================================== */
@@ -1904,10 +1931,11 @@ sso_error_t storage_redis_create(storage_backend_t **backend) {
     (*backend)->oauth_client_delete = redis_oauth_client_delete;
     (*backend)->oauth_client_list   = redis_oauth_client_list;
 
-    /* Refresh tokens */
     (*backend)->refresh_token_create = redis_refresh_token_create;
     (*backend)->refresh_token_get    = redis_refresh_token_get;
     (*backend)->refresh_token_revoke = redis_refresh_token_revoke;
+    (*backend)->jti_revoke           = redis_jti_revoke;
+    (*backend)->jti_is_revoked       = redis_jti_is_revoked;
 
     (*backend)->handle = priv;
     return SSO_OK;

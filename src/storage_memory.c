@@ -108,6 +108,11 @@ static void al_rm_by_target(al_t *l, int tt, sso_id_t tid) {
 typedef struct { char p[32]; char c[16]; sso_timestamp_t ex; } sms_t;
 
 typedef struct {
+    char jti[TOKEN_REVOCATION_STR_LEN];
+    sso_timestamp_t expires_at;
+} revoked_jti_t;
+
+typedef struct {
     da_t users, roles, groups, policies;
     da_t oauth_clients;
     pl_t user_roles, user_groups, role_groups;
@@ -117,6 +122,8 @@ typedef struct {
     size_t oauth_n, oauth_cap;
     refresh_token_t *refresh_tokens;
     size_t rt_n, rt_cap;
+    revoked_jti_t *revoked_jtis;
+    size_t jti_n, jti_cap;
     sso_id_t next_uid, next_rid, next_gid, next_pid, next_ocid;
 } mem_priv_t;
 
@@ -132,6 +139,7 @@ static sso_error_t mem_open(storage_backend_t *self, const char *dsn) {
     p->sms=NULL; p->sms_n=0; p->sms_cap=0;
     p->oauth_codes=NULL; p->oauth_n=0; p->oauth_cap=0;
     p->refresh_tokens=NULL; p->rt_n=0; p->rt_cap=0;
+    p->revoked_jtis=NULL; p->jti_n=0; p->jti_cap=0;
     p->next_uid=1; p->next_rid=1; p->next_gid=1; p->next_pid=1; p->next_ocid=1;
     return SSO_OK;
 }
@@ -190,7 +198,7 @@ static void mem_close(storage_backend_t *self) {
     da_free(&p->oauth_clients);
     pl_free(&p->user_roles); pl_free(&p->user_groups); pl_free(&p->role_groups);
     al_free(&p->policy_assignments); free(p->sms);
-    free(p->oauth_codes); free(p->refresh_tokens);
+    free(p->oauth_codes); free(p->refresh_tokens); free(p->revoked_jtis);
     free(p);
     self->handle = NULL;
 }
@@ -521,7 +529,7 @@ static sso_error_t mem_rt_get(storage_backend_t *self, const char *h, refresh_to
 }
 
 static sso_error_t mem_rt_revoke(storage_backend_t *self, const char *h) {
-    mem_priv_t *p = P; if (!p || !h) return SSO_ERR_STORAGE;
+    mem_priv_t *p = (mem_priv_t*)self->handle; if (!p || !h) return SSO_ERR_STORAGE;
     for (size_t i = 0; i < p->rt_n; i++) {
         if (strcmp(p->refresh_tokens[i].token_hash, h) == 0) {
             p->refresh_tokens[i].revoked = 1;
@@ -529,6 +537,42 @@ static sso_error_t mem_rt_revoke(storage_backend_t *self, const char *h) {
         }
     }
     return SSO_ERR_NOT_FOUND;
+}
+
+static sso_error_t mem_jti_revoke(storage_backend_t *self, const char *jti, sso_timestamp_t expires_at) {
+    mem_priv_t *p = (mem_priv_t*)self->handle;
+    if (!p || !jti) return SSO_ERR_STORAGE;
+    for (size_t i = 0; i < p->jti_n; i++) {
+        if (strcmp(p->revoked_jtis[i].jti, jti) == 0) {
+            p->revoked_jtis[i].expires_at = expires_at;
+            return SSO_OK;
+        }
+    }
+    if (p->jti_n >= p->jti_cap) {
+        size_t nc = p->jti_cap ? p->jti_cap * 2 : 16;
+        revoked_jti_t *n = realloc(p->revoked_jtis, nc * sizeof(revoked_jti_t));
+        if (!n) return SSO_ERR_OUT_OF_MEMORY;
+        p->revoked_jtis = n; p->jti_cap = nc;
+    }
+    strncpy(p->revoked_jtis[p->jti_n].jti, jti, TOKEN_REVOCATION_STR_LEN - 1);
+    p->revoked_jtis[p->jti_n].jti[TOKEN_REVOCATION_STR_LEN - 1] = '\0';
+    p->revoked_jtis[p->jti_n].expires_at = expires_at;
+    p->jti_n++;
+    return SSO_OK;
+}
+
+static bool mem_jti_is_revoked(storage_backend_t *self, const char *jti) {
+    mem_priv_t *p = (mem_priv_t*)self->handle;
+    if (!p || !jti) return false;
+    sso_timestamp_t now = sso_timestamp_now();
+    for (size_t i = 0; i < p->jti_n; i++) {
+        if (strcmp(p->revoked_jtis[i].jti, jti) == 0) {
+            if (p->revoked_jtis[i].expires_at > now) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 #undef P
@@ -607,6 +651,8 @@ sso_error_t storage_memory_create(storage_backend_t **backend) {
     (*backend)->refresh_token_create = mem_rt_create;
     (*backend)->refresh_token_get    = mem_rt_get;
     (*backend)->refresh_token_revoke = mem_rt_revoke;
+    (*backend)->jti_revoke           = mem_jti_revoke;
+    (*backend)->jti_is_revoked       = mem_jti_is_revoked;
 
     (*backend)->handle = priv;
     return SSO_OK;

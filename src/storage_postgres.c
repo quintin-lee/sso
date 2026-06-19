@@ -1737,6 +1737,49 @@ static sso_error_t postgres_rt_revoke(storage_backend_t *self, const char *token
     return SSO_OK;
 }
 
+static sso_error_t postgres_jti_revoke(storage_backend_t *self, const char *jti, sso_timestamp_t expires_at) {
+    if (!self || !jti) return SSO_ERR_INVALID_PARAM;
+    postgres_priv_t *priv = postgres_get_priv(self);
+
+    const char *query = "INSERT INTO revoked_jtis (jti, expires_at) VALUES ($1, $2) ON CONFLICT (jti) DO UPDATE SET expires_at = EXCLUDED.expires_at";
+    
+    char expires_at_str[32];
+    snprintf(expires_at_str, sizeof(expires_at_str), "%" PRId64, expires_at);
+
+    const char *params[2] = { jti, expires_at_str };
+
+    PGresult *res = PQexecParams(priv->conn, query, 2, NULL, params, NULL, NULL, 0);
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        PQclear(res);
+        return SSO_ERR_STORAGE;
+    }
+
+    PQclear(res);
+    return SSO_OK;
+}
+
+static bool postgres_jti_is_revoked(storage_backend_t *self, const char *jti) {
+    if (!self || !jti) return false;
+    postgres_priv_t *priv = postgres_get_priv(self);
+
+    const char *query = "SELECT expires_at FROM revoked_jtis WHERE jti = $1";
+    const char *params[1] = { jti };
+
+    PGresult *res = PQexecParams(priv->conn, query, 1, NULL, params, NULL, NULL, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) == 0) {
+        PQclear(res);
+        return false;
+    }
+
+    const char *val = PQgetvalue(res, 0, 0);
+    sso_timestamp_t expires_at = (sso_timestamp_t)(val ? strtoll(val, NULL, 10) : 0);
+    sso_timestamp_t now = sso_timestamp_now();
+    bool revoked = (expires_at > now);
+
+    PQclear(res);
+    return revoked;
+}
+
 /* ========================================================================
  * Public constructor
  * ======================================================================== */
@@ -1844,6 +1887,8 @@ sso_error_t storage_postgres_create(storage_backend_t **backend) {
     (*backend)->refresh_token_create = postgres_rt_create;
     (*backend)->refresh_token_get    = postgres_rt_get;
     (*backend)->refresh_token_revoke = postgres_rt_revoke;
+    (*backend)->jti_revoke           = postgres_jti_revoke;
+    (*backend)->jti_is_revoked       = postgres_jti_is_revoked;
 
     return SSO_OK;
 }
