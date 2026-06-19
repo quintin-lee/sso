@@ -47,11 +47,17 @@ typedef struct {
 /* ========================================================================
  * Shutdown coordination
  * ======================================================================== */
-static volatile sig_atomic_t g_shutdown = 0;
+static volatile sig_atomic_t g_shutdown      = 0;
+static volatile sig_atomic_t g_reload_config = 0;
 
 static void sigint_handler(int sig) {
     (void)sig;
     g_shutdown = 1;
+}
+
+static void sighup_handler(int sig) {
+    (void)sig;
+    g_reload_config = 1;
 }
 
 /* ========================================================================
@@ -418,6 +424,7 @@ sso_error_t sso_server_start(sso_server_t *server) {
     /* Register signal handlers */
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigint_handler);
+    signal(SIGHUP, sighup_handler);
     signal(SIGPIPE, SIG_IGN);
 
     sso_config_t *cfg = (sso_config_t *)server->sso_ctx->config;
@@ -514,6 +521,20 @@ sso_error_t sso_server_start(sso_server_t *server) {
 
     /* Block until shutdown signal */
     while (!g_shutdown) {
+        /* SIGHUP: hot-reload config */
+        if (g_reload_config) {
+            g_reload_config = 0;
+            sso_config_t *rcfg = (sso_config_t *)server->sso_ctx->config;
+            if (server->config_path[0] &&
+                sso_config_load(server->config_path, rcfg) == SSO_OK) {
+                sso_config_apply_env(rcfg);
+                log_set_level((log_level_t)rcfg->log_level);
+                log_set_format((log_format_t)rcfg->log_format);
+                LOG_INFO("Configuration reloaded via SIGHUP");
+            } else {
+                LOG_WARN("SIGHUP config reload failed (no config path set)");
+            }
+        }
         sleep(1);
     }
 

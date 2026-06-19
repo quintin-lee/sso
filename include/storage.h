@@ -269,6 +269,9 @@ sso_error_t storage_memory_create(storage_backend_t **backend);
 /* PostgreSQL backend — requires libpq at link time. */
 sso_error_t storage_postgres_create(storage_backend_t **backend);
 
+/* Redis backend — requires libhiredis at link time (skeleton). */
+sso_error_t storage_redis_create(storage_backend_t **backend);
+
 #ifdef __cplusplus
 }
 #endif

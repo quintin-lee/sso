@@ -114,6 +114,7 @@ struct sso_server {
     sso_context_t   *sso_ctx;
     void            *server_data;       /* platform-specific (socket, ctx)     */
     SSL_CTX         *ssl_ctx;           /* TLS context, NULL if disabled      */
+    char             config_path[SSO_MAX_PATH]; /* config file path for SIGHUP reload */
 };
 
 /* -----------------------------------------------------------------------

@@ -214,13 +214,15 @@ static sso_error_t bootstrap_data(sso_context_t *ctx) {
 /* ========================================================================
  * Server mode
  * ======================================================================== */
-static int run_server(sso_config_t *cfg) {
+static int run_server(sso_config_t *cfg, const char *config_path) {
     sso_error_t err;
 
     /* Init SSO */
     storage_backend_t *storage = NULL;
     if (strcmp(cfg->database_type, "postgres") == 0) {
         err = storage_postgres_create(&storage);
+    } else if (strcmp(cfg->database_type, "redis") == 0) {
+        err = storage_redis_create(&storage);
     } else {
         err = storage_sqlite_create(&storage);
     }
@@ -327,6 +329,8 @@ static int run_server(sso_config_t *cfg) {
 
     sso_server_t server;
     sso_server_init(&server, &ctx, cfg->host, cfg->port, routes, route_count);
+    strncpy(server.config_path, config_path, sizeof(server.config_path) - 1);
+    server.config_path[sizeof(server.config_path) - 1] = '\0';
 
     printf("  Login: http://%s:%d/\n", cfg->host, cfg->port);
     printf("  API: http://%s:%d/api/v1/health\n", cfg->host, cfg->port);
@@ -391,7 +395,7 @@ int main(int argc, char *argv[]) {
     log_set_format((log_format_t)g_config.log_format);
 
     if (argc > 1 && strcmp(argv[argc-1], "--server") == 0) {
-        return run_server(&g_config);
+        return run_server(&g_config, config_path);
     }
     if (argc > 1 && strcmp(argv[argc-1], "--interactive") == 0) {
         return interactive_config(&g_config);

@@ -22,6 +22,7 @@
 #include <openssl/err.h>
 
 static sso_server_t *g_server = NULL;
+static volatile sig_atomic_t g_reload_config = 0;
 
 /* ========================================================================
  * Connection wrapper (raw fd or TLS)
@@ -506,6 +507,11 @@ static void sigint_handler(int sig) {
     }
 }
 
+static void sighup_handler(int sig) {
+    (void)sig;
+    g_reload_config = 1;
+}
+
 /* ========================================================================
  * Server lifecycle
  * ======================================================================== */
@@ -548,6 +554,7 @@ sso_error_t sso_server_start(sso_server_t *server) {
     g_server = server;
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigint_handler);
+    signal(SIGHUP, sighup_handler);
     signal(SIGPIPE, SIG_IGN);
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -620,6 +627,20 @@ sso_error_t sso_server_start(sso_server_t *server) {
             if (errno == EINTR || errno == EBADF || errno == EINVAL) {
                 const int *sock = (const int *)&server->server_data;
                 if (*sock == 0) break;
+                /* SIGHUP: hot-reload config */
+                if (g_reload_config) {
+                    g_reload_config = 0;
+                    sso_config_t *rcfg = (sso_config_t *)server->sso_ctx->config;
+                    if (server->config_path[0] &&
+                        sso_config_load(server->config_path, rcfg) == SSO_OK) {
+                        sso_config_apply_env(rcfg);
+                        log_set_level((log_level_t)rcfg->log_level);
+                        log_set_format((log_format_t)rcfg->log_format);
+                        LOG_INFO("Configuration reloaded via SIGHUP");
+                    } else {
+                        LOG_WARN("SIGHUP config reload failed (no config path set)");
+                    }
+                }
                 continue;
             }
             break;
