@@ -94,8 +94,10 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
     }
 
     snprintf(resp->extra_headers, sizeof(resp->extra_headers),
+             "Set-Cookie: sso_token=%s; Path=/; HttpOnly; SameSite=Lax\r\n"
              "X-SSO-Access-Token: %s\r\n"
              "X-SSO-Refresh-Token: %s\r\n",
+             access_token.token_str,
              access_token.token_str, refresh_token.token_str);
 
     char buf[8192];
@@ -762,5 +764,72 @@ sso_error_t handle_certs(sso_context_t *ctx, const http_request_t *req,
     free(json);
     cJSON_Delete(root);
     free(pem);
+    return SSO_OK;
+}
+
+/* ========================================================================
+ * GET /api/v1/auth/session-check
+ *
+ * Nginx auth_request endpoint. Validates a Bearer JWT token and returns:
+ *   200 + X-SSO-User / X-SSO-Email headers on success
+ *   401 on failure
+ *
+ * Designed for nginx auth_request: expects the token in the
+ * Authorization header (set by nginx via proxy_set_header from cookie).
+ * ======================================================================== */
+sso_error_t handle_session_check(sso_context_t *ctx,
+                                 const http_request_t *req,
+                                 http_response_t *resp) {
+    const char *token_str = req->auth_token;
+    if (!token_str || !token_str[0]) {
+        sso_response_error(resp, 401, "No token");
+        return SSO_OK;
+    }
+
+    token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
+    token_t tok;
+    sso_error_t err = token_verify(tmgr, token_str, &tok);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 401, sso_strerror(err));
+        return SSO_OK;
+    }
+    if (token_is_revoked(tmgr, tok.jti)) {
+        token_destroy(&tok);
+        sso_response_error(resp, 401, "Token revoked");
+        return SSO_OK;
+    }
+
+    user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
+    user_t user;
+    err = user_get_by_id(umgr, tok.user_id, &user);
+    if (err != SSO_OK || user.status != USER_STATUS_ACTIVE) {
+        token_destroy(&tok);
+        sso_response_error(resp, 401, "User not found or inactive");
+        return SSO_OK;
+    }
+
+    /* Set X-SSO-User header for nginx auth_request_set to capture */
+    snprintf(resp->extra_headers, sizeof(resp->extra_headers),
+             "X-SSO-User: %s\r\n"
+             "X-SSO-Email: %s\r\n"
+             "X-SSO-User-Id: %llu\r\n",
+             user.username,
+             user.email,
+             (unsigned long long)user.id);
+
+    /* Return minimal JSON body */
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+        "{"
+        "\"active\":true,"
+        "\"user_id\":%llu,"
+        "\"username\":\"%s\","
+        "\"email\":\"%s\""
+        "}",
+        (unsigned long long)user.id,
+        user.username,
+        user.email);
+    sso_response_ok(resp, buf);
+    token_destroy(&tok);
     return SSO_OK;
 }

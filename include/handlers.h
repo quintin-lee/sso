@@ -52,6 +52,7 @@ sso_error_t handle_logout_all(sso_context_t *ctx, const http_request_t *req, htt
 sso_error_t handle_change_password(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
 sso_error_t handle_me(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
 sso_error_t handle_certs(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
+sso_error_t handle_session_check(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
 
 /* -----------------------------------------------------------------------
  * Check handlers

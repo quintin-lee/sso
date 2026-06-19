@@ -12,7 +12,7 @@ services:
       - SSO_AUDIT_LOG_PATH=/app/data/audit.log
     volumes:
       - sso_data:/app/data
-      # audit log goes inside sso_data volume (SSO_AUDIT_LOG_PATH=/app/data/audit.log)
+      - ./nginx.conf:/etc/nginx/nginx.conf
     depends_on:
       db:
         condition: service_healthy
