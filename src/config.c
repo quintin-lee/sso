@@ -36,6 +36,7 @@ void sso_config_default(sso_config_t *cfg) {
     cfg->tls_key_file[0] = '\0';
     
     /* [logging] defaults */
+    cfg->log_format = 0;  /* text */
     memcpy(cfg->audit_log_path, "audit.log", 10);
 
     /* [ratelimit] defaults */
@@ -221,6 +222,7 @@ void sso_config_apply_env(sso_config_t *cfg) {
     { const char *ev = getenv("SSO_PASSWORD_OPSLIMIT"); if (ev) cfg->password_opslimit = (unsigned long)atol(ev); }
     { const char *ev = getenv("SSO_PASSWORD_MEMLIMIT"); if (ev) cfg->password_memlimit = (unsigned long)atol(ev); }
     { const char *ev = getenv("SSO_LOG_LEVEL"); if (ev) { cfg->log_level = atoi(ev); if (cfg->log_level < LOG_DEBUG) cfg->log_level = LOG_DEBUG; if (cfg->log_level > LOG_ERROR) cfg->log_level = LOG_ERROR; } }
+    { const char *ev = getenv("SSO_LOG_FORMAT"); if (ev) cfg->log_format = atoi(ev); }
     if ((val = getenv("SSO_AUDIT_LOG_PATH"))) SSO_STRNCPY_DST(cfg->audit_log_path, val);
     if ((val = getenv("SSO_REQUEST_TIMEOUT_MS"))) cfg->request_timeout_ms = atoi(val);
     if ((val = getenv("SSO_MAX_BODY_SIZE"))) cfg->max_body_size = atol(val);

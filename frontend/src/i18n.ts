@@ -155,6 +155,24 @@ const messages = {
         }
       }
     },
+    policySimulator: {
+      title: 'Policy Simulator',
+      strategy: 'Strategy Type',
+      user: 'User',
+      selectUser: 'Select User',
+      test: 'Run Test',
+      results: 'Test Results',
+      noResults: 'Configure parameters and click Run Test',
+      testing: 'Testing...',
+      decision: 'Decision',
+      allow: 'Allow',
+      deny: 'Deny',
+      cache: 'Cache Status',
+      duration: 'Duration',
+      matchedPolicies: 'Matched Policies',
+      priority: 'Priority',
+      trace: 'Execution Trace'
+    },
     apps: {
       title: 'Application Management',
       clientId: 'Client ID',
@@ -327,6 +345,24 @@ const messages = {
           desc: '统一管理系统用户、角色、用户组与策略授权，查看全局审计日志。'
         }
       }
+    },
+    policySimulator: {
+      title: '策略模拟器',
+      strategy: '策略类型',
+      user: '用户',
+      selectUser: '选择用户',
+      test: '运行测试',
+      results: '测试结果',
+      noResults: '配置参数并点击运行测试',
+      testing: '测试中...',
+      decision: '决策结果',
+      allow: '允许',
+      deny: '拒绝',
+      cache: '缓存状态',
+      duration: '耗时',
+      matchedPolicies: '匹配的策略',
+      priority: '优先级',
+      trace: '执行路径'
     },
     apps: {
       title: '应用管理',

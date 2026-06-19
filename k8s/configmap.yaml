@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sso-config
+  namespace: sso-system
+data:
+  sso.toml: |
+    [server]
+    host = "0.0.0.0"
+    port = 8080
+    thread_pool_size = 8
+    queue_size = 1024
+    request_timeout_ms = 30000
+    max_body_size = 1048576
+
+    [database]
+    type = "postgres"
+    url = "postgres://sso:sso_pass@sso-postgres:5432/sso?sslmode=disable"
+
+    [security]
+    token_ttl_ms = 3600000
+    password_opslimit = 3
+    password_memlimit = 268435456
+
+    [logging]
+    level = 1
+    format = 1  # JSON format
+    audit_log_path = "/app/data/audit.log"
+
+    [ratelimit]
+    max_ips = 10000

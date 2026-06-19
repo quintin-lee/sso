@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sso-server
+  namespace: sso-system
+  labels:
+    app: sso-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sso-server
+  template:
+    metadata:
+      labels:
+        app: sso-server
+    spec:
+      containers:
+        - name: sso
+          image: sso-system:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SSO_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sso-secrets
+                  key: token-secret
+            - name: SSO_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sso-secrets
+                  key: admin-password
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: data
+              mountPath: /app/data
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: config
+          configMap:
+            name: sso-config
+        - name: data
+          emptyDir: {}

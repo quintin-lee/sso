@@ -388,6 +388,7 @@ int main(int argc, char *argv[]) {
     }
     sso_config_apply_env(&g_config);
     log_set_level((log_level_t)g_config.log_level);
+    log_set_format((log_format_t)g_config.log_format);
 
     if (argc > 1 && strcmp(argv[argc-1], "--server") == 0) {
         return run_server(&g_config);
