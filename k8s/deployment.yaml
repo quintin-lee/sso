@@ -20,7 +20,7 @@ spec:
           image: sso-system:latest
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8080
+            - containerPort: 80
               name: http
           env:
             - name: SSO_TOKEN_SECRET
