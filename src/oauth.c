@@ -9,10 +9,30 @@
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 #include <openssl/bn.h>
+#include <openssl/sha.h>
 #include <sodium.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+static bool verify_pkce(const char *code_verifier, const char *challenge, const char *method) {
+    if (!challenge || challenge[0] == '\0') return true; /* PKCE not used for this code */
+    if (!code_verifier) return false;
+
+    size_t len = strlen(code_verifier);
+    if (len < 43 || len > 128) return false;
+
+    if (strcmp(method, "plain") == 0) {
+        return strcmp(code_verifier, challenge) == 0;
+    } else if (strcmp(method, "S256") == 0) {
+        unsigned char hash[32];
+        SHA256((const unsigned char *)code_verifier, len, hash);
+        char computed_challenge[128];
+        base64url_encode(hash, 32, computed_challenge, sizeof(computed_challenge));
+        return strcmp(computed_challenge, challenge) == 0;
+    }
+    return false;
+}
 
 /* -----------------------------------------------------------------------
  * Internal helpers
@@ -170,6 +190,8 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
     const char *state = NULL;
     const char *scope = NULL;
     const char *nonce = NULL;
+    const char *code_challenge = NULL;
+    const char *code_challenge_method = NULL;
     if (req->query_params) {
         for (size_t i = 0; req->query_params[i]; i++) {
             const char *eq = strchr(req->query_params[i], '=');
@@ -188,6 +210,10 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
                 scope = val;
             else if (klen == 5 && strncmp(req->query_params[i], "nonce", 5) == 0)
                 nonce = val;
+            else if (klen == 14 && strncmp(req->query_params[i], "code_challenge", 14) == 0)
+                code_challenge = val;
+            else if (klen == 21 && strncmp(req->query_params[i], "code_challenge_method", 21) == 0)
+                code_challenge_method = val;
         }
     }
 
@@ -196,6 +222,11 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
                  client_id ? client_id : "(null)",
                  redirect_uri ? redirect_uri : "(null)",
                  response_type ? response_type : "(null)");
+        json_error_response(resp, 400, "invalid_request");
+        return SSO_OK;
+    }
+
+    if (code_challenge_method && strcmp(code_challenge_method, "S256") != 0 && strcmp(code_challenge_method, "plain") != 0) {
         json_error_response(resp, 400, "invalid_request");
         return SSO_OK;
     }
@@ -264,6 +295,13 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
     ac.redirect_uri[sizeof(ac.redirect_uri) - 1] = '\0';
     if (scope) { strncpy(ac.scope, scope, sizeof(ac.scope) - 1); ac.scope[sizeof(ac.scope) - 1] = '\0'; }
     if (nonce) { strncpy(ac.nonce, nonce, sizeof(ac.nonce) - 1); ac.nonce[sizeof(ac.nonce) - 1] = '\0'; }
+    if (code_challenge) { strncpy(ac.code_challenge, code_challenge, sizeof(ac.code_challenge) - 1); ac.code_challenge[sizeof(ac.code_challenge) - 1] = '\0'; }
+    if (code_challenge_method) {
+        strncpy(ac.code_challenge_method, code_challenge_method, sizeof(ac.code_challenge_method) - 1);
+        ac.code_challenge_method[sizeof(ac.code_challenge_method) - 1] = '\0';
+    } else if (code_challenge) {
+        strcpy(ac.code_challenge_method, "plain");
+    }
 
     /* Auth codes: 60s TTL by default */
     long ttl = cfg->oauth_auth_code_ttl_ms > 0 ? cfg->oauth_auth_code_ttl_ms : 60000;
@@ -388,6 +426,15 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
         if (strcmp(ac.redirect_uri, redirect_uri) != 0) {
             json_error_response(resp, 400, "invalid_grant");
             goto cleanup;
+        }
+
+        /* Verify PKCE if a challenge was saved for this code */
+        if (ac.code_challenge[0] != '\0') {
+            char *code_verifier = json_str_value(req->body, "code_verifier");
+            if (!verify_pkce(code_verifier, ac.code_challenge, ac.code_challenge_method)) {
+                json_error_response(resp, 400, "invalid_grant");
+                goto cleanup;
+            }
         }
 
         /* Mark code as used (prevent replay) */

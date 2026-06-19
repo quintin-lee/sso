@@ -352,6 +352,83 @@ test_oauth_endpoints() {
         -H "$AUTH" \
         -d "{\"token\":\"${access_token}\"}" 2>&1) || true
     if [ "$revoke_code" = "200" ]; then pass "OAuth revoke (HTTP 200)"; else fail "OAuth revoke expected 200 got $revoke_code"; fi
+
+    # 8. OAuth PKCE S256 test
+    authz_headers=$(mktemp)
+    authz_body=$(mktemp)
+    authz_http_code=$(curl -s -o "$authz_body" -w "%{http_code}" -D "$authz_headers" \
+        "${BASE}/api/v1/oauth/authorize?response_type=code&client_id=test-client&redirect_uri=http://localhost:3000/callback&scope=openid&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256" \
+        -H "$AUTH" 2>&1) || true
+    location_header=$(grep -i '^Location:' "$authz_headers" || echo "")
+    local pkce_s256_code
+    pkce_s256_code=$(echo "$location_header" | sed 's/.*code=\([a-f0-9]*\).*/\1/')
+    rm -f "$authz_headers" "$authz_body"
+
+    if [ -z "$pkce_s256_code" ]; then
+        fail "OAuth PKCE S256 authorize - no code"
+    else
+        # Try exchange without verifier (should fail with HTTP 400)
+        local err_code
+        err_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${BASE}/api/v1/oauth/token" \
+            -H "Content-Type: application/json" \
+            -d "{\"grant_type\":\"authorization_code\",\"code\":\"${pkce_s256_code}\",\"redirect_uri\":\"http://localhost:3000/callback\",\"client_id\":\"test-client\",\"client_secret\":\"test-secret\"}" 2>&1) || true
+        if [ "$err_code" = "400" ]; then
+            pass "OAuth PKCE S256 rejects missing verifier (HTTP 400)"
+        else
+            fail "OAuth PKCE S256 expected 400 for missing verifier, got $err_code"
+        fi
+
+        # Try exchange with invalid verifier (should fail with HTTP 400)
+        err_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${BASE}/api/v1/oauth/token" \
+            -H "Content-Type: application/json" \
+            -d "{\"grant_type\":\"authorization_code\",\"code\":\"${pkce_s256_code}\",\"redirect_uri\":\"http://localhost:3000/callback\",\"client_id\":\"test-client\",\"client_secret\":\"test-secret\",\"code_verifier\":\"invalidverifierinvalidverifierinvalidverifierinvalidverifier\"}" 2>&1) || true
+        if [ "$err_code" = "400" ]; then
+            pass "OAuth PKCE S256 rejects invalid verifier (HTTP 400)"
+        else
+            fail "OAuth PKCE S256 expected 400 for invalid verifier, got $err_code"
+        fi
+
+        # Try exchange with correct verifier
+        local s256_resp
+        s256_resp=$(curl -sf -X POST "${BASE}/api/v1/oauth/token" \
+            -H "Content-Type: application/json" \
+            -d "{\"grant_type\":\"authorization_code\",\"code\":\"${pkce_s256_code}\",\"redirect_uri\":\"http://localhost:3000/callback\",\"client_id\":\"test-client\",\"client_secret\":\"test-secret\",\"code_verifier\":\"dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk\"}" 2>&1) || { fail "OAuth PKCE S256 token exchange"; }
+        local s256_tok
+        s256_tok=$(extract_json "access_token" "$s256_resp")
+        if [ -n "$s256_tok" ]; then
+            pass "OAuth PKCE S256 token exchange"
+        else
+            fail "OAuth PKCE S256 token exchange failed: $s256_resp"
+        fi
+    fi
+
+    # 9. OAuth PKCE plain test
+    authz_headers=$(mktemp)
+    authz_body=$(mktemp)
+    authz_http_code=$(curl -s -o "$authz_body" -w "%{http_code}" -D "$authz_headers" \
+        "${BASE}/api/v1/oauth/authorize?response_type=code&client_id=test-client&redirect_uri=http://localhost:3000/callback&scope=openid&code_challenge=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk&code_challenge_method=plain" \
+        -H "$AUTH" 2>&1) || true
+    location_header=$(grep -i '^Location:' "$authz_headers" || echo "")
+    local pkce_plain_code
+    pkce_plain_code=$(echo "$location_header" | sed 's/.*code=\([a-f0-9]*\).*/\1/')
+    rm -f "$authz_headers" "$authz_body"
+
+    if [ -z "$pkce_plain_code" ]; then
+        fail "OAuth PKCE plain authorize - no code"
+    else
+        # Try exchange with correct verifier
+        local plain_resp
+        plain_resp=$(curl -sf -X POST "${BASE}/api/v1/oauth/token" \
+            -H "Content-Type: application/json" \
+            -d "{\"grant_type\":\"authorization_code\",\"code\":\"${pkce_plain_code}\",\"redirect_uri\":\"http://localhost:3000/callback\",\"client_id\":\"test-client\",\"client_secret\":\"test-secret\",\"code_verifier\":\"dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk\"}" 2>&1) || { fail "OAuth PKCE plain token exchange"; }
+        local plain_tok
+        plain_tok=$(extract_json "access_token" "$plain_resp")
+        if [ -n "$plain_tok" ]; then
+            pass "OAuth PKCE plain token exchange"
+        else
+            fail "OAuth PKCE plain token exchange failed: $plain_resp"
+        fi
+    fi
 }
 
 test_permission_checks() {
