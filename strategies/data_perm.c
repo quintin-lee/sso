@@ -159,11 +159,23 @@ static sso_error_t data_evaluate(permission_strategy_t *self,
 
     /* 3. Field Filter Population */
     if (compiled->field_count > 0) {
-        ctx->params.data.field_filter = (char **)calloc(compiled->field_count, sizeof(char *));
-        for (size_t i = 0; i < compiled->field_count; i++) {
-            ctx->params.data.field_filter[i] = strdup(compiled->allowed_fields[i]);
+        /* Free existing field_filter to prevent memory leaks from previous policy evaluations */
+        if (ctx->params.data.field_filter) {
+            for (size_t i = 0; i < ctx->params.data.field_filter_count; i++) {
+                free(ctx->params.data.field_filter[i]);
+            }
+            free(ctx->params.data.field_filter);
+            ctx->params.data.field_filter = NULL;
+            ctx->params.data.field_filter_count = 0;
         }
-        ctx->params.data.field_filter_count = compiled->field_count;
+
+        ctx->params.data.field_filter = (char **)calloc(compiled->field_count, sizeof(char *));
+        if (ctx->params.data.field_filter) {
+            for (size_t i = 0; i < compiled->field_count; i++) {
+                ctx->params.data.field_filter[i] = strdup(compiled->allowed_fields[i]);
+            }
+            ctx->params.data.field_filter_count = compiled->field_count;
+        }
     }
 
     *result = compiled->is_allow;
