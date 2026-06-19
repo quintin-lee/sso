@@ -13,7 +13,8 @@ const messages = {
       controlCenter: 'Control Center',
       management: 'Management',
       security: 'Security',
-      administrator: 'Administrator'
+      administrator: 'Administrator',
+      apps: 'Applications'
     },
     common: {
       add: 'Add',
@@ -153,6 +154,24 @@ const messages = {
           desc: 'Manage users, roles, authentication policies, security settings, and audit logs.'
         }
       }
+    },
+    apps: {
+      title: 'Application Management',
+      clientId: 'Client ID',
+      clientSecret: 'Client Secret',
+      redirectUris: 'Redirect URIs',
+      appName: 'App Name',
+      appDescription: 'Description',
+      appLogoUrl: 'Logo URL',
+      allowedScopes: 'Allowed Scopes',
+      allowedGrantTypes: 'Allowed Grant Types',
+      tokenTtl: 'Token TTL (ms)',
+      status: 'Status',
+      create: 'Add Application',
+      update: 'Edit Application',
+      deleteConfirm: 'Are you sure you want to delete application {name}?',
+      clientSecretHelp: 'Keep this secret secure. For existing apps, leave empty to keep unchanged.',
+      redirectUrisHelp: 'Comma-separated list of allowed callback URLs.'
     }
   },
   zh: {
@@ -167,7 +186,8 @@ const messages = {
       controlCenter: '控制中心',
       management: '组织管理',
       security: '安全控制',
-      administrator: '系统管理员'
+      administrator: '系统管理员',
+      apps: '应用管理'
     },
     common: {
       add: '添加',
@@ -307,6 +327,24 @@ const messages = {
           desc: '统一管理系统用户、角色、用户组与策略授权，查看全局审计日志。'
         }
       }
+    },
+    apps: {
+      title: '应用管理',
+      clientId: '客户端 ID (Client ID)',
+      clientSecret: '客户端密钥 (Client Secret)',
+      redirectUris: '重定向 URI 列表',
+      appName: '应用名称',
+      appDescription: '应用描述',
+      appLogoUrl: 'Logo 图标链接',
+      allowedScopes: '允许范围 (Scopes)',
+      allowedGrantTypes: '允许授权模式',
+      tokenTtl: 'Token 有效期 (毫秒)',
+      status: '应用状态',
+      create: '添加应用',
+      update: '编辑应用',
+      deleteConfirm: '您确定要删除应用 {name} 吗？',
+      clientSecretHelp: '请妥善保管此密钥。编辑现有应用时留空表示不修改。',
+      redirectUrisHelp: '允许的 OAuth 回调地址，多个地址用英文逗号分隔。'
     }
   }
 };

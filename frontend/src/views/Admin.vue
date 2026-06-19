@@ -33,6 +33,10 @@
           <i class="pi pi-sitemap text-sm"></i>
           <span>{{ $t('sidebar.groups') }}</span>
         </button>
+        <button @click="currentTab = 'apps'" :class="tabClass('apps')">
+          <i class="pi pi-desktop text-sm"></i>
+          <span>{{ $t('sidebar.apps') }}</span>
+        </button>
 
         <div class="px-3 pt-5 pb-2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.1em]">{{ $t('sidebar.security') }}</div>
         <button @click="currentTab = 'policies'" :class="tabClass('policies')">
@@ -102,6 +106,7 @@
         <RoleManagement v-else-if="currentTab === 'roles'" ref="roleRef" :search="searchQuery" />
         <GroupManagement v-else-if="currentTab === 'groups'" ref="groupRef" :search="searchQuery" />
         <PolicyManagement v-else-if="currentTab === 'policies'" ref="policyRef" :search="searchQuery" />
+        <AppManagement v-else-if="currentTab === 'apps'" ref="appRef" :search="searchQuery" />
         <AuditLogViewer v-else-if="currentTab === 'logs'" :search="searchQuery" />
       </div>
     </main>
@@ -121,6 +126,7 @@ import UserManagement from '../components/admin/UserManagement.vue';
 import RoleManagement from '../components/admin/RoleManagement.vue';
 import GroupManagement from '../components/admin/GroupManagement.vue';
 import PolicyManagement from '../components/admin/PolicyManagement.vue';
+import AppManagement from '../components/admin/AppManagement.vue';
 import AuditLogViewer from '../components/admin/AuditLogViewer.vue';
 
 const searchQuery = ref('');
@@ -140,6 +146,7 @@ const userRef = ref();
 const roleRef = ref();
 const groupRef = ref();
 const policyRef = ref();
+const appRef = ref();
 
 const toggleLanguage = () => {
   locale.value = locale.value === 'en' ? 'zh' : 'en';
@@ -158,6 +165,7 @@ const handleCreate = () => {
   if (currentTab.value === 'roles') roleRef.value?.openCreateDialog();
   if (currentTab.value === 'groups') groupRef.value?.openCreateDialog();
   if (currentTab.value === 'policies') policyRef.value?.openCreateDialog();
+  if (currentTab.value === 'apps') appRef.value?.openCreateDialog();
 };
 
 onMounted(() => {

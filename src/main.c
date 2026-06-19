@@ -309,6 +309,12 @@ static int run_server(sso_config_t *cfg) {
         {"/api/v1/groups/*/members", HTTP_POST, handle_add_group_member,  true},
         {"/api/v1/groups/*/members/*", HTTP_DELETE, handle_remove_group_member, true},
 
+        /* Client management */
+        {"/api/v1/clients",         HTTP_GET,  handle_list_clients,      true},
+        {"/api/v1/clients",         HTTP_POST, handle_create_client,     true},
+        {"/api/v1/clients/:id",     HTTP_PUT,  handle_update_client,     true},
+        {"/api/v1/clients/:id",     HTTP_DELETE, handle_delete_client,   true},
+
         /* OAuth 2.0 / OIDC */
         {"/.well-known/openid-configuration", HTTP_GET, handle_well_known_openid_config, false},
         {"/api/v1/oauth/authorize", HTTP_GET, handle_oauth_authorize, true},

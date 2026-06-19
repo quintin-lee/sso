@@ -9,6 +9,7 @@
 #include "storage.h"
 #include "permission.h"
 #include "cJSON.h"
+#include <sodium.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1290,5 +1291,331 @@ sso_error_t handle_get_policy_targets(sso_context_t *ctx, const http_request_t *
         "{\"user_ids\":%s,\"role_ids\":%s,\"group_ids\":%s}",
         users_json, roles_json, groups_json);
     sso_response_ok(resp, json);
+    return SSO_OK;
+}
+
+sso_error_t handle_list_clients(sso_context_t *ctx, const http_request_t *req,
+                                http_response_t *resp) {
+    char q[SSO_MAX_QUERY] = "";
+    int status = -1, page = 1, limit = 10;
+    parse_query_params(req, q, &status, &page, &limit);
+    int offset = (page - 1) * limit;
+
+    oauth_client_t *clients = (oauth_client_t *)calloc(64, sizeof(oauth_client_t));
+    if (!clients) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    size_t count = 0;
+
+    storage_backend_t *sb = (storage_backend_t *)ctx->storage_backend;
+    if (!sb || !sb->oauth_client_list) {
+        sso_response_error(resp, 500, "OAuth client storage unavailable");
+        free(clients);
+        return SSO_OK;
+    }
+
+    sso_error_t err = sb->oauth_client_list(sb, offset, limit, clients, &count, 64);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to list OAuth clients");
+        free(clients);
+        return SSO_OK;
+    }
+
+    // Build JSON output dynamically
+    size_t total_json_len = 2048 + count * 1536;
+    char *json = (char *)calloc(1, total_json_len);
+    if (!json) {
+        sso_response_error(resp, 500, "Out of memory");
+        free(clients);
+        return SSO_OK;
+    }
+
+    strcat(json, "{\"total\":");
+    char count_buf[32];
+    snprintf(count_buf, sizeof(count_buf), "%d", (int)(offset + count + (count == (size_t)limit ? 1 : 0)));
+    strcat(json, count_buf);
+    strcat(json, ",\"page\":");
+    snprintf(count_buf, sizeof(count_buf), "%d", page);
+    strcat(json, count_buf);
+    strcat(json, ",\"limit\":");
+    snprintf(count_buf, sizeof(count_buf), "%d", limit);
+    strcat(json, count_buf);
+    strcat(json, ",\"items\":[");
+
+    for (size_t i = 0; i < count; i++) {
+        char item[1024];
+        snprintf(item, sizeof(item),
+                 "%s{"
+                 "\"id\":%llu,"
+                 "\"client_id\":\"%s\","
+                 "\"redirect_uris\":\"%s\","
+                 "\"app_name\":\"%s\","
+                 "\"app_description\":\"%s\","
+                 "\"app_logo_url\":\"%s\","
+                 "\"allowed_scopes\":\"%s\","
+                 "\"allowed_grant_types\":\"%s\","
+                 "\"token_ttl_ms\":%ld,"
+                 "\"status\":%d,"
+                 "\"created_at\":%llu,"
+                 "\"updated_at\":%llu"
+                 "}",
+                 i > 0 ? "," : "",
+                 (unsigned long long)clients[i].id,
+                 clients[i].client_id,
+                 clients[i].redirect_uris,
+                 clients[i].app_name,
+                 clients[i].app_description,
+                 clients[i].app_logo_url,
+                 clients[i].allowed_scopes,
+                 clients[i].allowed_grant_types,
+                 clients[i].token_ttl_ms,
+                 clients[i].status,
+                 (unsigned long long)clients[i].created_at,
+                 (unsigned long long)clients[i].updated_at);
+        strcat(json, item);
+    }
+    strcat(json, "]}");
+
+    sso_response_ok(resp, json);
+    free(json);
+    free(clients);
+    return SSO_OK;
+}
+
+sso_error_t handle_create_client(sso_context_t *ctx, const http_request_t *req,
+                                  http_response_t *resp) {
+    if (!req->body) {
+        sso_response_error(resp, 400, "Request body required");
+        return SSO_OK;
+    }
+
+    char *client_id = json_str_value(req->body, "client_id");
+    char *client_secret = json_str_value(req->body, "client_secret");
+    char *redirect_uris = json_str_value(req->body, "redirect_uris");
+    char *app_name = json_str_value(req->body, "app_name");
+    char *app_description = json_str_value(req->body, "app_description");
+    char *app_logo_url = json_str_value(req->body, "app_logo_url");
+    char *allowed_scopes = json_str_value(req->body, "allowed_scopes");
+    char *allowed_grant_types = json_str_value(req->body, "allowed_grant_types");
+    long token_ttl_ms = (long)json_int_value(req->body, "token_ttl_ms", 3600000);
+    int status = (int)json_int_value(req->body, "status", 1);
+
+    if (!client_id || !client_secret || !redirect_uris) {
+        free(client_id); free(client_secret); free(redirect_uris);
+        free(app_name); free(app_description); free(app_logo_url);
+        free(allowed_scopes); free(allowed_grant_types);
+        sso_response_error(resp, 400, "client_id, client_secret, and redirect_uris required");
+        return SSO_OK;
+    }
+
+    storage_backend_t *sb = (storage_backend_t *)ctx->storage_backend;
+    if (!sb || !sb->oauth_client_create) {
+        free(client_id); free(client_secret); free(redirect_uris);
+        free(app_name); free(app_description); free(app_logo_url);
+        free(allowed_scopes); free(allowed_grant_types);
+        sso_response_error(resp, 500, "OAuth client storage unavailable");
+        return SSO_OK;
+    }
+
+    oauth_client_t client;
+    memset(&client, 0, sizeof(client));
+
+    strncpy(client.client_id, client_id, sizeof(client.client_id) - 1);
+    strncpy(client.redirect_uris, redirect_uris, sizeof(client.redirect_uris) - 1);
+    if (app_name) strncpy(client.app_name, app_name, sizeof(client.app_name) - 1);
+    if (app_description) strncpy(client.app_description, app_description, sizeof(client.app_description) - 1);
+    if (app_logo_url) strncpy(client.app_logo_url, app_logo_url, sizeof(client.app_logo_url) - 1);
+    if (allowed_scopes) strncpy(client.allowed_scopes, allowed_scopes, sizeof(client.allowed_scopes) - 1);
+    if (allowed_grant_types) strncpy(client.allowed_grant_types, allowed_grant_types, sizeof(client.allowed_grant_types) - 1);
+    client.token_ttl_ms = token_ttl_ms;
+    client.status = status;
+    client.created_at = get_time_ms();
+    client.updated_at = client.created_at;
+
+    // Hash the client secret using libsodium crypto_pwhash_str
+    if (crypto_pwhash_str(client.client_secret_hash, client_secret, strlen(client_secret),
+                          crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE) != 0) {
+        free(client_id); free(client_secret); free(redirect_uris);
+        free(app_name); free(app_description); free(app_logo_url);
+        free(allowed_scopes); free(allowed_grant_types);
+        sso_response_error(resp, 500, "Failed to hash client secret");
+        return SSO_OK;
+    }
+
+    sso_error_t err = sb->oauth_client_create(sb, &client);
+    free(client_id); free(client_secret); free(redirect_uris);
+    free(app_name); free(app_description); free(app_logo_url);
+    free(allowed_scopes); free(allowed_grant_types);
+
+    if (err == SSO_ERR_ALREADY_EXISTS) {
+        sso_response_error(resp, 409, "Client ID already exists");
+        return SSO_OK;
+    }
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, "Failed to create client");
+        return SSO_OK;
+    }
+
+    char buf[256];
+    snprintf(buf, sizeof(buf), "{\"client_id\":\"%s\",\"created\":true}", client.client_id);
+    sso_response_ok(resp, buf);
+
+    // Audit Log
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "create_client", "clients", 0, "success", buf);
+    }
+    return SSO_OK;
+}
+
+sso_error_t handle_update_client(sso_context_t *ctx, const http_request_t *req,
+                                  http_response_t *resp) {
+    /* Path format: /api/v1/clients/:client_id */
+    const char *p = strstr(req->path, "/clients/");
+    if (!p) {
+        sso_response_error(resp, 400, "client_id required in path");
+        return SSO_OK;
+    }
+    p += 9; // past "/clients/"
+    
+    char path_client_id[64];
+    strncpy(path_client_id, p, sizeof(path_client_id) - 1);
+    path_client_id[sizeof(path_client_id) - 1] = '\0';
+    // Remove any trailing slash if present
+    char *slash = strchr(path_client_id, '/');
+    if (slash) *slash = '\0';
+
+    if (strlen(path_client_id) == 0 || !req->body) {
+        sso_response_error(resp, 400, "client_id and body required");
+        return SSO_OK;
+    }
+
+    storage_backend_t *sb = (storage_backend_t *)ctx->storage_backend;
+    if (!sb || !sb->oauth_client_get || !sb->oauth_client_update) {
+        sso_response_error(resp, 500, "OAuth client storage unavailable");
+        return SSO_OK;
+    }
+
+    oauth_client_t client;
+    memset(&client, 0, sizeof(client));
+    sso_error_t err = sb->oauth_client_get(sb, path_client_id, &client);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 404, "Client not found");
+        return SSO_OK;
+    }
+
+    char *redirect_uris = json_str_value(req->body, "redirect_uris");
+    char *app_name = json_str_value(req->body, "app_name");
+    char *app_description = json_str_value(req->body, "app_description");
+    char *app_logo_url = json_str_value(req->body, "app_logo_url");
+    char *allowed_scopes = json_str_value(req->body, "allowed_scopes");
+    char *allowed_grant_types = json_str_value(req->body, "allowed_grant_types");
+    char *client_secret = json_str_value(req->body, "client_secret");
+    int status = (int)json_int_value(req->body, "status", -1);
+    long token_ttl_ms = (long)json_int_value(req->body, "token_ttl_ms", -1);
+
+    if (redirect_uris) {
+        strncpy(client.redirect_uris, redirect_uris, sizeof(client.redirect_uris) - 1);
+        free(redirect_uris);
+    }
+    if (app_name) {
+        strncpy(client.app_name, app_name, sizeof(client.app_name) - 1);
+        free(app_name);
+    }
+    if (app_description) {
+        strncpy(client.app_description, app_description, sizeof(client.app_description) - 1);
+        free(app_description);
+    }
+    if (app_logo_url) {
+        strncpy(client.app_logo_url, app_logo_url, sizeof(client.app_logo_url) - 1);
+        free(app_logo_url);
+    }
+    if (allowed_scopes) {
+        strncpy(client.allowed_scopes, allowed_scopes, sizeof(client.allowed_scopes) - 1);
+        free(allowed_scopes);
+    }
+    if (allowed_grant_types) {
+        strncpy(client.allowed_grant_types, allowed_grant_types, sizeof(client.allowed_grant_types) - 1);
+        free(allowed_grant_types);
+    }
+    if (status >= 0) {
+        client.status = status;
+    }
+    if (token_ttl_ms >= 0) {
+        client.token_ttl_ms = token_ttl_ms;
+    }
+    if (client_secret && strlen(client_secret) > 0) {
+        crypto_pwhash_str(client.client_secret_hash, client_secret, strlen(client_secret),
+                          crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE);
+    }
+    free(client_secret);
+
+    client.updated_at = get_time_ms();
+
+    err = sb->oauth_client_update(sb, &client);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"updated\":true}");
+
+    // Audit Log
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det), "Updated client %s", path_client_id);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "update_client", "clients", client.id, "success", det);
+    }
+    return SSO_OK;
+}
+
+sso_error_t handle_delete_client(sso_context_t *ctx, const http_request_t *req,
+                                  http_response_t *resp) {
+    /* Path format: /api/v1/clients/:client_id */
+    const char *p = strstr(req->path, "/clients/");
+    if (!p) {
+        sso_response_error(resp, 400, "client_id required in path");
+        return SSO_OK;
+    }
+    p += 9; // past "/clients/"
+    
+    char path_client_id[64];
+    strncpy(path_client_id, p, sizeof(path_client_id) - 1);
+    path_client_id[sizeof(path_client_id) - 1] = '\0';
+    // Remove any trailing slash if present
+    char *slash = strchr(path_client_id, '/');
+    if (slash) *slash = '\0';
+
+    if (strlen(path_client_id) == 0) {
+        sso_response_error(resp, 400, "client_id required");
+        return SSO_OK;
+    }
+
+    storage_backend_t *sb = (storage_backend_t *)ctx->storage_backend;
+    if (!sb || !sb->oauth_client_delete) {
+        sso_response_error(resp, 500, "OAuth client storage unavailable");
+        return SSO_OK;
+    }
+
+    sso_error_t err = sb->oauth_client_delete(sb, path_client_id);
+    if (err != SSO_OK) {
+        sso_response_error(resp, 500, sso_strerror(err));
+        return SSO_OK;
+    }
+
+    sso_response_ok(resp, "{\"deleted\":true}");
+
+    // Audit Log
+    {
+        auth_context_t *a = (auth_context_t *)req->userdata;
+        char det[256];
+        snprintf(det, sizeof(det), "Deleted client %s", path_client_id);
+        admin_audit_log((sso_config_t *)ctx->config, a->user.id, a->user.username, req->client_ip,
+                        "delete_client", "clients", 0, "success", det);
+    }
     return SSO_OK;
 }

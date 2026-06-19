@@ -94,6 +94,10 @@ sso_error_t handle_assign_policy(sso_context_t *ctx, const http_request_t *req, 
 sso_error_t handle_unassign_policy(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
 sso_error_t handle_get_user_policies(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
 sso_error_t handle_get_policy_targets(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
+sso_error_t handle_list_clients(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
+sso_error_t handle_create_client(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
+sso_error_t handle_update_client(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
+sso_error_t handle_delete_client(sso_context_t *ctx, const http_request_t *req, http_response_t *resp);
 
 /* -----------------------------------------------------------------------
  * Demo / interactive mode entry points

@@ -225,6 +225,21 @@ export interface AuditLog {
   details?: string;
 }
 
+export interface OAuthClient {
+  id: number;
+  client_id: string;
+  redirect_uris: string;
+  app_name: string;
+  app_description: string;
+  app_logo_url: string;
+  allowed_scopes: string;
+  allowed_grant_types: string;
+  token_ttl_ms: number;
+  status: number;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface PaginatedResponse<T> {
   total: number;
   page: number;
@@ -406,6 +421,25 @@ export const auditService = {
 export const systemService = {
   async getStatus() {
     const { data } = await api.get('/admin/status');
+    return data;
+  }
+};
+
+export const clientService = {
+  async listClients(page = 1, limit = 10, q = ''): Promise<PaginatedResponse<OAuthClient>> {
+    const { data } = await api.get<PaginatedResponse<OAuthClient>>(`/clients?page=${page}&limit=${limit}&q=${q}`);
+    return data;
+  },
+  async createClient(client: Partial<OAuthClient> & { client_secret: string }) {
+    const { data } = await api.post('/clients', client);
+    return data;
+  },
+  async updateClient(clientId: string, client: Partial<OAuthClient> & { client_secret?: string }) {
+    const { data } = await api.put(`/clients/${clientId}`, client);
+    return data;
+  },
+  async deleteClient(clientId: string) {
+    const { data } = await api.delete(`/clients/${clientId}`);
     return data;
   }
 };

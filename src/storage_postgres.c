@@ -3,10 +3,12 @@
 #include "role.h"
 #include "group.h"
 #include "policy.h"
+#include "logger.h"
 #include <libpq-fe.h>
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <stdio.h>
 
 /* ========================================================================
  * Backend private data & connection pool
@@ -417,30 +419,51 @@ static void read_policy(PGresult *res, int row, policy_t *p) {
 
 static void read_oauth_client(PGresult *res, int row, oauth_client_t *c) {
     const char *val;
+    
     val = PQgetvalue(res, row, 0);
     c->id = (sso_id_t)(val ? strtoull(val, NULL, 10) : 0);
-    strncpy(c->client_id, PQgetvalue(res, row, 1), sizeof(c->client_id) - 1);
+    
+    val = PQgetvalue(res, row, 1);
+    strncpy(c->client_id, val ? val : "", sizeof(c->client_id) - 1);
     c->client_id[sizeof(c->client_id) - 1] = '\0';
-    strncpy(c->client_secret_hash, PQgetvalue(res, row, 2), sizeof(c->client_secret_hash) - 1);
+    
+    val = PQgetvalue(res, row, 2);
+    strncpy(c->client_secret_hash, val ? val : "", sizeof(c->client_secret_hash) - 1);
     c->client_secret_hash[sizeof(c->client_secret_hash) - 1] = '\0';
-    strncpy(c->redirect_uris, PQgetvalue(res, row, 3), sizeof(c->redirect_uris) - 1);
+    
+    val = PQgetvalue(res, row, 3);
+    strncpy(c->redirect_uris, val ? val : "", sizeof(c->redirect_uris) - 1);
     c->redirect_uris[sizeof(c->redirect_uris) - 1] = '\0';
-    strncpy(c->app_name, PQgetvalue(res, row, 4), sizeof(c->app_name) - 1);
+    
+    val = PQgetvalue(res, row, 4);
+    strncpy(c->app_name, val ? val : "", sizeof(c->app_name) - 1);
     c->app_name[sizeof(c->app_name) - 1] = '\0';
-    strncpy(c->app_description, PQgetvalue(res, row, 5), sizeof(c->app_description) - 1);
+    
+    val = PQgetvalue(res, row, 5);
+    strncpy(c->app_description, val ? val : "", sizeof(c->app_description) - 1);
     c->app_description[sizeof(c->app_description) - 1] = '\0';
-    strncpy(c->app_logo_url, PQgetvalue(res, row, 6), sizeof(c->app_logo_url) - 1);
+    
+    val = PQgetvalue(res, row, 6);
+    strncpy(c->app_logo_url, val ? val : "", sizeof(c->app_logo_url) - 1);
     c->app_logo_url[sizeof(c->app_logo_url) - 1] = '\0';
-    strncpy(c->allowed_scopes, PQgetvalue(res, row, 7), sizeof(c->allowed_scopes) - 1);
+    
+    val = PQgetvalue(res, row, 7);
+    strncpy(c->allowed_scopes, val ? val : "", sizeof(c->allowed_scopes) - 1);
     c->allowed_scopes[sizeof(c->allowed_scopes) - 1] = '\0';
-    strncpy(c->allowed_grant_types, PQgetvalue(res, row, 8), sizeof(c->allowed_grant_types) - 1);
+    
+    val = PQgetvalue(res, row, 8);
+    strncpy(c->allowed_grant_types, val ? val : "", sizeof(c->allowed_grant_types) - 1);
     c->allowed_grant_types[sizeof(c->allowed_grant_types) - 1] = '\0';
+    
     val = PQgetvalue(res, row, 9);
     c->token_ttl_ms = (val ? strtol(val, NULL, 10) : 0);
+    
     val = PQgetvalue(res, row, 10);
     c->status = (val ? atoi(val) : 0);
+    
     val = PQgetvalue(res, row, 11);
     c->created_at = (sso_timestamp_t)(val ? strtoll(val, NULL, 10) : 0);
+    
     val = PQgetvalue(res, row, 12);
     c->updated_at = (sso_timestamp_t)(val ? strtoll(val, NULL, 10) : 0);
 }
@@ -1547,8 +1570,13 @@ static sso_error_t postgres_oauth_client_create(storage_backend_t *self, oauth_c
     const char *params[12] = { c->client_id, c->client_secret_hash, c->redirect_uris, c->app_name, c->app_description, c->app_logo_url, c->allowed_scopes, c->allowed_grant_types, ttl, status, created, updated };
     PGresult *res = PQexecParams(priv->conn, "INSERT INTO oauth_clients (client_id, client_secret_hash, redirect_uris, app_name, app_description, app_logo_url, allowed_scopes, allowed_grant_types, token_ttl_ms, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id", 12, NULL, params, NULL, NULL, 0);
     if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        const char *sqlstate = PQresultErrorField(res, PG_DIAG_SQLSTATE);
+        sso_error_t ret = SSO_ERR_STORAGE;
+        if (sqlstate && strcmp(sqlstate, "23505") == 0) {
+            ret = SSO_ERR_ALREADY_EXISTS;
+        }
         PQclear(res);
-        return SSO_ERR_STORAGE;
+        return ret;
     }
     c->id = strtoull(PQgetvalue(res, 0, 0), NULL, 10);
     PQclear(res);
@@ -1577,8 +1605,8 @@ static sso_error_t postgres_oauth_client_update(storage_backend_t *self, const o
     snprintf(status, sizeof(status), "%d", c->status);
     snprintf(updated, sizeof(updated), "%" PRId64, c->updated_at);
     snprintf(id_str, sizeof(id_str), "%" PRIu64, c->id);
-    const char *params[11] = { c->client_id, c->client_secret_hash, c->redirect_uris, c->app_name, c->app_description, c->app_logo_url, c->allowed_scopes, c->allowed_grant_types, ttl, status, updated };
-    PGresult *res = PQexecParams(priv->conn, "UPDATE oauth_clients SET client_id = $1, client_secret_hash = $2, redirect_uris = $3, app_name = $4, app_description = $5, app_logo_url = $6, allowed_scopes = $7, allowed_grant_types = $8, token_ttl_ms = $9, status = $10, updated_at = $11 WHERE id = $12", 11, NULL, params, NULL, NULL, 0);
+    const char *params[12] = { c->client_id, c->client_secret_hash, c->redirect_uris, c->app_name, c->app_description, c->app_logo_url, c->allowed_scopes, c->allowed_grant_types, ttl, status, updated, id_str };
+    PGresult *res = PQexecParams(priv->conn, "UPDATE oauth_clients SET client_id = $1, client_secret_hash = $2, redirect_uris = $3, app_name = $4, app_description = $5, app_logo_url = $6, allowed_scopes = $7, allowed_grant_types = $8, token_ttl_ms = $9, status = $10, updated_at = $11 WHERE id = $12", 12, NULL, params, NULL, NULL, 0);
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
         PQclear(res);
         return SSO_ERR_STORAGE;
@@ -1601,6 +1629,7 @@ static sso_error_t postgres_oauth_client_delete(storage_backend_t *self, const c
 }
 
 static sso_error_t postgres_oauth_client_list(storage_backend_t *self, int offset, int limit, oauth_client_t *clients, size_t *count, size_t max) {
+    setvbuf(stdout, NULL, _IONBF, 0);
     if (!self || !clients || !count) return SSO_ERR_INVALID_PARAM;
     postgres_priv_t *priv = postgres_get_priv(self);
     char off[16], lim[16];
