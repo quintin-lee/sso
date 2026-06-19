@@ -22,7 +22,7 @@
 
 CC       = gcc
 CFLAGS   = -Wall -Wextra -Wpedantic -std=c11 -O2 -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP $(MHD_CFLAGS) $(shell pkg-config --cflags libpq 2>/dev/null)
-LDFLAGS  = -lsodium -lsqlite3 -lssl -lcrypto -lcurl $(MHD_LIBS) $(shell pkg-config --libs libpq 2>/dev/null)
+LDFLAGS  = -lsodium -lsqlite3 -lssl -lcrypto -lcurl $(MHD_LIBS) $(shell pkg-config --libs libpq 2>/dev/null) $(HIREDIS_LIBS)
 INCLUDES = -Iinclude
 
 SRCDIR   = src
@@ -58,6 +58,18 @@ SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/demo.c          \
        $(SRCDIR)/interactive.c   \
        $(SRCDIR)/main.c
+
+# Detect hiredis availability
+HIREDIS_AVAIL := $(shell pkg-config --exists hiredis 2>/dev/null && echo yes)
+ifneq ($(HIREDIS_AVAIL),yes)
+    HIREDIS_AVAIL := $(shell test -f /usr/include/hiredis/hiredis.h && echo yes)
+endif
+
+ifeq ($(HIREDIS_AVAIL),yes)
+    HIREDIS_LIBS := $(shell pkg-config --libs hiredis 2>/dev/null || echo "-lhiredis")
+else
+    HIREDIS_LIBS :=
+endif
 
 # Detect libmicrohttpd availability (prefer pkg-config, fallback to header check)
 MHD_AVAIL := $(shell pkg-config --exists libmicrohttpd 2>/dev/null && echo yes)
