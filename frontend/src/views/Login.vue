@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { authService } from '../services/api';
 import InputText from 'primevue/inputtext';
@@ -9,6 +9,7 @@ import Button from 'primevue/button';
 import Message from 'primevue/message';
 
 const router = useRouter();
+const route = useRoute();
 const { locale, t } = useI18n();
 
 const username = ref('');
@@ -33,7 +34,12 @@ const handleLogin = async () => {
       mfaToken.value = res.mfa_token;
       showMfa.value = true;
     } else {
-      router.push('/');
+      const redirect = route.query.redirect as string;
+      if (redirect) {
+        window.location.href = redirect;
+      } else {
+        router.push('/');
+      }
     }
   } catch (err: any) {
     error.value = err.response?.data?.message || t('login.failed');
@@ -92,7 +98,12 @@ const handleMfaVerify = async () => {
   loading.value = true;
   try {
     await authService.mfaVerify(mfaToken.value, mfaCode.value);
-    router.push('/');
+    const redirect = route.query.redirect as string;
+    if (redirect) {
+      window.location.href = redirect;
+    } else {
+      router.push('/');
+    }
   } catch (err: any) {
     error.value = err.response?.data?.message || t('login.mfaFailed');
   } finally {
