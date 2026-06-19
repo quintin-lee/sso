@@ -24,6 +24,9 @@
 static sso_server_t *g_server = NULL;
 static volatile sig_atomic_t g_reload_config = 0;
 
+static _Thread_local arena_t t_arena;
+static _Thread_local bool t_arena_init = false;
+
 /* ========================================================================
  * Connection wrapper (raw fd or TLS)
  * ======================================================================== */
@@ -145,7 +148,16 @@ static void *worker_thread(void *arg) {
         g_pool.count--;
         pthread_mutex_unlock(&g_pool.lock);
 
+        if (!t_arena_init) {
+            arena_init(&t_arena, 4096);
+            t_arena_init = true;
+        }
+
         handle_client(g_pool.server, &task.conn, task.client_ip);
+    }
+    if (t_arena_init) {
+        arena_destroy(&t_arena);
+        t_arena_init = false;
     }
     return NULL;
 }
@@ -228,19 +240,28 @@ static void pool_shutdown(void) {
  * Internal: HTTP request parser (minimal)
  * ======================================================================== */
 
+static void parse_err(http_request_t *req) {
+    arena_destroy(&req->arena);
+    if (t_arena_init) t_arena = req->arena;
+}
+
 static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_size) {
     memset(req, 0, sizeof(*req));
-    arena_init(&req->arena, 4096);
+    if (t_arena_init) {
+        req->arena = t_arena;
+    } else {
+        arena_init(&req->arena, 4096);
+    }
 
     char line[4096];
     if (br_read_line(br, line, sizeof(line)) <= 0) {
-        arena_destroy(&req->arena);
+        parse_err(req);
         return -1;
     }
 
     char method[16], path[SSO_MAX_PATH], version[16];
     if (sscanf(line, "%15s %1023s %15s", method, path, version) < 2) {
-        arena_destroy(&req->arena);
+        parse_err(req);
         return -1;
     }
 
@@ -250,7 +271,7 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
     else if (strcmp(method, "DELETE") == 0) req->method = HTTP_DELETE;
     else if (strcmp(method, "PATCH") == 0) req->method = HTTP_PATCH;
     else {
-        arena_destroy(&req->arena);
+        parse_err(req);
         return -1;
     }
 
@@ -306,7 +327,7 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
 
     if (content_length > 0) {
         if (max_body_size > 0 && content_length > max_body_size) {
-            arena_destroy(&req->arena);
+            parse_err(req);
             return -1;
         }
         req->body = (char *)arena_alloc(&req->arena, (size_t)content_length + 1);
@@ -388,6 +409,20 @@ static void send_response(conn_t *c, const http_response_t *resp) {
     }
 }
 
+static void cleanup_request(conn_t *conn, http_response_t *resp, http_request_t *req) {
+    if (resp->body) {
+        free(resp->body);
+        resp->body = NULL;
+    }
+    if (t_arena_init) {
+        t_arena = req->arena;
+        arena_reset(&t_arena);
+    } else {
+        arena_destroy(&req->arena);
+    }
+    conn_close(conn);
+}
+
 /* ========================================================================
  * Handle a single client connection
  * ======================================================================== */
@@ -430,9 +465,7 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
         resp.body = strdup("");
         resp.body_len = 0;
         send_response(conn, &resp);
-        free(resp.body);
-        arena_destroy(&req.arena);
-        conn_close(conn);
+        cleanup_request(conn, &resp, &req);
         return;
     }
 
@@ -449,9 +482,7 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
     if (!matched) {
         sso_response_error(&resp, 404, "Not found");
         send_response(conn, &resp);
-        free(resp.body);
-        arena_destroy(&req.arena);
-        conn_close(conn);
+        cleanup_request(conn, &resp, &req);
         return;
     }
 
@@ -461,9 +492,7 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
         if (!auth) {
             sso_response_error(&resp, 500, "Internal server error");
             send_response(conn, &resp);
-            free(resp.body);
-            arena_destroy(&req.arena);
-            conn_close(conn);
+            cleanup_request(conn, &resp, &req);
             return;
         }
         sso_error_t aerr = authenticate_request(server, &req, &auth->user, &auth->token);
@@ -473,9 +502,7 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
             sso_response_error(&resp, 401, msg);
             token_destroy(&auth->token);
             send_response(conn, &resp);
-            free(resp.body);
-            arena_destroy(&req.arena);
-            conn_close(conn);
+            cleanup_request(conn, &resp, &req);
             return;
         }
         req.userdata = auth;
@@ -492,9 +519,7 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
     }
 
     send_response(conn, &resp);
-    free(resp.body);
-    arena_destroy(&req.arena);
-    conn_close(conn);
+    cleanup_request(conn, &resp, &req);
 }
 
 /* ========================================================================

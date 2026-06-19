@@ -56,6 +56,16 @@ void *arena_alloc(arena_t *arena, size_t size) {
         return ptr;
     }
     
+    /* Current block is full. Can we move to the next existing block? */
+    while (arena->current && arena->current->next) {
+        arena->current = arena->current->next;
+        if (arena->current->capacity - arena->current->used >= size) {
+            void *ptr = &arena->current->data[arena->current->used];
+            arena->current->used += size;
+            return ptr;
+        }
+    }
+    
     /* Current block is full or nonexistent. Allocate a new block.
      * Ensure the new block is at least as large as the requested size. */
     size_t block_size = size > arena->default_block_size ? size : arena->default_block_size;
@@ -154,4 +164,14 @@ void arena_destroy(arena_t *arena) {
     }
     arena->first = NULL;
     arena->current = NULL;
+}
+
+void arena_reset(arena_t *arena) {
+    if (!arena) return;
+    arena_block_t *block = arena->first;
+    while (block) {
+        block->used = 0;
+        block = block->next;
+    }
+    arena->current = arena->first;
 }

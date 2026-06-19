@@ -103,6 +103,15 @@ char *arena_strdup(arena_t *arena, const char *str);
  */
 void  arena_destroy(arena_t *arena);
 
+/**
+ * @brief Resets the arena used offsets to 0, retaining allocated blocks.
+ * 
+ * Permits full memory reuse across requests without repeating heap allocations.
+ * 
+ * @param arena Pointer to the arena context.
+ */
+void  arena_reset(arena_t *arena);
+
 #ifdef __cplusplus
 }
 #endif

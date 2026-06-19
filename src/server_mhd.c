@@ -48,6 +48,9 @@ typedef struct {
  * Shutdown coordination
  * ======================================================================== */
 static volatile sig_atomic_t g_shutdown      = 0;
+
+static _Thread_local arena_t t_arena;
+static _Thread_local bool t_arena_init = false;
 static volatile sig_atomic_t g_reload_config = 0;
 
 static void sigint_handler(int sig) {
@@ -173,7 +176,11 @@ mhd_access_handler(void *cls,
     if (state == NULL) {
         state = (mhd_conn_state_t *)calloc(1, sizeof(mhd_conn_state_t));
         if (!state) return MHD_NO;
-        arena_init(&state->arena, 4096);
+        if (!t_arena_init) {
+            arena_init(&t_arena, 4096);
+            t_arena_init = true;
+        }
+        state->arena = t_arena;
         *req_cls = state;
         return MHD_YES;
     }
@@ -383,8 +390,13 @@ mhd_completed_cb(void *cls, struct MHD_Connection *connection,
         token_destroy(&((auth_context_t *)state->userdata)->token);
     }
 
-    /* Destroy the request arena pool freeing all blocks at once */
-    arena_destroy(&state->arena);
+    /* Sync back and reset the thread-local arena */
+    if (t_arena_init) {
+        t_arena = state->arena;
+        arena_reset(&t_arena);
+    } else {
+        arena_destroy(&state->arena);
+    }
 
     free(state);
     *req_cls = NULL;
