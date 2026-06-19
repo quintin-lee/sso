@@ -724,20 +724,26 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         return SSO_OK;
     }
 
-    /* ---- Phase 3: Evaluation under rdlock (needed for strategy + compile cache access) ---- */
-    pthread_rwlock_rdlock(&engine->lock);
+    /* ---- Phase 3: Evaluation (with proper lock escalation for writing to caches) ---- */
 
-    /* On L1 miss, update the resolution cache now that we hold the lock again.
-       Re-check: another thread may have populated it first. */
-    if (!l1_hit && !(engine->res_cache[l1_idx].valid &&
-                     engine->res_cache[l1_idx].user_id == ctx->user_id &&
-                     (now - engine->res_cache[l1_idx].timestamp) < 60000)) {
-        engine->res_cache[l1_idx].user_id = ctx->user_id;
-        memcpy(engine->res_cache[l1_idx].policies, policies_buf, sizeof(policy_t) * policy_count);
-        engine->res_cache[l1_idx].count = policy_count;
-        engine->res_cache[l1_idx].timestamp = now;
-        engine->res_cache[l1_idx].valid = true;
+    /* Update the L1 resolution cache under wrlock if it was an L1 miss. */
+    if (!l1_hit) {
+        pthread_rwlock_wrlock(&engine->lock);
+        /* Re-check: another thread may have populated it first while we didn't hold any lock */
+        if (!(engine->res_cache[l1_idx].valid &&
+              engine->res_cache[l1_idx].user_id == ctx->user_id &&
+              (now - engine->res_cache[l1_idx].timestamp) < 60000)) {
+            engine->res_cache[l1_idx].user_id = ctx->user_id;
+            memcpy(engine->res_cache[l1_idx].policies, policies_buf, sizeof(policy_t) * policy_count);
+            engine->res_cache[l1_idx].count = policy_count;
+            engine->res_cache[l1_idx].timestamp = now;
+            engine->res_cache[l1_idx].valid = true;
+        }
+        pthread_rwlock_unlock(&engine->lock);
     }
+
+    /* Acquire rdlock for policy evaluation loop to ensure strategies/compiled rules aren't modified */
+    pthread_rwlock_rdlock(&engine->lock);
 
     size_t trace_off = 0;
 
@@ -765,13 +771,17 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
                 *decision_trace = strdup(full_trace);
             }
 
+            /* Release read lock before acquiring write lock to populate result cache */
+            pthread_rwlock_unlock(&engine->lock);
+
+            pthread_rwlock_wrlock(&engine->lock);
             engine->result_cache[cache_idx].user_id = ctx->user_id;
             engine->result_cache[cache_idx].params_hash = phash;
             engine->result_cache[cache_idx].allowed = false;
             engine->result_cache[cache_idx].timestamp = now;
             engine->result_cache[cache_idx].valid = true;
-
             pthread_rwlock_unlock(&engine->lock);
+
             audit_log_decision(ctx, false, full_trace, get_time_monotonic_ms() - now, false);
             free(policies_buf);
             return SSO_OK;
@@ -788,17 +798,20 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         *decision_trace = strdup(full_trace);
     }
 
+    /* Release read lock before acquiring write lock to populate result cache */
+    pthread_rwlock_unlock(&engine->lock);
+
+    pthread_rwlock_wrlock(&engine->lock);
     engine->result_cache[cache_idx].user_id = ctx->user_id;
     engine->result_cache[cache_idx].params_hash = phash;
     engine->result_cache[cache_idx].allowed = any_allowed;
     engine->result_cache[cache_idx].timestamp = now;
     engine->result_cache[cache_idx].valid = true;
+    pthread_rwlock_unlock(&engine->lock);
 
     atomic_fetch_add(&engine->metrics.total_evals, 1);
     if (any_allowed) atomic_fetch_add(&engine->metrics.allows, 1);
     else atomic_fetch_add(&engine->metrics.denys, 1);
-
-    pthread_rwlock_unlock(&engine->lock);
 
     uint64_t duration = get_time_monotonic_ms() - now;
     atomic_fetch_add(&engine->metrics.total_duration_us, (unsigned long long)duration * 1000);
