@@ -134,6 +134,25 @@ const messages = {
       usernamePlaceholder: 'Enter username',
       passwordPlaceholder: 'Enter password',
       mfaPlaceholder: '000000'
+    },
+    portal: {
+      title: 'Unified Application Portal',
+      subtitle: 'Access all integrated enterprise applications from here with single sign-on',
+      welcome: 'Welcome back, {name}',
+      logout: 'Logout',
+      adminBadge: 'Administrator',
+      userBadge: 'User',
+      openApp: 'Launch App',
+      apps: {
+        gogs: {
+          name: 'Gogs Code Hosting',
+          desc: 'Self-hosted Git service for code collaboration, review, and repository management.'
+        },
+        admin: {
+          name: 'SSO Admin Console',
+          desc: 'Manage users, roles, authentication policies, security settings, and audit logs.'
+        }
+      }
     }
   },
   zh: {
@@ -269,6 +288,25 @@ const messages = {
       usernamePlaceholder: '请输入用户名',
       passwordPlaceholder: '请输入密码',
       mfaPlaceholder: '请输入6位验证码'
+    },
+    portal: {
+      title: '统一应用访问中心',
+      subtitle: '在此单点登录访问企业集成的所有应用系统',
+      welcome: '欢迎回来，{name}',
+      logout: '退出登录',
+      adminBadge: '系统管理员',
+      userBadge: '普通用户',
+      openApp: '进入应用',
+      apps: {
+        gogs: {
+          name: 'Gogs 代码托管',
+          desc: '基于 Go 语言的自助 Git 托管服务，支持团队协作、代码审查与版本控制。'
+        },
+        admin: {
+          name: 'SSO 安全管控台',
+          desc: '统一管理系统用户、角色、用户组与策略授权，查看全局审计日志。'
+        }
+      }
     }
   }
 };

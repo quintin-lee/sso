@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { authService } from '../services/api';
 const Login = () => import('../views/Login.vue');
 const Admin = () => import('../views/Admin.vue');
+const Portal = () => import('../views/Portal.vue');
 
 const router = createRouter({
   history: createWebHistory(),
@@ -20,7 +21,9 @@ const router = createRouter({
     },
     {
       path: '/',
-      redirect: '/admin'
+      name: 'portal',
+      component: Portal,
+      meta: { requiresAuth: true }
     }
   ]
 });
@@ -31,7 +34,7 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth && !isAuthenticated) {
     next({ name: 'login' });
   } else if (to.meta.guest && isAuthenticated) {
-    next({ name: 'admin' });
+    next({ name: 'portal' });
   } else {
     next();
   }
