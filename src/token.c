@@ -16,6 +16,8 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include "logger.h"
 #include <stdio.h>
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
@@ -117,6 +119,7 @@ sso_error_t token_manager_init(token_manager_t *mgr, const unsigned char *secret
     mgr->default_ttl_ms = default_ttl_ms;
     pthread_mutex_init(&mgr->nonce_lock, NULL);
     pthread_mutex_init(&mgr->rev_lock, NULL);
+    pthread_mutex_init(&mgr->session_lock, NULL);
     return SSO_OK;
 }
 
@@ -131,6 +134,7 @@ sso_error_t token_manager_init_rs256(token_manager_t *mgr,
     mgr->default_ttl_ms = default_ttl_ms;
     pthread_mutex_init(&mgr->nonce_lock, NULL);
     pthread_mutex_init(&mgr->rev_lock, NULL);
+    pthread_mutex_init(&mgr->session_lock, NULL);
 
     /* Load private key */
     BIO *priv_bio = BIO_new_mem_buf(priv_key_pem, -1);
@@ -206,6 +210,11 @@ void token_manager_destroy(token_manager_t *mgr) {
     free(mgr->jtis);
     mgr->jtis = NULL;
     pthread_mutex_destroy(&mgr->rev_lock);
+
+    /* Free session trackers */
+    free(mgr->sessions);
+    mgr->sessions = NULL;
+    pthread_mutex_destroy(&mgr->session_lock);
 
     free(mgr);
 }
@@ -760,6 +769,54 @@ sso_error_t token_revoke(token_manager_t *mgr, const char *jti, sso_timestamp_t 
 
     pthread_mutex_unlock(&mgr->rev_lock);
     return SSO_OK;
+}
+
+void token_register_session(token_manager_t *mgr, sso_id_t user_id, const char *jti) {
+    if (!mgr || !jti) return;
+    
+    pthread_mutex_lock(&mgr->session_lock);
+    session_track_t *track = NULL;
+    for (size_t i = 0; i < mgr->session_count; i++) {
+        if (mgr->sessions[i].user_id == user_id) {
+            track = &mgr->sessions[i];
+            break;
+        }
+    }
+    
+    if (!track) {
+        if (mgr->session_count >= mgr->session_cap) {
+            size_t new_cap = mgr->session_cap == 0 ? 128 : mgr->session_cap * 2;
+            session_track_t *new_sessions = (session_track_t *)realloc(mgr->sessions, new_cap * sizeof(session_track_t));
+            if (!new_sessions) {
+                pthread_mutex_unlock(&mgr->session_lock);
+                return;
+            }
+            mgr->sessions = new_sessions;
+            mgr->session_cap = new_cap;
+        }
+        track = &mgr->sessions[mgr->session_count++];
+        memset(track, 0, sizeof(*track));
+        track->user_id = user_id;
+    }
+    
+    if (track->active_count < SSO_MAX_CONCURRENT_SESSIONS) {
+        strncpy(track->jtis[track->active_count], jti, TOKEN_REVOCATION_STR_LEN - 1);
+        track->active_count++;
+    } else {
+        /* Evict oldest */
+        char oldest_jti[TOKEN_REVOCATION_STR_LEN];
+        strncpy(oldest_jti, track->jtis[track->oldest_idx], TOKEN_REVOCATION_STR_LEN - 1);
+        
+        strncpy(track->jtis[track->oldest_idx], jti, TOKEN_REVOCATION_STR_LEN - 1);
+        track->oldest_idx = (track->oldest_idx + 1) % SSO_MAX_CONCURRENT_SESSIONS;
+        
+        pthread_mutex_unlock(&mgr->session_lock);
+        
+        LOG_INFO("[session] User %llu reached concurrent limit. Evicting oldest session JTI: %s", (unsigned long long)user_id, oldest_jti);
+        token_revoke(mgr, oldest_jti, 0);
+        return;
+    }
+    pthread_mutex_unlock(&mgr->session_lock);
 }
 
 bool token_is_revoked(token_manager_t *mgr, const char *jti) {

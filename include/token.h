@@ -70,6 +70,15 @@ typedef struct { sso_id_t uid; uint64_t nonce; } nonce_pair_t;
  * @struct token_manager
  * @brief Handles token creation, verification, revocation lists, and nonces.
  */
+#define SSO_MAX_CONCURRENT_SESSIONS 3
+
+typedef struct {
+    sso_id_t user_id;
+    char     jtis[SSO_MAX_CONCURRENT_SESSIONS][TOKEN_REVOCATION_STR_LEN];
+    size_t   active_count;
+    size_t   oldest_idx;
+} session_track_t;
+
 struct token_manager {
     sso_token_mode_t  mode;                         /**< Signing mode (HS256 or RS256) */
     union {
@@ -86,11 +95,19 @@ struct token_manager {
     pthread_mutex_t   nonce_lock;                   /**< Mutex guarding nonces access */
 
     /* Per-instance revocation blocklist (was process-global) */
+
+
     char    (*jtis)[TOKEN_REVOCATION_STR_LEN];      /**< Dynamic array of revoked JTI strings */
     size_t   rev_count;                             /**< Active count of revoked JTIs */
     size_t   rev_capacity;                          /**< Capacity of revoked JTIs array */
     bool     rev_sorted;                            /**< True if array is sorted for binary search */
     pthread_mutex_t rev_lock;                       /**< Mutex guarding revocation blocklist */
+    
+    session_track_t *sessions;                      /**< Array of active sessions per user */
+    size_t           session_count;                 /**< Number of tracked users */
+    size_t           session_cap;                   /**< Capacity of sessions array */
+    pthread_mutex_t  session_lock;                  /**< Mutex guarding session tracking */
+    
     void    *storage;                               /**< Pointer to storage backend */
 };
 
@@ -268,6 +285,11 @@ sso_error_t token_revoke(token_manager_t *mgr, const char *jti, sso_timestamp_t 
  * @return True if JTI is in the revocation blocklist.
  */
 bool token_is_revoked(token_manager_t *mgr, const char *jti);
+
+/**
+ * @brief Registers a new session for a user. Revokes oldest session if limit exceeded.
+ */
+void token_register_session(token_manager_t *mgr, sso_id_t user_id, const char *jti);
 
 #ifdef __cplusplus
 }

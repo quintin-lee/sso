@@ -150,6 +150,10 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
         (unsigned long long)user.id,
         user.username,
         user.display_name);
+
+    /* Track this session for concurrency control */
+    token_register_session(tmgr, user.id, access_token.jti);
+
     token_destroy(&access_token);
     token_destroy(&refresh_token);
     sso_response_ok(resp, buf);
