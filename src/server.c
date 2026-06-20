@@ -147,6 +147,101 @@ typedef struct {
 
 static thread_pool_t g_pool;
 
+#include "storage.h"
+
+/* ========================================================================
+ * Multi-Tenancy Context Registry
+ * ======================================================================== */
+#define MAX_TENANTS 64
+typedef struct {
+    char tenant_id[128];
+    sso_context_t *ctx;
+} tenant_context_t;
+
+static tenant_context_t g_tenants[MAX_TENANTS];
+static int g_tenant_count = 0;
+static pthread_mutex_t g_tenant_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static sso_context_t *get_tenant_context(sso_server_t *server, const char *host) {
+    if (!host || host[0] == '\0') return server->sso_ctx;
+    
+    char tenant_id[128] = "default";
+    const char *dot = strchr(host, '.');
+    if (dot) {
+        size_t len = dot - host;
+        if (len >= sizeof(tenant_id)) len = sizeof(tenant_id) - 1;
+        strncpy(tenant_id, host, len);
+        tenant_id[len] = '\0';
+    } else {
+        strncpy(tenant_id, host, sizeof(tenant_id) - 1);
+        tenant_id[sizeof(tenant_id) - 1] = '\0';
+    }
+    
+    /* Ignore generic hosts */
+    if (strcmp(tenant_id, "localhost") == 0 || strcmp(tenant_id, "127") == 0 || strcmp(tenant_id, "default") == 0) {
+        return server->sso_ctx;
+    }
+    
+    pthread_mutex_lock(&g_tenant_lock);
+    for (int i = 0; i < g_tenant_count; i++) {
+        if (strcmp(g_tenants[i].tenant_id, tenant_id) == 0) {
+            pthread_mutex_unlock(&g_tenant_lock);
+            return g_tenants[i].ctx;
+        }
+    }
+    
+    if (g_tenant_count >= MAX_TENANTS) {
+        pthread_mutex_unlock(&g_tenant_lock);
+        return server->sso_ctx;
+    }
+    
+    /* Cold Start: Auto-provision a new tenant sandbox */
+    LOG_INFO("[tenant] Provisioning new sandbox context for tenant: %s", tenant_id);
+    
+    sso_context_t *new_ctx = (sso_context_t *)calloc(1, sizeof(sso_context_t));
+    sso_config_t *base_config = (sso_config_t *)sso_get_config(server->sso_ctx);
+    sso_config_t new_config;
+    memcpy(&new_config, base_config, sizeof(new_config));
+    
+    /* Inject tenant isolation to DB URL */
+    char new_db_url[SSO_MAX_PATH];
+    if (strstr(new_config.database_url, ".db")) {
+        char *ext = strstr(new_config.database_url, ".db");
+        int prefix_len = ext - new_config.database_url;
+        snprintf(new_db_url, sizeof(new_db_url), "%.*s_%s.db", prefix_len, new_config.database_url, tenant_id);
+    } else {
+        snprintf(new_db_url, sizeof(new_db_url), "%s_%s", new_config.database_url, tenant_id);
+    }
+    strncpy(new_config.database_url, new_db_url, sizeof(new_config.database_url) - 1);
+    
+    storage_backend_t *new_storage = NULL;
+    if (new_config.use_memory) {
+        storage_memory_create(&new_storage);
+    } else if (strncmp(new_config.database_url, "postgres://", 11) == 0) {
+        storage_postgres_create(&new_storage);
+    } else if (strncmp(new_config.database_url, "redis://", 8) == 0 || strncmp(new_config.database_url, "redis-sentinel://", 17) == 0) {
+        storage_redis_create(&new_storage);
+    } else {
+        storage_sqlite_create(&new_storage);
+    }
+    
+    sso_error_t err = sso_init(new_ctx, new_storage, &new_config);
+    if (err != SSO_OK) {
+        LOG_ERROR("[tenant] Failed to boot sandbox for %s: %s", tenant_id, sso_strerror(err));
+        free(new_ctx);
+        if (new_storage && new_storage->close) new_storage->close(new_storage);
+        pthread_mutex_unlock(&g_tenant_lock);
+        return server->sso_ctx; /* fallback to default */
+    }
+    
+    strncpy(g_tenants[g_tenant_count].tenant_id, tenant_id, sizeof(g_tenants[0].tenant_id) - 1);
+    g_tenants[g_tenant_count].ctx = new_ctx;
+    g_tenant_count++;
+    
+    pthread_mutex_unlock(&g_tenant_lock);
+    return new_ctx;
+}
+
 static void handle_client(sso_server_t *server, conn_t *conn, const char *client_ip);
 
 static void *worker_thread(void *arg) {
@@ -489,6 +584,11 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
     }
     strncpy(req.client_ip, client_ip, sizeof(req.client_ip) - 1);
     req.client_ip[sizeof(req.client_ip) - 1] = '\0';
+    
+    /* ---------------------------------------------------------
+     * Zero-Trust Multi-Tenancy Routing Boundary 
+     * --------------------------------------------------------- */
+    sso_context_t *active_ctx = get_tenant_context(server, req.host);
 
     memset(&resp, 0, sizeof(resp));
     resp.body = NULL;
@@ -549,7 +649,7 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
         req.userdata = auth;
     }
 
-    sso_error_t err = matched->handler(server->sso_ctx, &req, &resp);
+    sso_error_t err = matched->handler(active_ctx, &req, &resp);
 
     if (req.userdata) {
         token_destroy(&((auth_context_t *)req.userdata)->token);
