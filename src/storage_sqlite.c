@@ -30,6 +30,8 @@
 #include "role.h"
 #include "group.h"
 #include "policy.h"
+#include "logger.h"
+
 
 #include <stdlib.h>
 #include <string.h>
@@ -37,12 +39,47 @@
 
 #include <sqlite3.h>
 
-/* ========================================================================
- * Backend private data
- * ======================================================================== */
+#include <pthread.h>
+#include <strings.h>
+
 typedef struct {
     sqlite3 *db;
+    char dsn[SSO_MAX_PATH];
 } sqlite_priv_t;
+
+static _Thread_local sqlite3 *t_read_db = NULL;
+static pthread_key_t g_sqlite_key;
+static pthread_once_t g_sqlite_key_once = PTHREAD_ONCE_INIT;
+
+static void sqlite_db_destructor(void *ptr) {
+    sqlite3 *db = (sqlite3 *)ptr;
+    if (db) {
+        sqlite3_close(db);
+    }
+}
+
+static void init_sqlite_key(void) {
+    pthread_key_create(&g_sqlite_key, sqlite_db_destructor);
+}
+
+static inline sqlite3 *sqlite_route_conn(sqlite3 *db, const char *sql) {
+    if (!sql || !t_read_db) return db;
+    const char *p = sql;
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+    if (strncasecmp(p, "SELECT", 6) == 0) {
+        return t_read_db;
+    }
+    return db;
+}
+
+#undef sqlite3_prepare_v2
+#define sqlite3_prepare_v2(db, sql, len, stmt, tail) \
+    (sqlite3_prepare_v2)(sqlite_route_conn(db, sql), sql, len, stmt, tail)
+
+#undef sqlite3_exec
+#define sqlite3_exec(db, sql, callback, arg, errmsg) \
+    (sqlite3_exec)(sqlite_route_conn(db, sql), sql, callback, arg, errmsg)
+
 
 /* ========================================================================
  * Schema DDL
@@ -310,6 +347,9 @@ static void read_policy(sqlite3_stmt *stmt, policy_t *p) {
 static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
     sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
     if (!priv) return SSO_ERR_INVALID_PARAM;
+
+    strncpy(priv->dsn, dsn, sizeof(priv->dsn) - 1);
+    priv->dsn[sizeof(priv->dsn) - 1] = '\0';
 
     int rc = sqlite3_open(dsn, &priv->db);
     if (rc != SQLITE_OK) {
@@ -1478,6 +1518,32 @@ static bool sqlite_jti_is_revoked(storage_backend_t *self, const char *jti) {
     return found;
 }
 
+static void sqlite_thread_init(storage_backend_t *self) {
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    if (!priv) return;
+
+    pthread_once(&g_sqlite_key_once, init_sqlite_key);
+
+    t_read_db = (sqlite3 *)pthread_getspecific(g_sqlite_key);
+    if (!t_read_db) {
+        int rc = sqlite3_open(priv->dsn, &t_read_db);
+        if (rc == SQLITE_OK) {
+            sqlite3_busy_timeout(t_read_db, 5000);
+            (sqlite3_exec)(t_read_db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL);
+            (sqlite3_exec)(t_read_db, "PRAGMA synchronous=NORMAL;", NULL, NULL, NULL);
+            pthread_setspecific(g_sqlite_key, t_read_db);
+        } else {
+            t_read_db = NULL;
+            LOG_WARN("Failed to open thread-local read SQLite connection: %s", sqlite3_errmsg(t_read_db));
+        }
+    }
+}
+
+static void sqlite_thread_cleanup(storage_backend_t *self) {
+    (void)self;
+    /* Destructor handles close automatically at thread exit, so no-op here */
+}
+
 /* ========================================================================
  * Backend constructor
  * ======================================================================== */
@@ -1503,6 +1569,8 @@ sso_error_t storage_sqlite_create(storage_backend_t **backend) {
     (*backend)->begin      = sqlite_begin;
     (*backend)->commit     = sqlite_commit;
     (*backend)->rollback   = sqlite_rollback;
+    (*backend)->thread_init    = sqlite_thread_init;
+    (*backend)->thread_cleanup = sqlite_thread_cleanup;
 
     /* User */
     (*backend)->user_create       = sqlite_user_create;
