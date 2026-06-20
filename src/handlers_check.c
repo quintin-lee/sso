@@ -117,13 +117,25 @@ sso_error_t handle_check_permission(sso_context_t *ctx, const http_request_t *re
     }
 
     /* Build JSON response */
-    char buf[8192];
+    char *buf = (char *)malloc(8192);
+    char *escaped_trace = (char *)malloc(4096);
+    char *fields_buf = (char *)malloc(1024);
+    if (!buf || !escaped_trace || !fields_buf) {
+        free(buf);
+        free(escaped_trace);
+        free(fields_buf);
+        if (ectx.params.data.record) free((void *)ectx.params.data.record);
+        if (trace) free(trace);
+        eval_context_destroy(&ectx);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    escaped_trace[0] = '\0';
     
     /* Safely format trace for JSON if present */
-    char escaped_trace[4096] = "";
     if (trace) {
         size_t j = 0;
-        for (size_t i = 0; trace[i] && j < sizeof(escaped_trace) - 3; i++) {
+        for (size_t i = 0; trace[i] && j < 4096 - 3; i++) {
             if (trace[i] == '"') { escaped_trace[j++] = '\\'; escaped_trace[j++] = '"'; }
             else if (trace[i] == '\n') { escaped_trace[j++] = '\\'; escaped_trace[j++] = 'n'; }
             else if (trace[i] == '\t') { escaped_trace[j++] = '\\'; escaped_trace[j++] = 't'; }
@@ -132,19 +144,19 @@ sso_error_t handle_check_permission(sso_context_t *ctx, const http_request_t *re
     }
 
     /* Serialize allowed fields if present */
-    char fields_buf[1024] = "[]";
+    strcpy(fields_buf, "[]");
     if (ectx.params.data.field_filter_count > 0) {
         strcpy(fields_buf, "[");
         for (size_t i = 0; i < ectx.params.data.field_filter_count; i++) {
             char fbuf[128];
             snprintf(fbuf, sizeof(fbuf), "\"%s\"%s", ectx.params.data.field_filter[i],
                      i < ectx.params.data.field_filter_count - 1 ? "," : "");
-            strncat(fields_buf, fbuf, sizeof(fields_buf) - strlen(fields_buf) - 1);
+            strncat(fields_buf, fbuf, 1024 - strlen(fields_buf) - 1);
         }
         strcat(fields_buf, "]");
     }
 
-    snprintf(buf, sizeof(buf),
+    snprintf(buf, 8192,
              "{"
              "\"allowed\":%s,"
              "\"allowed_fields\":%s,"
@@ -159,6 +171,9 @@ sso_error_t handle_check_permission(sso_context_t *ctx, const http_request_t *re
     if (ectx.params.data.record) free((void *)ectx.params.data.record);
     if (trace) free(trace);
     eval_context_destroy(&ectx);
+    free(buf);
+    free(escaped_trace);
+    free(fields_buf);
     
     return SSO_OK;
 }
