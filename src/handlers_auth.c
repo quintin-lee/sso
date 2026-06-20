@@ -100,8 +100,13 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
         token_issue(tmgr, &user, NULL, 0, NULL, 0, "mfa", 300000, &mfa_token);
         
         /* Success: return MFA requirement */
-        char buf[8192];
-        snprintf(buf, sizeof(buf),
+        char *buf = (char *)malloc(8192);
+        if (!buf) {
+            token_destroy(&mfa_token);
+            sso_response_error(resp, 500, "Out of memory");
+            return SSO_OK;
+        }
+        snprintf(buf, 8192,
             "{"
             "\"mfa_required\":true,"
             "\"mfa_token\":\"%s\""
@@ -109,6 +114,7 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
             mfa_token.token_str);
         token_destroy(&mfa_token);
         sso_response_ok(resp, buf);
+        free(buf);
         return SSO_OK;
     }
 
@@ -138,8 +144,14 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
              access_token.token_str,
              access_token.token_str, refresh_token.token_str);
 
-    char buf[8192];
-    snprintf(buf, sizeof(buf),
+    char *buf = (char *)malloc(8192);
+    if (!buf) {
+        token_destroy(&access_token);
+        token_destroy(&refresh_token);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    snprintf(buf, 8192,
         "{"
         "\"expires_in\":%lld,"
         "\"user_id\":%llu,"
@@ -157,6 +169,7 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
     token_destroy(&access_token);
     token_destroy(&refresh_token);
     sso_response_ok(resp, buf);
+    free(buf);
     return SSO_OK;
 }
 
@@ -293,8 +306,14 @@ sso_error_t handle_mfa_verify(sso_context_t *ctx, const http_request_t *req,
              "X-SSO-Refresh-Token: %s\r\n",
              access_token.token_str, refresh_token.token_str);
 
-    char buf[8192];
-    snprintf(buf, sizeof(buf),
+    char *buf = (char *)malloc(8192);
+    if (!buf) {
+        token_destroy(&access_token);
+        token_destroy(&refresh_token);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    snprintf(buf, 8192,
         "{"
         "\"expires_in\":%lld,"
         "\"user_id\":%llu,"
@@ -308,6 +327,7 @@ sso_error_t handle_mfa_verify(sso_context_t *ctx, const http_request_t *req,
     token_destroy(&access_token);
     token_destroy(&refresh_token);
     sso_response_ok(resp, buf);
+    free(buf);
     return SSO_OK;
 }
 
@@ -457,8 +477,13 @@ sso_error_t handle_login_by_sms(sso_context_t *ctx, const http_request_t *req,
     }
 
     /* 4. 返回标准 Token */
-    char buf[8192];
-    snprintf(buf, sizeof(buf),
+    char *buf = (char *)malloc(8192);
+    if (!buf) {
+        token_destroy(&token);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    snprintf(buf, 8192,
         "{"
         "\"token\":\"%s\","
         "\"user_id\":%llu,"
@@ -470,6 +495,7 @@ sso_error_t handle_login_by_sms(sso_context_t *ctx, const http_request_t *req,
         user.username,
         user.phone);
     sso_response_ok(resp, buf);
+    free(buf);
     token_destroy(&token);
     return SSO_OK;
 }
@@ -628,8 +654,13 @@ sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
              "%s", 
              user.username, user.email, rotation_header);
 
-    char buf[8192];
-    snprintf(buf, sizeof(buf),
+    char *buf = (char *)malloc(8192);
+    if (!buf) {
+        token_destroy(&tok);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    snprintf(buf, 8192,
         "{"
         "\"valid\":true,"
         "\"user_id\":%llu,"
@@ -644,6 +675,7 @@ sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
         user.display_name,
         (long long)tok.expires_at);
     sso_response_ok(resp, buf);
+    free(buf);
     token_destroy(&tok);
     return SSO_OK;
 }
@@ -710,14 +742,21 @@ sso_error_t handle_refresh(sso_context_t *ctx, const http_request_t *req,
              "X-SSO-Refresh-Token: %s\r\n",
              access_token.token_str, refresh_token.token_str);
 
-    char buf[8192];
-    snprintf(buf, sizeof(buf),
+    char *buf = (char *)malloc(8192);
+    if (!buf) {
+        token_destroy(&access_token);
+        token_destroy(&refresh_token);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    snprintf(buf, 8192,
         "{"
         "\"status\":\"refreshed\""
         "}");
     token_destroy(&access_token);
     token_destroy(&refresh_token);
     sso_response_ok(resp, buf);
+    free(buf);
     return SSO_OK;
 }
 
