@@ -19,6 +19,7 @@
 #include "user.h"
 #include "role.h"
 #include "group.h"
+#include "storage.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -504,10 +505,25 @@ static void rotate_audit_log(void) {
     rename(s_audit_log_path, rotated);
 }
 
-static void audit_log_decision(const eval_context_t *ctx, bool allowed, const char *trace,
+static void audit_log_decision(sso_context_t *sso_ctx, const eval_context_t *ctx, bool allowed, const char *trace,
                                 uint64_t duration_ms, bool cache_hit) {
-    pthread_mutex_lock(&audit_log_lock);
+    if (sso_ctx && sso_ctx->storage_backend) {
+        storage_backend_t *sb = (storage_backend_t *)sso_ctx->storage_backend;
+        if (sb->audit_log_write) {
+            audit_log_entry_t entry;
+            memset(&entry, 0, sizeof(entry));
+            entry.action = "eval";
+            entry.timestamp_ms = get_time_ms();
+            entry.user_id = ctx->user_id;
+            entry.status = allowed ? "ALLOW" : "DENY";
+            entry.duration_ms = duration_ms;
+            entry.cache_hit = cache_hit;
+            entry.trace = trace;
+            sb->audit_log_write(sb, &entry);
+        }
+    }
 
+    pthread_mutex_lock(&audit_log_lock);
     rotate_audit_log();
 
     FILE *f = fopen(s_audit_log_path, "a");
@@ -546,12 +562,32 @@ static void audit_log_decision(const eval_context_t *ctx, bool allowed, const ch
     pthread_mutex_unlock(&audit_log_lock);
 }
 
-void admin_audit_log(sso_config_t *cfg,
+void admin_audit_log(sso_context_t *ctx,
                      sso_id_t actor_user_id, const char *actor_username,
                      const char *client_ip,
                      const char *operation, const char *resource,
                      sso_id_t resource_id,
                      const char *status, const char *details) {
+    if (ctx && ctx->storage_backend) {
+        storage_backend_t *sb = (storage_backend_t *)ctx->storage_backend;
+        if (sb->audit_log_write) {
+            audit_log_entry_t entry;
+            memset(&entry, 0, sizeof(entry));
+            entry.action = "admin";
+            entry.timestamp_ms = get_time_ms();
+            entry.user_id = actor_user_id;
+            entry.username = actor_username;
+            entry.ip_address = client_ip;
+            entry.operation = operation;
+            entry.resource = resource;
+            entry.resource_id = resource_id;
+            entry.status = status;
+            entry.details = details;
+            sb->audit_log_write(sb, &entry);
+        }
+    }
+
+    sso_config_t *cfg = ctx ? sso_get_config(ctx) : NULL;
     const char *log_path = s_audit_log_path;
     if (cfg && cfg->audit_log_path[0]) {
         log_path = cfg->audit_log_path;
@@ -667,7 +703,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
             LOG_WARN("[perm] CACHE HIT (SLOW): user=%ld duration=%lums",
                      (long)ctx->user_id, (long)duration);
         }
-        audit_log_decision(ctx, *result, "Decision from Result Cache (L2)", duration, true);
+        audit_log_decision(engine->ctx, ctx, *result, "Decision from Result Cache (L2)", duration, true);
         return SSO_OK;
     }
 
@@ -703,7 +739,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         size_t max_policies = 64;
         policy_manager_t *pmgr = (policy_manager_t *)engine->ctx->policy_mgr;
         if (!pmgr) {
-            audit_log_decision(ctx, false, "Error: policy manager not found", get_time_monotonic_ms() - now, false);
+            audit_log_decision(engine->ctx, ctx, false, "Error: policy manager not found", get_time_monotonic_ms() - now, false);
             LOG_ERROR("policy manager not found in engine context");
             free(policies_buf);
             return SSO_ERR_INIT;
@@ -711,7 +747,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
 
         err = policy_resolve_for_user(pmgr, ctx->user_id, policies_buf, &policy_count, max_policies);
         if (err != SSO_OK && err != SSO_ERR_NOT_FOUND) {
-            audit_log_decision(ctx, false, "Error: policy resolution failed", get_time_monotonic_ms() - now, false);
+            audit_log_decision(engine->ctx, ctx, false, "Error: policy resolution failed", get_time_monotonic_ms() - now, false);
             free(policies_buf);
             return err;
         }
@@ -719,7 +755,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
 
     if (policy_count == 0) {
         if (decision_trace) *decision_trace = strdup("Default DENY: No policies found");
-        audit_log_decision(ctx, false, "Default DENY: No policies found", get_time_monotonic_ms() - now, false);
+        audit_log_decision(engine->ctx, ctx, false, "Default DENY: No policies found", get_time_monotonic_ms() - now, false);
         free(policies_buf);
         return SSO_OK;
     }
@@ -782,7 +818,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
             engine->result_cache[cache_idx].valid = true;
             pthread_rwlock_unlock(&engine->lock);
 
-            audit_log_decision(ctx, false, full_trace, get_time_monotonic_ms() - now, false);
+            audit_log_decision(engine->ctx, ctx, false, full_trace, get_time_monotonic_ms() - now, false);
             free(policies_buf);
             return SSO_OK;
         }
@@ -820,7 +856,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
                  (long)ctx->user_id, (long)duration);
     }
 
-    audit_log_decision(ctx, any_allowed, full_trace, duration, false);
+    audit_log_decision(engine->ctx, ctx, any_allowed, full_trace, duration, false);
     free(policies_buf);
     return SSO_OK;
 }

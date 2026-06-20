@@ -205,6 +205,23 @@ static const char *SCHEMA_SQL =
     "CREATE TABLE IF NOT EXISTS revoked_jtis ("
     "  jti TEXT PRIMARY KEY,"
     "  expires_at INTEGER NOT NULL"
+    ");"
+
+    "CREATE TABLE IF NOT EXISTS audit_logs ("
+    "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  action TEXT,"
+    "  timestamp_ms INTEGER,"
+    "  user_id INTEGER,"
+    "  username TEXT,"
+    "  ip_address TEXT,"
+    "  operation TEXT,"
+    "  resource TEXT,"
+    "  resource_id INTEGER,"
+    "  status TEXT,"
+    "  details TEXT,"
+    "  duration_ms INTEGER,"
+    "  cache_hit INTEGER,"
+    "  trace TEXT"
     ");";
 
 /* ========================================================================
@@ -1544,6 +1561,147 @@ static void sqlite_thread_cleanup(storage_backend_t *self) {
     /* Destructor handles close automatically at thread exit, so no-op here */
 }
 
+static void escape_json_string(const char *src, char *dst, size_t dst_max) {
+    if (!src) { dst[0] = '\0'; return; }
+    size_t j = 0;
+    for (size_t i = 0; src[i] && j < dst_max - 3; i++) {
+        if (src[i] == '"') { dst[j++] = '\\'; dst[j++] = '"'; }
+        else if (src[i] == '\\') { dst[j++] = '\\'; dst[j++] = '\\'; }
+        else if (src[i] == '\n') { dst[j++] = '\\'; dst[j++] = 'n'; }
+        else if (src[i] == '\t') { dst[j++] = '\\'; dst[j++] = 't'; }
+        else if (src[i] == '\r') { dst[j++] = '\\'; dst[j++] = 'r'; }
+        else dst[j++] = src[i];
+    }
+    dst[j] = '\0';
+}
+
+static sso_error_t sqlite_audit_log_write(storage_backend_t *self, const audit_log_entry_t *entry) {
+    if (!self || !entry) return SSO_ERR_INVALID_PARAM;
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    sqlite3 *db = priv->db;
+
+    const char *sql = "INSERT INTO audit_logs (action, timestamp_ms, user_id, username, ip_address, operation, resource, resource_id, status, details, duration_ms, cache_hit, trace) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        return SSO_ERR_STORAGE;
+    }
+    sqlite3_bind_text(stmt, 1, entry->action, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)entry->timestamp_ms);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)entry->user_id);
+    sqlite3_bind_text(stmt, 4, entry->username ? entry->username : "", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, entry->ip_address ? entry->ip_address : "", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 6, entry->operation ? entry->operation : "", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 7, entry->resource ? entry->resource : "", -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 8, (sqlite3_int64)entry->resource_id);
+    sqlite3_bind_text(stmt, 9, entry->status ? entry->status : "", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 10, entry->details ? entry->details : "", -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 11, (sqlite3_int64)entry->duration_ms);
+    sqlite3_bind_int(stmt, 12, entry->cache_hit ? 1 : 0);
+    sqlite3_bind_text(stmt, 13, entry->trace ? entry->trace : "", -1, SQLITE_STATIC);
+
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+}
+
+static sso_error_t sqlite_audit_log_list(storage_backend_t *self, sso_id_t user_id, int offset, int limit, char **json_out, size_t *total_count) {
+    if (!self || !json_out || !total_count) return SSO_ERR_INVALID_PARAM;
+    sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
+    sqlite3 *db = priv->db;
+
+    // Count total
+    char count_sql[512];
+    if (user_id != SSO_ID_NONE) {
+        snprintf(count_sql, sizeof(count_sql), "SELECT COUNT(*) FROM audit_logs WHERE user_id = %llu;", (unsigned long long)user_id);
+    } else {
+        snprintf(count_sql, sizeof(count_sql), "SELECT COUNT(*) FROM audit_logs;");
+    }
+    sqlite3_stmt *count_stmt = NULL;
+    *total_count = 0;
+    if (sqlite3_prepare_v2(db, count_sql, -1, &count_stmt, NULL) == SQLITE_OK) {
+        if (sqlite3_step(count_stmt) == SQLITE_ROW) {
+            *total_count = (size_t)sqlite3_column_int64(count_stmt, 0);
+        }
+        sqlite3_finalize(count_stmt);
+    }
+
+    // Query records
+    char sql[512];
+    if (user_id != SSO_ID_NONE) {
+        snprintf(sql, sizeof(sql), "SELECT action, timestamp_ms, user_id, username, ip_address, operation, resource, resource_id, status, details, duration_ms, cache_hit, trace FROM audit_logs WHERE user_id = %llu ORDER BY id DESC LIMIT %d OFFSET %d;", (unsigned long long)user_id, limit, offset);
+    } else {
+        snprintf(sql, sizeof(sql), "SELECT action, timestamp_ms, user_id, username, ip_address, operation, resource, resource_id, status, details, duration_ms, cache_hit, trace FROM audit_logs ORDER BY id DESC LIMIT %d OFFSET %d;", limit, offset);
+    }
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        return SSO_ERR_STORAGE;
+    }
+
+    size_t cap = 4096;
+    size_t len = 0;
+    char *json = malloc(cap);
+    if (!json) { sqlite3_finalize(stmt); return SSO_ERR_OUT_OF_MEMORY; }
+    json[len++] = '[';
+    json[len] = '\0';
+
+    bool first = true;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *action = (const char *)sqlite3_column_text(stmt, 0);
+        uint64_t ts = (uint64_t)sqlite3_column_int64(stmt, 1);
+        sso_id_t uid = (sso_id_t)sqlite3_column_int64(stmt, 2);
+        const char *username = (const char *)sqlite3_column_text(stmt, 3);
+        const char *ip = (const char *)sqlite3_column_text(stmt, 4);
+        const char *op = (const char *)sqlite3_column_text(stmt, 5);
+        const char *res = (const char *)sqlite3_column_text(stmt, 6);
+        sso_id_t res_id = (sso_id_t)sqlite3_column_int64(stmt, 7);
+        const char *status = (const char *)sqlite3_column_text(stmt, 8);
+        const char *details = (const char *)sqlite3_column_text(stmt, 9);
+        uint64_t dur = (uint64_t)sqlite3_column_int64(stmt, 10);
+        int ch = sqlite3_column_int(stmt, 11);
+        const char *trace = (const char *)sqlite3_column_text(stmt, 12);
+
+        char esc_det[2048] = "", esc_trace[16384] = "";
+        escape_json_string(details, esc_det, sizeof(esc_det));
+        escape_json_string(trace, esc_trace, sizeof(esc_trace));
+
+        char row[20480];
+        if (strcmp(action, "admin") == 0) {
+            snprintf(row, sizeof(row),
+                "{\"action\":\"admin\",\"timestamp_ms\":%llu,\"user_id\":%llu,\"username\":\"%s\",\"ip_address\":\"%s\",\"operation\":\"%s\",\"resource\":\"%s\",\"resource_id\":%llu,\"status\":\"%s\",\"details\":\"%s\"}",
+                (unsigned long long)ts, (unsigned long long)uid, username ? username : "", ip ? ip : "", op ? op : "", res ? res : "", (unsigned long long)res_id, status ? status : "", esc_det);
+        } else {
+            snprintf(row, sizeof(row),
+                "{\"action\":\"eval\",\"timestamp_ms\":%llu,\"user_id\":%llu,\"decision\":\"%s\",\"duration_ms\":%llu,\"cache_hit\":%s,\"trace\":\"%s\"}",
+                (unsigned long long)ts, (unsigned long long)uid, status ? status : "", (unsigned long long)dur, ch ? "true" : "false", esc_trace);
+        }
+
+        size_t row_len = strlen(row);
+        if (len + row_len + 3 > cap) {
+            cap = (len + row_len + 3) * 2;
+            char *new_json = realloc(json, cap);
+            if (!new_json) { free(json); sqlite3_finalize(stmt); return SSO_ERR_OUT_OF_MEMORY; }
+            json = new_json;
+        }
+
+        if (!first) {
+            json[len++] = ',';
+        }
+        first = false;
+        memcpy(json + len, row, row_len);
+        len += row_len;
+        json[len] = '\0';
+    }
+
+    json[len++] = ']';
+    json[len] = '\0';
+    sqlite3_finalize(stmt);
+
+    *json_out = json;
+    return SSO_OK;
+}
+
 /* ========================================================================
  * Backend constructor
  * ======================================================================== */
@@ -1648,6 +1806,8 @@ sso_error_t storage_sqlite_create(storage_backend_t **backend) {
     (*backend)->refresh_token_revoke = sqlite_refresh_token_revoke;
     (*backend)->jti_revoke           = sqlite_jti_revoke;
     (*backend)->jti_is_revoked       = sqlite_jti_is_revoked;
+    (*backend)->audit_log_write      = sqlite_audit_log_write;
+    (*backend)->audit_log_list       = sqlite_audit_log_list;
 
     (*backend)->handle = priv;
     return SSO_OK;

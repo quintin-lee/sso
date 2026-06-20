@@ -155,11 +155,32 @@ typedef struct {
     sso_timestamp_t updated_at;
 } oauth_client_t;
 
+typedef struct {
+    const char *action;          /* "admin" or "eval" */
+    uint64_t timestamp_ms;
+    sso_id_t user_id;
+    const char *username;
+    const char *ip_address;
+    const char *operation;
+    const char *resource;
+    sso_id_t resource_id;
+    const char *status;
+    const char *details;
+    uint64_t duration_ms;
+    bool cache_hit;
+    const char *trace;
+} audit_log_entry_t;
+
+typedef sso_error_t (*storage_audit_log_write_fn)(storage_backend_t *self, const audit_log_entry_t *entry);
+typedef sso_error_t (*storage_audit_log_list_fn)(storage_backend_t *self, sso_id_t user_id, int offset, int limit, char **json_out, size_t *total_count);
+
 typedef sso_error_t (*storage_oauth_client_create_fn)(storage_backend_t *self, oauth_client_t *client);
 typedef sso_error_t (*storage_oauth_client_get_fn)(storage_backend_t *self, const char *client_id, oauth_client_t *client);
 typedef sso_error_t (*storage_oauth_client_update_fn)(storage_backend_t *self, const oauth_client_t *client);
 typedef sso_error_t (*storage_oauth_client_delete_fn)(storage_backend_t *self, const char *client_id);
 typedef sso_error_t (*storage_oauth_client_list_fn)(storage_backend_t *self, int offset, int limit, oauth_client_t *clients, size_t *count, size_t max);
+
+typedef storage_refresh_token_create_fn refresh_token_create_fn; /* dummy to keep diff clean */
 
 /* ========================================================================
  * Storage backend struct — concrete implementations fill these pointers.
@@ -257,6 +278,9 @@ struct storage_backend {
 
     storage_jti_revoke_fn           jti_revoke;
     storage_jti_is_revoked_fn       jti_is_revoked;
+
+    storage_audit_log_write_fn      audit_log_write;
+    storage_audit_log_list_fn       audit_log_list;
 
     /* Opaque backend-private data (e.g. sqlite3*, FILE*, hashtable*) */
     void *handle;

@@ -248,6 +248,26 @@ static sso_error_t postgres_open(storage_backend_t *self, const char *dsn) {
         "  expires_at BIGINT NOT NULL,"
         "  issued_at BIGINT NOT NULL,"
         "  revoked INTEGER DEFAULT 0"
+        ");"
+        "CREATE TABLE IF NOT EXISTS revoked_jtis ("
+        "  jti TEXT PRIMARY KEY,"
+        "  expires_at BIGINT NOT NULL"
+        ");"
+        "CREATE TABLE IF NOT EXISTS audit_logs ("
+        "  id BIGSERIAL PRIMARY KEY,"
+        "  action TEXT,"
+        "  timestamp_ms BIGINT,"
+        "  user_id BIGINT,"
+        "  username TEXT,"
+        "  ip_address TEXT,"
+        "  operation TEXT,"
+        "  resource TEXT,"
+        "  resource_id BIGINT,"
+        "  status TEXT,"
+        "  details TEXT,"
+        "  duration_ms BIGINT,"
+        "  cache_hit BOOLEAN,"
+        "  trace TEXT"
         ");";
 
     PGresult *res = PQexec(priv->conn, schema);
@@ -1780,6 +1800,168 @@ static bool postgres_jti_is_revoked(storage_backend_t *self, const char *jti) {
     return revoked;
 }
 
+static void escape_json_string(const char *src, char *dst, size_t dst_max) {
+    if (!src) { dst[0] = '\0'; return; }
+    size_t j = 0;
+    for (size_t i = 0; src[i] && j < dst_max - 3; i++) {
+        if (src[i] == '"') { dst[j++] = '\\'; dst[j++] = '"'; }
+        else if (src[i] == '\\') { dst[j++] = '\\'; dst[j++] = '\\'; }
+        else if (src[i] == '\n') { dst[j++] = '\\'; dst[j++] = 'n'; }
+        else if (src[i] == '\t') { dst[j++] = '\\'; dst[j++] = 't'; }
+        else if (src[i] == '\r') { dst[j++] = '\\'; dst[j++] = 'r'; }
+        else dst[j++] = src[i];
+    }
+    dst[j] = '\0';
+}
+
+static sso_error_t postgres_audit_log_write(storage_backend_t *self, const audit_log_entry_t *entry) {
+    if (!self || !entry) return SSO_ERR_INVALID_PARAM;
+    postgres_priv_t *priv = postgres_get_priv(self);
+
+    const char *query = "INSERT INTO audit_logs (action, timestamp_ms, user_id, username, ip_address, operation, resource, resource_id, status, details, duration_ms, cache_hit, trace) "
+                        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)";
+
+    char ts_str[32], uid_str[32], res_id_str[32], dur_str[32];
+    snprintf(ts_str, sizeof(ts_str), "%" PRIu64, entry->timestamp_ms);
+    snprintf(uid_str, sizeof(uid_str), "%" PRId64, entry->user_id);
+    snprintf(res_id_str, sizeof(res_id_str), "%" PRId64, entry->resource_id);
+    snprintf(dur_str, sizeof(dur_str), "%" PRIu64, entry->duration_ms);
+    const char *ch_str = entry->cache_hit ? "true" : "false";
+
+    const char *params[13] = {
+        entry->action,
+        ts_str,
+        uid_str,
+        entry->username ? entry->username : "",
+        entry->ip_address ? entry->ip_address : "",
+        entry->operation ? entry->operation : "",
+        entry->resource ? entry->resource : "",
+        res_id_str,
+        entry->status ? entry->status : "",
+        entry->details ? entry->details : "",
+        dur_str,
+        ch_str,
+        entry->trace ? entry->trace : ""
+    };
+
+    PGresult *res = PQexecParams(priv->conn, query, 13, NULL, params, NULL, NULL, 0);
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        PQclear(res);
+        return SSO_ERR_STORAGE;
+    }
+
+    PQclear(res);
+    return SSO_OK;
+}
+
+static sso_error_t postgres_audit_log_list(storage_backend_t *self, sso_id_t user_id, int offset, int limit, char **json_out, size_t *total_count) {
+    if (!self || !json_out || !total_count) return SSO_ERR_INVALID_PARAM;
+    postgres_priv_t *priv = postgres_get_priv(self);
+
+    // Count total
+    PGresult *res_count;
+    if (user_id != SSO_ID_NONE) {
+        char uid_str[32];
+        snprintf(uid_str, sizeof(uid_str), "%" PRId64, user_id);
+        const char *params[1] = { uid_str };
+        res_count = PQexecParams(priv->conn, "SELECT COUNT(*) FROM audit_logs WHERE user_id = $1", 1, NULL, params, NULL, NULL, 0);
+    } else {
+        res_count = PQexec(priv->conn, "SELECT COUNT(*) FROM audit_logs");
+    }
+
+    if (PQresultStatus(res_count) == PGRES_TUPLES_OK && PQntuples(res_count) > 0) {
+        *total_count = (size_t)atoll(PQgetvalue(res_count, 0, 0));
+    } else {
+        *total_count = 0;
+    }
+    PQclear(res_count);
+
+    // Query records
+    PGresult *res;
+    char limit_str[32], offset_str[32];
+    snprintf(limit_str, sizeof(limit_str), "%d", limit);
+    snprintf(offset_str, sizeof(offset_str), "%d", offset);
+
+    if (user_id != SSO_ID_NONE) {
+        char uid_str[32];
+        snprintf(uid_str, sizeof(uid_str), "%" PRId64, user_id);
+        const char *params[3] = { uid_str, limit_str, offset_str };
+        res = PQexecParams(priv->conn, "SELECT action, timestamp_ms, user_id, username, ip_address, operation, resource, resource_id, status, details, duration_ms, cache_hit, trace FROM audit_logs WHERE user_id = $1 ORDER BY id DESC LIMIT $2 OFFSET $3", 3, NULL, params, NULL, NULL, 0);
+    } else {
+        const char *params[2] = { limit_str, offset_str };
+        res = PQexecParams(priv->conn, "SELECT action, timestamp_ms, user_id, username, ip_address, operation, resource, resource_id, status, details, duration_ms, cache_hit, trace FROM audit_logs ORDER BY id DESC LIMIT $1 OFFSET $2", 2, NULL, params, NULL, NULL, 0);
+    }
+
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        PQclear(res);
+        return SSO_ERR_STORAGE;
+    }
+
+    int rows = PQntuples(res);
+    size_t cap = 4096;
+    size_t len = 0;
+    char *json = malloc(cap);
+    if (!json) { PQclear(res); return SSO_ERR_OUT_OF_MEMORY; }
+    json[len++] = '[';
+    json[len] = '\0';
+
+    bool first = true;
+    for (int i = 0; i < rows; i++) {
+        const char *action = PQgetvalue(res, i, 0);
+        uint64_t ts = (uint64_t)atoll(PQgetvalue(res, i, 1));
+        sso_id_t uid = (sso_id_t)atoll(PQgetvalue(res, i, 2));
+        const char *username = PQgetvalue(res, i, 3);
+        const char *ip = PQgetvalue(res, i, 4);
+        const char *op = PQgetvalue(res, i, 5);
+        const char *resource = PQgetvalue(res, i, 6);
+        sso_id_t res_id = (sso_id_t)atoll(PQgetvalue(res, i, 7));
+        const char *status = PQgetvalue(res, i, 8);
+        const char *details = PQgetvalue(res, i, 9);
+        uint64_t dur = (uint64_t)atoll(PQgetvalue(res, i, 10));
+        const char *ch_val = PQgetvalue(res, i, 11);
+        bool ch = (ch_val[0] == 't' || ch_val[0] == '1');
+        const char *trace = PQgetvalue(res, i, 12);
+
+        char esc_det[2048] = "", esc_trace[16384] = "";
+        escape_json_string(details, esc_det, sizeof(esc_det));
+        escape_json_string(trace, esc_trace, sizeof(esc_trace));
+
+        char row[20480];
+        if (strcmp(action, "admin") == 0) {
+            snprintf(row, sizeof(row),
+                "{\"action\":\"admin\",\"timestamp_ms\":%llu,\"user_id\":%llu,\"username\":\"%s\",\"ip_address\":\"%s\",\"operation\":\"%s\",\"resource\":\"%s\",\"resource_id\":%llu,\"status\":\"%s\",\"details\":\"%s\"}",
+                (unsigned long long)ts, (unsigned long long)uid, username ? username : "", ip ? ip : "", op ? op : "", resource ? resource : "", (unsigned long long)res_id, status ? status : "", esc_det);
+        } else {
+            snprintf(row, sizeof(row),
+                "{\"action\":\"eval\",\"timestamp_ms\":%llu,\"user_id\":%llu,\"decision\":\"%s\",\"duration_ms\":%llu,\"cache_hit\":%s,\"trace\":\"%s\"}",
+                (unsigned long long)ts, (unsigned long long)uid, status ? status : "", (unsigned long long)dur, ch ? "true" : "false", esc_trace);
+        }
+
+        size_t row_len = strlen(row);
+        if (len + row_len + 3 > cap) {
+            cap = (len + row_len + 3) * 2;
+            char *new_json = realloc(json, cap);
+            if (!new_json) { free(json); PQclear(res); return SSO_ERR_OUT_OF_MEMORY; }
+            json = new_json;
+        }
+
+        if (!first) {
+            json[len++] = ',';
+        }
+        first = false;
+        memcpy(json + len, row, row_len);
+        len += row_len;
+        json[len] = '\0';
+    }
+
+    json[len++] = ']';
+    json[len] = '\0';
+    PQclear(res);
+
+    *json_out = json;
+    return SSO_OK;
+}
+
 /* ========================================================================
  * Public constructor
  * ======================================================================== */
@@ -1889,6 +2071,8 @@ sso_error_t storage_postgres_create(storage_backend_t **backend) {
     (*backend)->refresh_token_revoke = postgres_rt_revoke;
     (*backend)->jti_revoke           = postgres_jti_revoke;
     (*backend)->jti_is_revoked       = postgres_jti_is_revoked;
+    (*backend)->audit_log_write      = postgres_audit_log_write;
+    (*backend)->audit_log_list       = postgres_audit_log_list;
 
     return SSO_OK;
 }

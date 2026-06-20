@@ -83,19 +83,6 @@ sso_error_t handle_admin_status(sso_context_t *ctx, const http_request_t *req,
 
 sso_error_t handle_list_audit_logs(sso_context_t *ctx, const http_request_t *req,
                                             http_response_t *resp) {
-    const char *log_path = "audit.log";
-    sso_config_t *cfg = sso_get_config(ctx);
-    if (cfg) {
-        if (cfg->audit_log_path[0]) {
-            log_path = cfg->audit_log_path;
-        }
-    }
-    FILE *f = fopen(log_path, "r");
-    if (!f) {
-        sso_response_ok(resp, "[]");
-        return SSO_OK;
-    }
-
     /* Parse query params: user_id filter, limit, offset */
     sso_id_t filter_uid = SSO_ID_NONE;
     int limit = 100, offset_local = 0;
@@ -108,6 +95,34 @@ sso_error_t handle_list_audit_logs(sso_context_t *ctx, const http_request_t *req
             if (strcmp(req->query_params[i], "limit") == 0) { int v = atoi(eq); if (v > 0 && v <= 1000) limit = v; }
             if (strcmp(req->query_params[i], "offset") == 0) { int v = atoi(eq); if (v > 0) offset_local = v; }
         }
+    }
+
+    /* 1. Try to read from database if supported */
+    if (ctx && ctx->storage_backend) {
+        storage_backend_t *sb = (storage_backend_t *)ctx->storage_backend;
+        if (sb->audit_log_list) {
+            char *json = NULL;
+            size_t total_count = 0;
+            if (sb->audit_log_list(sb, filter_uid, offset_local, limit, &json, &total_count) == SSO_OK && json) {
+                sso_response_ok(resp, json);
+                free(json);
+                return SSO_OK;
+            }
+        }
+    }
+
+    /* 2. Fallback to file logs */
+    const char *log_path = "audit.log";
+    sso_config_t *cfg = sso_get_config(ctx);
+    if (cfg) {
+        if (cfg->audit_log_path[0]) {
+            log_path = cfg->audit_log_path;
+        }
+    }
+    FILE *f = fopen(log_path, "r");
+    if (!f) {
+        sso_response_ok(resp, "[]");
+        return SSO_OK;
     }
 
     /* Read matching lines into a growing buffer */

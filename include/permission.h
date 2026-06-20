@@ -296,7 +296,7 @@ sso_error_t perm_check_abac(sso_context_t *ctx, sso_id_t user_id,
  * @param status "success" or "failure".
  * @param details Human-readable description of the operation.
  */
-void admin_audit_log(sso_config_t *cfg,
+void admin_audit_log(sso_context_t *ctx,
                      sso_id_t actor_user_id, const char *actor_username,
                      const char *client_ip,
                      const char *operation, const char *resource,

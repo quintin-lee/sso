@@ -226,6 +226,68 @@ static const char *test_generic_oauth_clients(storage_backend_t *s) {
     return 0;
 }
 
+static const char *test_generic_audit_logs(storage_backend_t *s) {
+    if (!s->audit_log_write || !s->audit_log_list) {
+        printf("    Skipping audit_logs (not implemented by backend)...\n");
+        return 0;
+    }
+    printf("    Running audit_logs...\n");
+
+    audit_log_entry_t entry1;
+    memset(&entry1, 0, sizeof(entry1));
+    entry1.action = "admin";
+    entry1.timestamp_ms = 1234567890;
+    entry1.user_id = 42;
+    entry1.username = "admin_user";
+    entry1.ip_address = "127.0.0.1";
+    entry1.operation = "create_role";
+    entry1.resource = "roles";
+    entry1.resource_id = 99;
+    entry1.status = "success";
+    entry1.details = "Created role superadmin";
+
+    ASSERT_INT_EQUAL(s->audit_log_write(s, &entry1), SSO_OK);
+
+    audit_log_entry_t entry2;
+    memset(&entry2, 0, sizeof(entry2));
+    entry2.action = "eval";
+    entry2.timestamp_ms = 1234567895;
+    entry2.user_id = 42;
+    entry2.status = "ALLOW";
+    entry2.duration_ms = 15;
+    entry2.cache_hit = true;
+    entry2.trace = "Eval trace details here";
+
+    ASSERT_INT_EQUAL(s->audit_log_write(s, &entry2), SSO_OK);
+
+    char *json = NULL;
+    size_t total = 0;
+    ASSERT_INT_EQUAL(s->audit_log_list(s, SSO_ID_NONE, 0, 10, &json, &total), SSO_OK);
+    ASSERT_TRUE(json != NULL);
+    ASSERT_INT_EQUAL(total, 2);
+
+    ASSERT_TRUE(strstr(json, "admin_user") != NULL);
+    ASSERT_TRUE(strstr(json, "Created role superadmin") != NULL);
+    ASSERT_TRUE(strstr(json, "ALLOW") != NULL);
+    ASSERT_TRUE(strstr(json, "Eval trace details here") != NULL);
+
+    free(json);
+
+    json = NULL;
+    total = 0;
+    ASSERT_INT_EQUAL(s->audit_log_list(s, 42, 0, 10, &json, &total), SSO_OK);
+    ASSERT_INT_EQUAL(total, 2);
+    free(json);
+
+    json = NULL;
+    total = 0;
+    ASSERT_INT_EQUAL(s->audit_log_list(s, 999, 0, 10, &json, &total), SSO_OK);
+    ASSERT_INT_EQUAL(total, 0);
+    free(json);
+
+    return 0;
+}
+
 static const char *run_storage_suite(storage_backend_t *s, const char *dsn) {
     printf("Testing backend: %s (DSN: %s)\n", s->name, dsn ? dsn : "NULL");
     ASSERT_INT_EQUAL(s->open(s, dsn), SSO_OK);
@@ -239,6 +301,7 @@ static const char *run_storage_suite(storage_backend_t *s, const char *dsn) {
     mu_run_test_arg(test_generic_refresh_tokens, s);
     mu_run_test_arg(test_generic_revoked_jtis, s);
     mu_run_test_arg(test_generic_oauth_clients, s);
+    mu_run_test_arg(test_generic_audit_logs, s);
 
     s->close(s);
     return 0;
