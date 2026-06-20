@@ -1,6 +1,9 @@
 #include "arena.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdatomic.h>
+
+extern atomic_ullong g_metric_arena_blocks;
 
 /* Allocations are aligned to 8-byte boundaries to avoid alignment faults on strict CPUs. */
 #define ALIGNMENT 8
@@ -34,6 +37,7 @@ static arena_block_t *create_block(size_t size) {
     block->next = NULL;
     block->capacity = size;
     block->used = 0;
+    atomic_fetch_add(&g_metric_arena_blocks, 1);
     return block;
 }
 
@@ -156,14 +160,19 @@ char *arena_strdup(arena_t *arena, const char *str) {
 void arena_destroy(arena_t *arena) {
     if (!arena) return;
     arena_block_t *block = arena->first;
+    size_t count = 0;
     /* Walk the linked list, freeing every individual block */
     while (block) {
         arena_block_t *next = block->next;
         free(block);
         block = next;
+        count++;
     }
     arena->first = NULL;
     arena->current = NULL;
+    if (count > 0) {
+        atomic_fetch_sub(&g_metric_arena_blocks, count);
+    }
 }
 
 void arena_reset(arena_t *arena) {

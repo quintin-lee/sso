@@ -62,6 +62,8 @@ static void init_sqlite_key(void) {
     pthread_key_create(&g_sqlite_key, sqlite_db_destructor);
 }
 
+#include <time.h>
+
 static inline sqlite3 *sqlite_route_conn(sqlite3 *db, const char *sql) {
     if (!sql || !t_read_db) return db;
     const char *p = sql;
@@ -72,13 +74,49 @@ static inline sqlite3 *sqlite_route_conn(sqlite3 *db, const char *sql) {
     return db;
 }
 
+static inline uint64_t get_time_us(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000 + (ts.tv_nsec / 1000);
+}
+
+static inline int wrapped_sqlite3_prepare_v2(sqlite3 *db, const char *sql, int len, sqlite3_stmt **stmt, const char **tail) {
+    sqlite3 *routed = sqlite_route_conn(db, sql);
+    bool is_read = (routed == t_read_db);
+    uint64_t start = get_time_us();
+    int rc = (sqlite3_prepare_v2)(routed, sql, len, stmt, tail);
+    uint64_t duration = get_time_us() - start;
+    if (is_read) {
+        atomic_fetch_add(&g_metric_db_read_count, 1);
+        atomic_fetch_add(&g_metric_db_read_duration_us, duration);
+    } else {
+        atomic_fetch_add(&g_metric_db_write_count, 1);
+        atomic_fetch_add(&g_metric_db_write_duration_us, duration);
+    }
+    return rc;
+}
+
+static inline int wrapped_sqlite3_exec(sqlite3 *db, const char *sql, int (*callback)(void*,int,char**,char**), void *arg, char **errmsg) {
+    sqlite3 *routed = sqlite_route_conn(db, sql);
+    bool is_read = (routed == t_read_db);
+    uint64_t start = get_time_us();
+    int rc = (sqlite3_exec)(routed, sql, callback, arg, errmsg);
+    uint64_t duration = get_time_us() - start;
+    if (is_read) {
+        atomic_fetch_add(&g_metric_db_read_count, 1);
+        atomic_fetch_add(&g_metric_db_read_duration_us, duration);
+    } else {
+        atomic_fetch_add(&g_metric_db_write_count, 1);
+        atomic_fetch_add(&g_metric_db_write_duration_us, duration);
+    }
+    return rc;
+}
+
 #undef sqlite3_prepare_v2
-#define sqlite3_prepare_v2(db, sql, len, stmt, tail) \
-    (sqlite3_prepare_v2)(sqlite_route_conn(db, sql), sql, len, stmt, tail)
+#define sqlite3_prepare_v2 wrapped_sqlite3_prepare_v2
 
 #undef sqlite3_exec
-#define sqlite3_exec(db, sql, callback, arg, errmsg) \
-    (sqlite3_exec)(sqlite_route_conn(db, sql), sql, callback, arg, errmsg)
+#define sqlite3_exec wrapped_sqlite3_exec
 
 
 /* ========================================================================

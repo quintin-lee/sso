@@ -318,3 +318,15 @@ void sso_destroy(sso_context_t *ctx) {
 
     memset(ctx, 0, sizeof(*ctx));
 }
+
+/* Global metrics definitions */
+atomic_int g_metric_active_connections = 0;
+atomic_ullong g_metric_mfa_success = 0;
+atomic_ullong g_metric_mfa_failure = 0;
+atomic_ullong g_metric_jwt_issue = 0;
+atomic_ullong g_metric_jwt_revoke = 0;
+atomic_ullong g_metric_db_read_count = 0;
+atomic_ullong g_metric_db_read_duration_us = 0;
+atomic_ullong g_metric_db_write_count = 0;
+atomic_ullong g_metric_db_write_duration_us = 0;
+atomic_ullong g_metric_arena_blocks = 0;

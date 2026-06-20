@@ -221,10 +221,12 @@ sso_error_t handle_mfa_verify(sso_context_t *ctx, const http_request_t *req,
 
     if (!mfa_verify_totp(user.mfa_secret, code)) {
         free(code);
+        atomic_fetch_add(&g_metric_mfa_failure, 1);
         sso_response_error(resp, 401, "Invalid TOTP code");
         return SSO_OK;
     }
     free(code);
+    atomic_fetch_add(&g_metric_mfa_success, 1);
 
     /* MFA verified: issue final tokens */
     sso_id_t roles[16], groups[16];

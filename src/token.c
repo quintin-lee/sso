@@ -243,6 +243,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
                         const char *scope,
                         sso_timestamp_t ttl_ms, token_t *out) {
     if (!mgr || !user || !out) return SSO_ERR_INVALID_PARAM;
+    atomic_fetch_add(&g_metric_jwt_issue, 1);
 
     memset(out, 0, sizeof(*out));
     out->user_id = user->id;
@@ -669,6 +670,7 @@ static int compare_jtis(const void *a, const void *b) {
 
 sso_error_t token_revoke(token_manager_t *mgr, const char *jti, sso_timestamp_t expires_at) {
     if (!mgr || !jti) return SSO_ERR_INVALID_PARAM;
+    atomic_fetch_add(&g_metric_jwt_revoke, 1);
 
     /* 1. Persist to storage backend if available */
     if (mgr->storage) {

@@ -525,6 +525,12 @@ test_metrics() {
     local metrics_resp
     metrics_resp=$(curl -sf "${BASE}/metrics" 2>&1) || { fail "metrics endpoint"; }
     if echo "$metrics_resp" | grep -q "perm_"; then pass "metrics endpoint (contains perm_ metrics)"; else fail "metrics - unexpected: $(echo "$metrics_resp" | head -c 100)"; fi
+
+    # Check new metrics
+    if echo "$metrics_resp" | grep -q "sso_active_connections"; then pass "metrics endpoint (contains sso_active_connections)"; else fail "metrics - missing sso_active_connections"; fi
+    if echo "$metrics_resp" | grep -q "sso_jwt_tokens_total"; then pass "metrics endpoint (contains sso_jwt_tokens_total)"; else fail "metrics - missing sso_jwt_tokens_total"; fi
+    if echo "$metrics_resp" | grep -q "sso_db_queries_total"; then pass "metrics endpoint (contains sso_db_queries_total)"; else fail "metrics - missing sso_db_queries_total"; fi
+    if echo "$metrics_resp" | grep -q "sso_arena_allocated_blocks_total"; then pass "metrics endpoint (contains sso_arena_allocated_blocks_total)"; else fail "metrics - missing sso_arena_allocated_blocks_total"; fi
 }
 
 # --- Summary ---

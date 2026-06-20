@@ -341,6 +341,18 @@ static inline void *sso_get_config(const sso_context_t *ctx) {
     return __atomic_load_n(&ctx->config, __ATOMIC_ACQUIRE);
 }
 
+#include <stdatomic.h>
+extern atomic_int g_metric_active_connections;
+extern atomic_ullong g_metric_mfa_success;
+extern atomic_ullong g_metric_mfa_failure;
+extern atomic_ullong g_metric_jwt_issue;
+extern atomic_ullong g_metric_jwt_revoke;
+extern atomic_ullong g_metric_db_read_count;
+extern atomic_ullong g_metric_db_read_duration_us;
+extern atomic_ullong g_metric_db_write_count;
+extern atomic_ullong g_metric_db_write_duration_us;
+extern atomic_ullong g_metric_arena_blocks;
+
 #ifdef __cplusplus
 }
 #endif

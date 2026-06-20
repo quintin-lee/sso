@@ -200,6 +200,7 @@ mhd_access_handler(void *cls,
         }
         state->arena = t_arena;
         *req_cls = state;
+        atomic_fetch_add(&g_metric_active_connections, 1);
         return MHD_YES;
     }
 
@@ -416,6 +417,8 @@ mhd_completed_cb(void *cls, struct MHD_Connection *connection,
 
     mhd_conn_state_t *state = (mhd_conn_state_t *)*req_cls;
     if (!state) return;
+
+    atomic_fetch_sub(&g_metric_active_connections, 1);
 
     t_current_arena = &state->arena;
 

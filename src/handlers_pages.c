@@ -46,12 +46,70 @@ sso_error_t handle_health(sso_context_t *ctx, const http_request_t *req,
 sso_error_t handle_metrics(sso_context_t *ctx, const http_request_t *req,
                                     http_response_t *resp) {
     (void)req;
-    char buf[4096];
-    if (perm_engine_get_metrics((permission_engine_t *)ctx->perm_engine, buf, sizeof(buf)) != SSO_OK) {
+    char perm_buf[2048];
+    if (perm_engine_get_metrics((permission_engine_t *)ctx->perm_engine, perm_buf, sizeof(perm_buf)) != SSO_OK) {
         sso_response_error(resp, 500, "Failed to retrieve metrics");
         return SSO_OK;
     }
-    
+
+    int active_conn = atomic_load(&g_metric_active_connections);
+    unsigned long long mfa_success = atomic_load(&g_metric_mfa_success);
+    unsigned long long mfa_failure = atomic_load(&g_metric_mfa_failure);
+    unsigned long long jwt_issue = atomic_load(&g_metric_jwt_issue);
+    unsigned long long jwt_revoke = atomic_load(&g_metric_jwt_revoke);
+    unsigned long long db_read_count = atomic_load(&g_metric_db_read_count);
+    unsigned long long db_read_duration_us = atomic_load(&g_metric_db_read_duration_us);
+    unsigned long long db_write_count = atomic_load(&g_metric_db_write_count);
+    unsigned long long db_write_duration_us = atomic_load(&g_metric_db_write_duration_us);
+    unsigned long long arena_blocks = atomic_load(&g_metric_arena_blocks);
+
+    double db_read_avg_ms = db_read_count > 0 ? ((double)db_read_duration_us / db_read_count) / 1000.0 : 0.0;
+    double db_write_avg_ms = db_write_count > 0 ? ((double)db_write_duration_us / db_write_count) / 1000.0 : 0.0;
+
+    char buf[8192];
+    snprintf(buf, sizeof(buf),
+        "%s"
+        "# HELP sso_active_connections Active HTTP connections currently being processed\n"
+        "# TYPE sso_active_connections gauge\n"
+        "sso_active_connections %d\n"
+        "# HELP sso_mfa_verifications_total Total MFA verification attempts\n"
+        "# TYPE sso_mfa_verifications_total counter\n"
+        "sso_mfa_verifications_total{result=\"success\"} %llu\n"
+        "sso_mfa_verifications_total{result=\"failure\"} %llu\n"
+        "# HELP sso_jwt_tokens_total Total JWT tokens processed\n"
+        "# TYPE sso_jwt_tokens_total counter\n"
+        "sso_jwt_tokens_total{action=\"issue\"} %llu\n"
+        "sso_jwt_tokens_total{action=\"revoke\"} %llu\n"
+        "# HELP sso_db_queries_total Total number of database queries executed\n"
+        "# TYPE sso_db_queries_total counter\n"
+        "sso_db_queries_total{type=\"read\"} %llu\n"
+        "sso_db_queries_total{type=\"write\"} %llu\n"
+        "# HELP sso_db_query_duration_seconds_total Cumulative database query execution duration in seconds\n"
+        "# TYPE sso_db_query_duration_seconds_total counter\n"
+        "sso_db_query_duration_seconds_total{type=\"read\"} %.6f\n"
+        "sso_db_query_duration_seconds_total{type=\"write\"} %.6f\n"
+        "# HELP sso_db_query_duration_seconds_avg Average database query duration in seconds\n"
+        "# TYPE sso_db_query_duration_seconds_avg gauge\n"
+        "sso_db_query_duration_seconds_avg{type=\"read\"} %.6f\n"
+        "sso_db_query_duration_seconds_avg{type=\"write\"} %.6f\n"
+        "# HELP sso_arena_allocated_blocks_total Total number of memory blocks allocated in Arenas\n"
+        "# TYPE sso_arena_allocated_blocks_total gauge\n"
+        "sso_arena_allocated_blocks_total %llu\n",
+        perm_buf,
+        active_conn,
+        mfa_success,
+        mfa_failure,
+        jwt_issue,
+        jwt_revoke,
+        db_read_count,
+        db_write_count,
+        (double)db_read_duration_us / 1000000.0,
+        (double)db_write_duration_us / 1000000.0,
+        db_read_avg_ms / 1000.0,
+        db_write_avg_ms / 1000.0,
+        arena_blocks
+    );
+
     resp->status_code = 200;
     resp->body = strdup(buf);
     resp->body_len = strlen(buf);

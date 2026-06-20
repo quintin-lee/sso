@@ -171,7 +171,9 @@ static void *worker_thread(void *arg) {
             t_arena_init = true;
         }
 
+        atomic_fetch_add(&g_metric_active_connections, 1);
         handle_client(g_pool.server, &task.conn, task.client_ip);
+        atomic_fetch_sub(&g_metric_active_connections, 1);
     }
     if (t_arena_init) {
         arena_destroy(&t_arena);
