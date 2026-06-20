@@ -1,0 +1,29 @@
+Language: C
+BasedOnStyle: LLVM
+IndentWidth: 4
+UseTab: Always
+TabWidth: 4
+ContinuationIndentWidth: 8
+ColumnLimit: 120
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: false
+  AfterControlStatement: Never
+  AfterStruct: false
+  AfterUnion: false
+  AfterEnum: false
+  BeforeCatch: false
+  BeforeElse: false
+IndentCaseLabels: true
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignTrailingComments: true
+PointerAlignment: Left
+SpaceBeforeParens: ControlStatements
+SpaceAfterCStyleCast: false
+SortIncludes: false
+KeepEmptyLinesAtTheStartOfBlocks: false
+ReflowComments: true

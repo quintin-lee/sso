@@ -1,0 +1,22 @@
+---
+Checks: >
+  clang-diagnostic-*,
+  clang-analyzer-*,
+  bugprone-*,
+  -bugprone-reserved-identifier,
+  -bugprone-easily-swappable-parameters,
+  modernize-*,
+  -modernize-macro-to-enum,
+  -modernize-avoid-c-arrays,
+  readability-*,
+  -readability-magic-numbers,
+  -readability-named-parameter,
+  -readability-else-after-return,
+  -readability-function-cognitive-complexity,
+  -readability-identifier-length,
+CheckOptions:
+  - key: readability-implicit-bool-conversion.AllowIntegerConditions
+    value: 1
+  - key: readability-function-size.LineThreshold
+    value: 120
+...

@@ -1,0 +1,1189 @@
+openapi: 3.1.0
+info:
+  title: SSO System API
+  description: >
+    A lightweight, enterprise-ready Single Sign-On service in C11 providing
+    unified authentication and fine-grained authorization with sub-millisecond
+    latency. Designed for high-concurrency microservice architectures.
+  version: 1.3.0
+  contact:
+    name: quintin-lee
+    url: https://github.com/quintin-lee/sso
+  license:
+    name: MIT
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://sso.example.com
+    description: Production (TLS)
+
+paths:
+  # ── Public Pages ──────────────────────────────────────────────────────
+  /:
+    get:
+      summary: Login page
+      description: Serves the embedded HTML login page.
+      responses:
+        "200":
+          description: HTML login page
+          content:
+            text/html:
+              schema:
+                type: string
+  /login:
+    get:
+      summary: Login page (alias)
+      responses:
+        "200":
+          description: HTML login page
+          content:
+            text/html:
+              schema:
+                type: string
+  /admin:
+    get:
+      summary: Admin management page
+      description: Serves the embedded admin HTML page with JS auth guard.
+      responses:
+        "200":
+          description: HTML admin page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  # ── Authentication ────────────────────────────────────────────────────
+  /api/v1/auth/register:
+    post:
+      summary: Register new user
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                  format: password
+                phone:
+                  type: string
+      responses:
+        "200":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+  /api/v1/auth/login:
+    post:
+      summary: Password-based login
+      tags:
+        - Authentication
+      description: Rate-limited to 5 requests per minute per IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: Login successful, returns token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "429":
+          description: Rate limit exceeded
+  /api/v1/auth/send_sms:
+    post:
+      summary: Send SMS OTP code
+      tags:
+        - Authentication
+      description: Rate-limited to 1 request per minute per IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+      responses:
+        "200":
+          description: SMS sent
+  /api/v1/auth/login_by_sms:
+    post:
+      summary: SMS code login with auto-registration
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone:
+                  type: string
+                code:
+                  type: string
+      responses:
+        "200":
+          description: Login successful
+  /api/v1/auth/verify:
+    get:
+      summary: Validate token
+      tags:
+        - Authentication
+      parameters:
+        - name: token
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Token is valid
+        "401":
+          description: Token invalid or expired
+  /api/v1/auth/refresh:
+    post:
+      summary: Refresh access token
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Token refreshed
+  /api/v1/auth/logout:
+    post:
+      summary: Revoke single token
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Token revoked
+  /api/v1/auth/logout_all:
+    post:
+      summary: Revoke all tokens for current user
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: All tokens revoked
+  /api/v1/auth/password:
+    post:
+      summary: Change password
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                old_password:
+                  type: string
+                  format: password
+                new_password:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: Password changed
+  /api/v1/auth/me:
+    get:
+      summary: Get current user info
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+  /api/v1/auth/userinfo:
+    get:
+      summary: OIDC UserInfo endpoint
+      tags:
+        - OAuth / OIDC
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Standard OIDC claims
+  /api/v1/auth/certs:
+    get:
+      summary: RSA public keys
+      tags:
+        - Authentication
+      description: PEM-encoded RSA public keys for token verification.
+      responses:
+        "200":
+          description: PEM public keys
+  /api/v1/auth/jwks:
+    get:
+      summary: JWKS key set
+      tags:
+        - OAuth / OIDC
+      description: RFC 7517 JWKS key set.
+      responses:
+        "200":
+          description: JWKS key set
+          content:
+            application/json:
+              schema:
+                type: object
+
+  # ── Permission Checks ─────────────────────────────────────────────────
+  /api/v1/check:
+    post:
+      summary: Unified permission check (any strategy)
+      tags:
+        - Permission Checks
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Evaluation result
+  /api/v1/check/functional:
+    post:
+      summary: Check functional permission
+      tags:
+        - Permission Checks
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Functional check result
+  /api/v1/check/api:
+    post:
+      summary: Check API endpoint access
+      tags:
+        - Permission Checks
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: API check result
+  /api/v1/check/data:
+    post:
+      summary: Check data scope access
+      tags:
+        - Permission Checks
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Data check result
+  /api/v1/check/rbac:
+    post:
+      summary: Check role membership
+      tags:
+        - Permission Checks
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: RBAC check result
+  /api/v1/check/location:
+    post:
+      summary: Check IP-based access
+      tags:
+        - Permission Checks
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Location check result
+  /api/v1/check/lbac:
+    post:
+      summary: Check label-based access
+      tags:
+        - Permission Checks
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: LBAC check result
+  /api/v1/check/abac:
+    post:
+      summary: Check attribute-based access
+      tags:
+        - Permission Checks
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: ABAC check result
+
+  # ── Users CRUD ────────────────────────────────────────────────────────
+  /api/v1/users:
+    get:
+      summary: List users
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User list
+    post:
+      summary: Create user
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+                  format: password
+                phone:
+                  type: string
+                email:
+                  type: string
+      responses:
+        "200":
+          description: User created
+  /api/v1/users/{id}:
+    get:
+      summary: Get user by ID
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User details
+    put:
+      summary: Update user
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: User updated
+    delete:
+      summary: Delete user
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User deleted
+  /api/v1/users/{id}/policies:
+    get:
+      summary: Get policies assigned to a user
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Policy assignments
+
+  # ── Roles CRUD ────────────────────────────────────────────────────────
+  /api/v1/roles:
+    get:
+      summary: List roles
+      tags:
+        - Roles
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Role list
+    post:
+      summary: Create role
+      tags:
+        - Roles
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                parent_role_id:
+                  type: integer
+      responses:
+        "200":
+          description: Role created
+  /api/v1/roles/{id}:
+    get:
+      summary: Get role by ID
+      tags:
+        - Roles
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Role details
+    put:
+      summary: Update role
+      tags:
+        - Roles
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Role updated
+    delete:
+      summary: Delete role
+      tags:
+        - Roles
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Role deleted
+  /api/v1/roles/{id}/assign:
+    post:
+      summary: Assign role to user
+      tags:
+        - Roles
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: integer
+      responses:
+        "200":
+          description: Role assigned
+  /api/v1/roles/{id}/unassign:
+    post:
+      summary: Unassign role from user
+      tags:
+        - Roles
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: integer
+      responses:
+        "200":
+          description: Role unassigned
+
+  # ── Groups CRUD ───────────────────────────────────────────────────────
+  /api/v1/groups:
+    get:
+      summary: List groups
+      tags:
+        - Groups
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Group list
+    post:
+      summary: Create group
+      tags:
+        - Groups
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                parent_group_id:
+                  type: integer
+      responses:
+        "200":
+          description: Group created
+  /api/v1/groups/{id}:
+    get:
+      summary: Get group by ID
+      tags:
+        - Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Group details
+    put:
+      summary: Update group
+      tags:
+        - Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Group updated
+    delete:
+      summary: Delete group
+      tags:
+        - Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Group deleted
+  /api/v1/groups/{id}/members:
+    post:
+      summary: Add member to group
+      tags:
+        - Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: integer
+      responses:
+        "200":
+          description: Member added
+    delete:
+      summary: Remove member from group
+      tags:
+        - Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Member removed
+
+  # ── Policies CRUD ────────────────────────────────────────────────────
+  /api/v1/policies:
+    get:
+      summary: List policies
+      tags:
+        - Policies
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Policy list
+    post:
+      summary: Create policy
+      tags:
+        - Policies
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, strategy_type, rules]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                strategy_type:
+                  type: string
+                  enum:
+                    - functional
+                    - api
+                    - data
+                    - rbac
+                    - location
+                    - lbac
+                    - abac
+                rules:
+                  type: object
+                priority:
+                  type: integer
+                enabled:
+                  type: boolean
+      responses:
+        "200":
+          description: Policy created
+  /api/v1/policies/{id}:
+    get:
+      summary: Get policy by ID
+      tags:
+        - Policies
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Policy details
+    put:
+      summary: Update policy
+      tags:
+        - Policies
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Policy updated
+    delete:
+      summary: Delete policy
+      tags:
+        - Policies
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Policy deleted
+  /api/v1/policies/{id}/assign:
+    post:
+      summary: Assign policy to user/role/group
+      tags:
+        - Policies
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_type, target_id]
+              properties:
+                target_type:
+                  type: string
+                  enum: [user, role, group]
+                target_id:
+                  type: integer
+      responses:
+        "200":
+          description: Policy assigned
+  /api/v1/policies/{id}/unassign:
+    post:
+      summary: Unassign policy from user/role/group
+      tags:
+        - Policies
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_type, target_id]
+              properties:
+                target_type:
+                  type: string
+                  enum: [user, role, group]
+                target_id:
+                  type: integer
+      responses:
+        "200":
+          description: Policy unassigned
+  /api/v1/policies/{id}/targets:
+    get:
+      summary: Get targets assigned to a policy
+      tags:
+        - Policies
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Policy targets
+
+  # ── Audit ─────────────────────────────────────────────────────────────
+  /api/v1/audit/logs:
+    get:
+      summary: List audit log entries
+      tags:
+        - Audit
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Audit log entries
+
+  # ── Admin ─────────────────────────────────────────────────────────────
+  /api/v1/admin/status:
+    get:
+      summary: System admin status
+      tags:
+        - Admin
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: System status
+
+  # ── OAuth 2.0 / OpenID Connect ────────────────────────────────────────
+  /.well-known/openid-configuration:
+    get:
+      summary: OIDC discovery document
+      tags:
+        - OAuth / OIDC
+      responses:
+        "200":
+          description: OIDC discovery metadata
+  /api/v1/oauth/authorize:
+    get:
+      summary: Authorization endpoint
+      tags:
+        - OAuth / OIDC
+      description: Initiates the OAuth 2.0 authorization code flow.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [code]
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: redirect_uri
+          in: query
+          schema:
+            type: string
+            format: uri
+        - name: scope
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code_challenge
+          in: query
+          schema:
+            type: string
+        - name: code_challenge_method
+          in: query
+          schema:
+            type: string
+            enum: [S256, plain]
+      responses:
+        "302":
+          description: Redirect with authorization code
+  /api/v1/oauth/token:
+    post:
+      summary: Token endpoint
+      tags:
+        - OAuth / OIDC
+      description: Exchanges authorization code for tokens.
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  enum:
+                    - authorization_code
+                    - refresh_token
+                    - client_credentials
+                code:
+                  type: string
+                redirect_uri:
+                  type: string
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+                code_verifier:
+                  type: string
+                refresh_token:
+                  type: string
+      responses:
+        "200":
+          description: Token response
+  /api/v1/oauth/introspect:
+    post:
+      summary: Token introspection (RFC 7662)
+      tags:
+        - OAuth / OIDC
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Token metadata
+  /api/v1/oauth/revoke:
+    post:
+      summary: Token revocation (RFC 7009)
+      tags:
+        - OAuth / OIDC
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Token revoked
+
+  # ── Monitoring ────────────────────────────────────────────────────────
+  /api/v1/health:
+    get:
+      summary: Health check
+      tags:
+        - Monitoring
+      description: Liveness probe endpoint. No authentication required.
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      tags:
+        - Monitoring
+      description: Prometheus metrics endpoint. No authentication required.
+      responses:
+        "200":
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Token obtained from `/api/v1/auth/login`. Include as
+        `Authorization: Bearer <token>` header.
+
+  schemas:
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        phone:
+          type: string
+        role_ids:
+          type: array
+          items:
+            type: integer
+        group_ids:
+          type: array
+          items:
+            type: integer
+        created_at:
+          type: integer
+          description: Unix timestamp in milliseconds
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT access token
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+        user:
+          $ref: "#/components/schemas/UserResponse"
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+    Policy:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        strategy_type:
+          type: string
+          enum:
+            - functional
+            - api
+            - data
+            - rbac
+            - location
+            - lbac
+            - abac
+        rules:
+          type: object
+        priority:
+          type: integer
+        enabled:
+          type: boolean
+    Role:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        parent_role_id:
+          type: integer
+          nullable: true
+    Group:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        parent_group_id:
+          type: integer
+          nullable: true

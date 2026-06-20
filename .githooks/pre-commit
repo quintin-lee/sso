@@ -1,0 +1,49 @@
+#!/bin/sh
+# Pre-commit hook: format, lint, and check staged C sources.
+# Install: ln -sf ../../.githooks/pre-commit .git/hooks/pre-commit
+
+set -e
+
+echo "🔍 pre-commit: checking staged changes..."
+
+# ---- 1. Trailing whitespace ----
+if git diff --cached --diff-filter=ACMR --name-only | grep -E '\.([ch]|sh|md|yml|yaml|toml)$' | xargs -r grep -ln '[[:space:]]$' 2>/dev/null; then
+    echo "❌ ERROR: trailing whitespace found in files above. Remove it and re-stage."
+    exit 1
+fi
+
+# ---- 2. Tab characters in non-C files (tabs OK in C source) ----
+if git diff --cached --diff-filter=ACMR --name-only | grep -Ev '\.([ch])$' | xargs -r grep -Pln '\t' 2>/dev/null; then
+    echo "⚠️  WARNING: tab characters found in non-C files above."
+fi
+
+# ---- 3. clang-format (C/C++ sources only) ----
+if command -v clang-format >/dev/null 2>&1; then
+    STAGED_C_FILES=$(git diff --cached --diff-filter=ACMR --name-only -- '*.c' '*.h' | grep -v '^frontend/' | grep -v '^\.kilo/' || true)
+    if [ -n "$STAGED_C_FILES" ]; then
+        NEEDS_FORMATTING=""
+        for f in $STAGED_C_FILES; do
+            if [ -f "$f" ]; then
+                if ! clang-format --dry-run --Werror "$f" 2>/dev/null; then
+                    NEEDS_FORMATTING="$NEEDS_FORMATTING $f"
+                fi
+            fi
+        done
+        if [ -n "$NEEDS_FORMATTING" ]; then
+            echo "❌ ERROR: clang-format style issues in:$NEEDS_FORMATTING"
+            echo "   Run: clang-format -i$NEEDS_FORMATTING && git add$NEEDS_FORMATTING"
+            exit 1
+        fi
+    fi
+else
+    echo "⚠️  clang-format not found — skipping style check"
+fi
+
+# ---- 4. Secrets scan (basic) ----
+LARGE_SECRETS=$(git diff --cached --diff-filter=ACMR --name-only | xargs -r grep -lnP '(?i)(API[_-]?KEY|SECRET|PASSWORD|TOKEN)[[:space:]]*=[[:space:]]*['"'"'"]?[A-Za-z0-9_\-]{20,}' 2>/dev/null || true)
+if [ -n "$LARGE_SECRETS" ]; then
+    echo "❌ ERROR: potential secrets committed in:$LARGE_SECRETS"
+    exit 1
+fi
+
+echo "✅ pre-commit checks passed"
