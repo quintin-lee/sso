@@ -1,6 +1,10 @@
 services:
   sso:
-    build: .
+    build:
+      context: .
+      args:
+        DOCKER_REGISTRY: docker.1ms.run/library/
+        USE_CHINA_MIRROR: 1
     container_name: sso_system
     ports:
       - "80:80"

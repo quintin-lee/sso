@@ -1,14 +1,18 @@
+ARG DOCKER_REGISTRY=""
+
 # Stage 1: Build Vue app
-FROM docker.1ms.run/library/node:20-alpine AS frontend-builder
+FROM ${DOCKER_REGISTRY}node:20-alpine AS frontend-builder
+ARG USE_CHINA_MIRROR=0
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-RUN npm config set registry https://registry.npmmirror.com/ && npm install
+RUN if [ "$USE_CHINA_MIRROR" = "1" ]; then npm config set registry https://registry.npmmirror.com/; fi && npm install
 COPY frontend/ .
 RUN npm run build
 
 # Stage 2: Compile C backend
-FROM docker.1ms.run/library/alpine:3.18 AS backend-builder
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+FROM ${DOCKER_REGISTRY}alpine:3.18 AS backend-builder
+ARG USE_CHINA_MIRROR=0
+RUN if [ "$USE_CHINA_MIRROR" = "1" ]; then sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories; fi && \
     apk add --no-cache \
     gcc \
     musl-dev \
@@ -27,8 +31,9 @@ COPY . .
 RUN make clean && make
 
 # Stage 3: Final image
-FROM docker.1ms.run/library/alpine:3.18
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+FROM ${DOCKER_REGISTRY}alpine:3.18
+ARG USE_CHINA_MIRROR=0
+RUN if [ "$USE_CHINA_MIRROR" = "1" ]; then sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories; fi && \
     apk add --no-cache \
     nginx \
     sqlite-libs \
