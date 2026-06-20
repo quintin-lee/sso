@@ -600,10 +600,29 @@ sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
     }
 
     LOG_INFO("[verify] Authentication successful for user: %s", user.username);
+    
+    char rotation_header[1024] = "";
+    sso_timestamp_t now = sso_timestamp_now();
+    sso_timestamp_t ttl = tok.expires_at - tok.issued_at;
+    
+    /* Silent Token Rotation: if more than half of the TTL has passed, issue a fresh token */
+    if (ttl > 0 && now >= tok.issued_at && (now - tok.issued_at) > (ttl / 2)) {
+        token_t new_tok;
+        memset(&new_tok, 0, sizeof(new_tok));
+        if (tok.jkt[0]) strncpy(new_tok.jkt, tok.jkt, sizeof(new_tok.jkt) - 1);
+        
+        if (token_issue(tmgr, &user, tok.role_ids, tok.role_count, tok.group_ids, tok.group_count, tok.scope, ttl, &new_tok) == SSO_OK) {
+            snprintf(rotation_header, sizeof(rotation_header), "X-SSO-Access-Token: %s\r\n", new_tok.token_str);
+            LOG_INFO("[verify] Silent rotation triggered. Issued new token for user %llu", (unsigned long long)user.id);
+            token_destroy(&new_tok);
+        }
+    }
+
     snprintf(resp->extra_headers, sizeof(resp->extra_headers), 
              "X-SSO-User: %s\r\n"
-             "X-SSO-Email: %s\r\n", 
-             user.username, user.email);
+             "X-SSO-Email: %s\r\n"
+             "%s", 
+             user.username, user.email, rotation_header);
 
     char buf[8192];
     snprintf(buf, sizeof(buf),
