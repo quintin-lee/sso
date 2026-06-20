@@ -153,11 +153,12 @@ static sso_context_t *get_tenant_context(sso_server_t *server, const char *host)
     if (dot) {
         size_t len = dot - host;
         if (len >= sizeof(tenant_id)) len = sizeof(tenant_id) - 1;
-        sso_strlcpy(tenant_id, host, len);
-        tenant_id[len] = '\0';
+        sso_strlcpy(tenant_id, host, len + 1);
     } else {
         sso_strlcpy(tenant_id, host, sizeof(tenant_id));
-        tenant_id[sizeof(tenant_id) - 1] = '\0';
+        /* also strip port if it exists without dot, e.g. localhost:18080 */
+        char *colon = strchr(tenant_id, ':');
+        if (colon) *colon = '\0';
     }
     
     /* Ignore generic hosts */
