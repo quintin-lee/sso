@@ -774,6 +774,10 @@ sso_error_t handle_well_known_openid_config(sso_context_t *ctx,
  * For HS256, returns an empty keys array (symmetric mode does not publish
  * the key via JWKS).
  * ======================================================================== */
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 sso_error_t handle_jwks(sso_context_t *ctx,
                         const http_request_t *req,
                         http_response_t *resp) {
@@ -857,6 +861,9 @@ sso_error_t handle_jwks(sso_context_t *ctx,
     sso_response_ok(resp, buf);
     return SSO_OK;
 }
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 /* ========================================================================
  * GET /api/v1/auth/userinfo
@@ -916,11 +923,8 @@ sso_error_t handle_oauth_end_session(sso_context_t *ctx,
 
     token_t token;
     memset(&token, 0, sizeof(token));
-    bool token_valid = false;
-
     if (id_token_hint) {
         if (token_verify(tmgr, id_token_hint, &token) == SSO_OK) {
-            token_valid = true;
             token_revoke(tmgr, token.jti, token.expires_at);
             token_bump_nonce(tmgr, token.user_id);
             token_destroy(&token);

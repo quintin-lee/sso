@@ -237,8 +237,7 @@ static sso_error_t redis_open(storage_backend_t *self, const char *dsn) {
             const char *at = strchr(p, '@');
             if (at) p = at + 1;
             char buf[256];
-            strncpy(buf, p, sizeof(buf) - 1);
-            buf[sizeof(buf) - 1] = '\0';
+            snprintf(buf, sizeof(buf), "%s", p);
             char *slash = strchr(buf, '/');
             if (slash) {
                 *slash = '\0';
@@ -247,23 +246,22 @@ static sso_error_t redis_open(storage_backend_t *self, const char *dsn) {
             char *colon = strchr(buf, ':');
             if (colon) {
                 *colon = '\0';
-                strncpy(host, buf, sizeof(host) - 1);
+                snprintf(host, sizeof(host), "%s", buf);
                 port = atoi(colon + 1);
             } else {
-                strncpy(host, buf, sizeof(host) - 1);
+                snprintf(host, sizeof(host), "%s", buf);
             }
         } else {
             /* host:port format */
             char buf[256];
-            strncpy(buf, dsn, sizeof(buf) - 1);
-            buf[sizeof(buf) - 1] = '\0';
+            snprintf(buf, sizeof(buf), "%s", dsn);
             char *colon = strchr(buf, ':');
             if (colon) {
                 *colon = '\0';
-                strncpy(host, buf, sizeof(host) - 1);
+                snprintf(host, sizeof(host), "%s", buf);
                 port = atoi(colon + 1);
             } else {
-                strncpy(host, dsn, sizeof(host) - 1);
+                snprintf(host, sizeof(host), "%s", dsn);
             }
         }
     }

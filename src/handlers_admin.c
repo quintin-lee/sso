@@ -1550,8 +1550,12 @@ sso_error_t handle_update_client(sso_context_t *ctx, const http_request_t *req,
         client.token_ttl_ms = token_ttl_ms;
     }
     if (client_secret && strlen(client_secret) > 0) {
-        crypto_pwhash_str(client.client_secret_hash, client_secret, strlen(client_secret),
-                          crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE);
+        if (crypto_pwhash_str(client.client_secret_hash, client_secret, strlen(client_secret),
+                              crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE) != 0) {
+            free(client_secret);
+            sso_response_error(resp, 500, "Failed to hash client secret");
+            return SSO_OK;
+        }
     }
     free(client_secret);
 
