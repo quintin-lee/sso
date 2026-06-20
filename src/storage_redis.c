@@ -224,14 +224,47 @@ static sso_error_t redis_open(storage_backend_t *self, const char *dsn) {
     redis_priv_t *priv = (redis_priv_t *)self->handle;
     if (!priv) return SSO_ERR_INVALID_PARAM;
 
-    /* Parse DSN: redis://host:port/db  or  host:port */
+    /* Parse DSN */
     char host[256] = "127.0.0.1";
     int port = 6379;
     int db = 0;
+    int is_sentinel = 0;
+    char master_name[64] = "mymaster";
 
     if (dsn && dsn[0]) {
-        if (strncmp(dsn, "redis://", 8) == 0) {
-            /* redis://user:pass@host:port/db — we skip user:pass for simplicity */
+        if (strncmp(dsn, "redis-sentinel://", 17) == 0) {
+            is_sentinel = 1;
+            const char *p = dsn + 17;
+            const char *at = strchr(p, '@');
+            if (at) p = at + 1;
+            char buf[256];
+            snprintf(buf, sizeof(buf), "%s", p);
+            
+            char *q = strchr(buf, '?');
+            if (q) {
+                *q = '\0';
+                char *m = strstr(q + 1, "master=");
+                if (m) {
+                    snprintf(master_name, sizeof(master_name), "%s", m + 7);
+                    char *amp = strchr(master_name, '&');
+                    if (amp) *amp = '\0';
+                }
+            }
+            
+            char *slash = strchr(buf, '/');
+            if (slash) {
+                *slash = '\0';
+                db = atoi(slash + 1);
+            }
+            char *colon = strchr(buf, ':');
+            if (colon) {
+                *colon = '\0';
+                snprintf(host, sizeof(host), "%s", buf);
+                port = atoi(colon + 1);
+            } else {
+                snprintf(host, sizeof(host), "%s", buf);
+            }
+        } else if (strncmp(dsn, "redis://", 8) == 0) {
             const char *p = dsn + 8;
             const char *at = strchr(p, '@');
             if (at) p = at + 1;
@@ -263,6 +296,30 @@ static sso_error_t redis_open(storage_backend_t *self, const char *dsn) {
                 snprintf(host, sizeof(host), "%s", dsn);
             }
         }
+    }
+
+    /* Sentinel Resolution */
+    if (is_sentinel) {
+        redisContext *s_ctx = redisConnect(host, port);
+        if (!s_ctx || s_ctx->err) {
+            LOG_ERROR("[storage_redis] Failed to connect to Sentinel at %s:%d", host, port);
+            if (s_ctx) redisFree(s_ctx);
+            return SSO_ERR_STORAGE;
+        }
+        
+        redisReply *r = redisCommand(s_ctx, "SENTINEL get-master-addr-by-name %s", master_name);
+        if (r && r->type == REDIS_REPLY_ARRAY && r->elements == 2) {
+            snprintf(host, sizeof(host), "%s", r->element[0]->str);
+            port = atoi(r->element[1]->str);
+            freeReplyObject(r);
+        } else {
+            LOG_ERROR("[storage_redis] Sentinel failed to resolve master '%s'", master_name);
+            if (r) freeReplyObject(r);
+            redisFree(s_ctx);
+            return SSO_ERR_STORAGE;
+        }
+        redisFree(s_ctx);
+        LOG_INFO("[storage_redis] Resolved master '%s' to %s:%d via Sentinel", master_name, host, port);
     }
 
     priv->ctx = redisConnect(host, port);
