@@ -58,6 +58,7 @@ sso_error_t dpop_verify_proof(const char *dpop_proof, const char *method, const 
 
     sso_error_t result = SSO_ERR_TOKEN_INVALID;
     EVP_PKEY *pkey = NULL;
+    char *sign_input = NULL;
 
     if (!hdr_json || !pld_json) goto cleanup;
 
@@ -158,8 +159,9 @@ sso_error_t dpop_verify_proof(const char *dpop_proof, const char *method, const 
     unsigned char *sig_bin = malloc(sig_len);
     size_t sig_bin_len = base64url_decode(sig_b64, sig_bin, sig_len);
 
-    char sign_input[8192];
-    snprintf(sign_input, sizeof(sign_input), "%s.%s", hdr_b64, pld_b64);
+    sign_input = (char *)malloc(8192);
+    if (!sign_input) { free(sig_bin); goto cleanup; }
+    snprintf(sign_input, 8192, "%s.%s", hdr_b64, pld_b64);
 
     EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
     if (EVP_DigestVerifyInit(md_ctx, NULL, EVP_sha256(), NULL, pkey) <= 0) {
@@ -183,5 +185,6 @@ cleanup:
     free(hdr_bin);
     free(pld_bin);
     free(proof);
+    free(sign_input);
     return result;
 }
