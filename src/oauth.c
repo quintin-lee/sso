@@ -319,12 +319,16 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
     }
 
     /* Build redirect URL with code and state */
-    char location[2048];
+    char *location = (char *)malloc(2048);
+    if (!location) {
+        json_error_response(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
     if (state) {
-        snprintf(location, sizeof(location), "%s?code=%s&state=%s",
+        snprintf(location, 2048, "%s?code=%s&state=%s",
                  redirect_uri, ac.code, state);
     } else {
-        snprintf(location, sizeof(location), "%s?code=%s", redirect_uri, ac.code);
+        snprintf(location, 2048, "%s?code=%s", redirect_uri, ac.code);
     }
 
     resp->status_code = 302;
@@ -333,6 +337,7 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
     strcpy(resp->content_type, "text/plain");
     snprintf(resp->extra_headers, sizeof(resp->extra_headers),
              "Location: %s\r\n", location);
+    free(location);
     return SSO_OK;
 }
 
@@ -387,6 +392,7 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
     user_manager_t *umgr = get_user_mgr(ctx);
     token_t access_token;
     memset(&access_token, 0, sizeof(access_token));
+    char *buf = NULL;
 
     if (!grant_type) {
         json_error_response(resp, 400, "invalid_request");
@@ -468,10 +474,15 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
         store_refresh_token(sb, user.id, ac.client_id, access_token.raw_refresh_token);
 
         /* Build JSON response */
-        char buf[8192];
+        buf = (char *)malloc(8192);
+        if (!buf) {
+            json_error_response(resp, 500, "Out of memory");
+            result = SSO_OK;
+            goto cleanup;
+        }
         bool is_openid = (strstr(ac.scope, "openid") != NULL);
         if (is_openid) {
-            snprintf(buf, sizeof(buf),
+            snprintf(buf, 8192,
                 "{"
                 "\"access_token\":\"%s\","
                 "\"token_type\":\"Bearer\","
@@ -486,7 +497,7 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
                 access_token.token_str,
                 (unsigned long long)user.id);
         } else {
-            snprintf(buf, sizeof(buf),
+            snprintf(buf, 8192,
                 "{"
                 "\"access_token\":\"%s\","
                 "\"token_type\":\"Bearer\","
@@ -554,8 +565,13 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
             goto cleanup;
         }
 
-        char buf[8192];
-        snprintf(buf, sizeof(buf),
+        buf = (char *)malloc(8192);
+        if (!buf) {
+            json_error_response(resp, 500, "Out of memory");
+            result = SSO_OK;
+            goto cleanup;
+        }
+        snprintf(buf, 8192,
             "{"
             "\"access_token\":\"%s\","
             "\"token_type\":\"Bearer\","
@@ -615,8 +631,13 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
         /* Store new refresh token */
         store_refresh_token(sb, user.id, rt_record.client_id, access_token.raw_refresh_token);
 
-        char buf[8192];
-        snprintf(buf, sizeof(buf),
+        buf = (char *)malloc(8192);
+        if (!buf) {
+            json_error_response(resp, 500, "Out of memory");
+            result = SSO_OK;
+            goto cleanup;
+        }
+        snprintf(buf, 8192,
             "{"
             "\"access_token\":\"%s\","
             "\"token_type\":\"Bearer\","
@@ -632,6 +653,7 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
     }
 
 cleanup:
+    free(buf);
     free(grant_type);
     free(code);
     free(redirect_uri);
@@ -666,10 +688,16 @@ sso_error_t handle_oauth_introspect(sso_context_t *ctx,
     token_t decoded;
     sso_error_t verr = token_verify(tmgr, token_str, &decoded);
 
-    char buf[4096];
+    char *buf = (char *)malloc(4096);
+    if (!buf) {
+        free(token_str);
+        token_destroy(&decoded);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
     if (verr == SSO_OK) {
         bool revoked = token_is_revoked(tmgr, decoded.jti);
-        snprintf(buf, sizeof(buf),
+        snprintf(buf, 4096,
             "{"
             "\"active\":%s,"
             "\"jti\":\"%s\","
@@ -686,10 +714,11 @@ sso_error_t handle_oauth_introspect(sso_context_t *ctx,
             (long long)decoded.expires_at,
             decoded.scope);
     } else {
-        snprintf(buf, sizeof(buf), "{\"active\":false}");
+        snprintf(buf, 4096, "{\"active\":false}");
     }
 
     sso_response_ok(resp, buf);
+    free(buf);
     free(token_str);
     token_destroy(&decoded);
     return SSO_OK;
@@ -744,8 +773,12 @@ sso_error_t handle_well_known_openid_config(sso_context_t *ctx,
     const char *issuer = cfg && cfg->oauth_issuer[0]
         ? cfg->oauth_issuer : "http://localhost:8080";
 
-    char buf[4096];
-    snprintf(buf, sizeof(buf),
+    char *buf = (char *)malloc(4096);
+    if (!buf) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    snprintf(buf, 4096,
         "{"
         "\"issuer\":\"%s\","
         "\"authorization_endpoint\":\"%s/api/v1/oauth/authorize\","
@@ -764,6 +797,7 @@ sso_error_t handle_well_known_openid_config(sso_context_t *ctx,
         "}",
         issuer, issuer, issuer, issuer, issuer, issuer, issuer, issuer);
     sso_response_ok(resp, buf);
+    free(buf);
     return SSO_OK;
 }
 
@@ -838,8 +872,17 @@ sso_error_t handle_jwks(sso_context_t *ctx,
     base64url_encode(n_bytes, n_len, n_b64, n_len * 2 + 10);
     base64url_encode(e_bytes, e_len, e_b64, e_len * 2 + 10);
 
-    char buf[4096];
-    snprintf(buf, sizeof(buf),
+    char *buf = (char *)malloc(4096);
+    if (!buf) {
+        free(n_bytes);
+        free(e_bytes);
+        free(n_b64);
+        free(e_b64);
+        RSA_free(rsa);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    snprintf(buf, 4096,
         "{"
         "\"keys\":[{"
         "\"kty\":\"RSA\","
@@ -859,6 +902,7 @@ sso_error_t handle_jwks(sso_context_t *ctx,
     RSA_free(rsa);
 
     sso_response_ok(resp, buf);
+    free(buf);
     return SSO_OK;
 }
 #if defined(__GNUC__) || defined(__clang__)
@@ -882,8 +926,12 @@ sso_error_t handle_userinfo(sso_context_t *ctx,
     const auth_context_t *auth = (const auth_context_t *)req->userdata;
     const user_t *user = &auth->user;
 
-    char buf[4096];
-    snprintf(buf, sizeof(buf),
+    char *buf = (char *)malloc(4096);
+    if (!buf) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    snprintf(buf, 4096,
         "{"
         "\"sub\":%llu,"
         "\"preferred_username\":\"%s\","
@@ -895,6 +943,7 @@ sso_error_t handle_userinfo(sso_context_t *ctx,
         user->email,
         user->display_name);
     sso_response_ok(resp, buf);
+    free(buf);
     return SSO_OK;
 }
 
@@ -958,17 +1007,22 @@ sso_error_t handle_oauth_end_session(sso_context_t *ctx,
     }
 
     if (redirect_allowed && post_logout_redirect_uri) {
-        char redirect_url[1024];
+        char *redirect_url = (char *)malloc(1024);
+        if (!redirect_url) {
+            sso_response_error(resp, 500, "Out of memory");
+            return SSO_OK;
+        }
         if (state) {
-            snprintf(redirect_url, sizeof(redirect_url), "%s%cstate=%s",
+            snprintf(redirect_url, 1024, "%s%cstate=%s",
                      post_logout_redirect_uri,
                      strchr(post_logout_redirect_uri, '?') ? '&' : '?',
                      state);
         } else {
-            snprintf(redirect_url, sizeof(redirect_url), "%s", post_logout_redirect_uri);
+            snprintf(redirect_url, 1024, "%s", post_logout_redirect_uri);
         }
         resp->status_code = 302;
         snprintf(resp->extra_headers, sizeof(resp->extra_headers), "Location: %s\r\n", redirect_url);
+        free(redirect_url);
         resp->body = strdup("");
         resp->body_len = 0;
     } else {
