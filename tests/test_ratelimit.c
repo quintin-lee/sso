@@ -78,11 +78,46 @@ static const char *test_ratelimit_window_expiry() {
     return 0;
 }
 
+static const char *test_ratelimit_lru_eviction() {
+    printf("  Running test_ratelimit_lru_eviction...\n");
+    rate_limiter_t *rl;
+    sso_error_t err = rate_limiter_create(&rl, 3);
+    ASSERT_INT_EQUAL(err, SSO_OK);
+
+    uint64_t window = 60000;
+    int max = 5;
+
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "192.168.1.1", window, max), SSO_OK);
+    usleep(1000);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "192.168.1.2", window, max), SSO_OK);
+    usleep(1000);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "192.168.1.3", window, max), SSO_OK);
+
+    usleep(1000);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "192.168.1.1", window, max), SSO_OK);
+    usleep(1000);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "192.168.1.2", window, max), SSO_OK);
+
+    usleep(1000);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "192.168.1.4", window, max), SSO_OK);
+
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "192.168.1.1", window, max), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "192.168.1.1", window, max), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "192.168.1.1", window, max), SSO_OK);
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "192.168.1.1", window, max), SSO_ERR_RATE_LIMIT);
+
+    ASSERT_INT_EQUAL(rate_limiter_check(rl, "192.168.1.3", window, max), SSO_OK);
+
+    rate_limiter_destroy(rl);
+    return 0;
+}
+
 static const char *all_tests() {
     mu_run_test(test_ratelimit_basic);
     mu_run_test(test_ratelimit_reset);
     mu_run_test(test_ratelimit_multi_ip);
     mu_run_test(test_ratelimit_window_expiry);
+    mu_run_test(test_ratelimit_lru_eviction);
     return 0;
 }
 

@@ -17,6 +17,7 @@ typedef struct {
     char     key[MAX_KEY_LEN];
     uint64_t window_start_ms;
     int      count;
+    uint64_t last_access_ms;
 } rl_entry_t;
 
 struct rate_limiter {
@@ -101,6 +102,7 @@ sso_error_t rate_limiter_check(rate_limiter_t *rl, const char *key,
         rl_entry_t *entry = &rl->entries[idx];
         if (strcmp(entry->key, key) != 0) { idx = rl->max_entries; goto not_found; }
         /* Key found — check if window expired */
+        entry->last_access_ms = now;
         if ((now - entry->window_start_ms) <= window_ms) {
             /* Within window, increment */
             entry->count++;
@@ -119,14 +121,23 @@ not_found:
     /* Key not found — find empty or expired slot */
     idx = find_empty_or_expired(rl->entries, rl->max_entries, key, now, window_ms);
     if (idx >= rl->max_entries) {
-        pthread_mutex_unlock(&rl->lock);
-        return SSO_ERR_RATE_LIMIT;
+        /* Evict LRU */
+        uint64_t min_access = (uint64_t)-1;
+        size_t lru_idx = 0;
+        for (size_t i = 0; i < rl->max_entries; i++) {
+            if (rl->entries[i].last_access_ms < min_access) {
+                min_access = rl->entries[i].last_access_ms;
+                lru_idx = i;
+            }
+        }
+        idx = lru_idx;
     }
 
     rl_entry_t *entry = &rl->entries[idx];
     strncpy(entry->key, key, MAX_KEY_LEN - 1);
     entry->key[MAX_KEY_LEN - 1] = '\0';
     entry->window_start_ms = now;
+    entry->last_access_ms = now;
     entry->count = 1;
     pthread_mutex_unlock(&rl->lock);
     return SSO_OK;
@@ -141,6 +152,7 @@ void rate_limiter_reset(rate_limiter_t *rl, const char *key) {
     if (idx < rl->max_entries && strcmp(rl->entries[idx].key, key) == 0) {
         rl->entries[idx].count = 0;
         rl->entries[idx].window_start_ms = 0;
+        rl->entries[idx].last_access_ms = 0;
     }
 
     pthread_mutex_unlock(&rl->lock);
