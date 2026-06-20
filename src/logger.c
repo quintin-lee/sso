@@ -73,14 +73,21 @@ void log_write(log_level_t level, const char *file, int line,
 
     if (g_format == LOG_FORMAT_JSON) {
         /* JSON format: {"timestamp":"...","level":"...","file":"...","line":N,"message":"..."} */
+        char *msg_raw = (char *)malloc(4096);
+        char *msg_esc = (char *)malloc(8192);
+        if (!msg_raw || !msg_esc) {
+            free(msg_raw);
+            free(msg_esc);
+            fprintf(out, "{\"timestamp\":\"%s\",\"level\":\"%s\",\"file\":\"%s\",\"line\":%d,\"message\":\"out of memory\"}\n",
+                    timebuf, level_name(level), file, line);
+            return;
+        }
         va_list ap;
         va_start(ap, fmt);
-        char msg_raw[4096];
-        vsnprintf(msg_raw, sizeof(msg_raw), fmt, ap);
+        vsnprintf(msg_raw, 4096, fmt, ap);
         va_end(ap);
 
-        char msg_esc[8192];
-        json_escape(msg_raw, msg_esc, sizeof(msg_esc));
+        json_escape(msg_raw, msg_esc, 8192);
 
         char file_esc[512];
         json_escape(file, file_esc, sizeof(file_esc));
@@ -92,6 +99,8 @@ void log_write(log_level_t level, const char *file, int line,
             fprintf(out, ",\"errno\":%d,\"errno_str\":\"%s\"", saved_errno, strerror(saved_errno));
         }
         fprintf(out, "}\n");
+        free(msg_raw);
+        free(msg_esc);
     } else {
         /* Text format (default) */
         fprintf(out, "[%s] [%s] [%s:%d] ", timebuf, level_name(level), file, line);
