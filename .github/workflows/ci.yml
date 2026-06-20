@@ -22,7 +22,9 @@ jobs:
           libsodium-dev \
           libssl-dev \
           libcurl4-openssl-dev \
-          libmicrohttpd-dev
+          libmicrohttpd-dev \
+          libpq-dev \
+          libhiredis-dev
 
     - name: Build the project (release)
       run: make
