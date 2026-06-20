@@ -53,8 +53,8 @@ sso_error_t user_manager_create(user_manager_t **mgr, sso_context_t *ctx) {
     (*mgr)->ctx = ctx;
 
     /* Initialise hash params from config if available, else use moderate defaults */
-    if (ctx->config) {
-        sso_config_t *cfg = (sso_config_t *)ctx->config;
+    sso_config_t *cfg = (sso_config_t *)sso_get_config(ctx);
+    if (cfg) {
         (*mgr)->hash_opslimit = cfg->password_opslimit ? cfg->password_opslimit : crypto_pwhash_OPSLIMIT_MODERATE;
         (*mgr)->hash_memlimit = cfg->password_memlimit ? cfg->password_memlimit : crypto_pwhash_MEMLIMIT_MODERATE;
     } else {

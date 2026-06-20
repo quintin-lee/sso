@@ -181,7 +181,12 @@ sso_error_t sso_init(sso_context_t *ctx, storage_backend_t *storage,
                      void *config_ptr) {
     if (!ctx) return SSO_ERR_INVALID_PARAM;
     memset(ctx, 0, sizeof(*ctx));
-    sso_config_t *config = (sso_config_t *)config_ptr;
+    sso_config_t *config = NULL;
+    if (config_ptr) {
+        config = (sso_config_t *)malloc(sizeof(sso_config_t));
+        if (!config) return SSO_ERR_OUT_OF_MEMORY;
+        memcpy(config, config_ptr, sizeof(sso_config_t));
+    }
     ctx->config = config;
 
     sso_error_t err;
@@ -305,6 +310,10 @@ void sso_destroy(sso_context_t *ctx) {
         storage_backend_t *sb = (storage_backend_t *)ctx->storage_backend;
         if (sb->close) sb->close(sb);
         free(sb);
+    }
+
+    if (ctx->config) {
+        free(ctx->config);
     }
 
     memset(ctx, 0, sizeof(*ctx));

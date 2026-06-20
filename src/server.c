@@ -181,7 +181,7 @@ static void *worker_thread(void *arg) {
 }
 
 static void pool_init(sso_server_t *server) {
-    sso_config_t *cfg = (sso_config_t *)server->sso_ctx->config;
+    sso_config_t *cfg = (sso_config_t *)sso_get_config(server->sso_ctx);
     int pool_size = cfg ? cfg->thread_pool_size : 8;
     int queue_size = cfg ? cfg->queue_size : 1024;
     if (pool_size < 1) pool_size = 1;
@@ -453,7 +453,7 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
     http_request_t req;
     http_response_t resp;
 
-    sso_config_t *cfg = (sso_config_t *)server->sso_ctx->config;
+    sso_config_t *cfg = (sso_config_t *)sso_get_config(server->sso_ctx);
     if (cfg) {
         struct timeval tv;
         tv.tv_sec  = cfg->request_timeout_ms / 1000;
@@ -637,7 +637,7 @@ sso_error_t sso_server_start(sso_server_t *server) {
     server->server_data = (void *)(intptr_t)server_fd;
 
     /* TLS setup */
-    sso_config_t *cfg = (sso_config_t *)server->sso_ctx->config;
+    sso_config_t *cfg = (sso_config_t *)sso_get_config(server->sso_ctx);
     if (cfg && cfg->tls_enabled) {
         SSL_CTX *ctx = SSL_CTX_new(TLS_server_method());
         if (!ctx) {
@@ -683,13 +683,26 @@ sso_error_t sso_server_start(sso_server_t *server) {
                 /* SIGHUP: hot-reload config */
                 if (g_reload_config) {
                     g_reload_config = 0;
-                    sso_config_t *rcfg = (sso_config_t *)server->sso_ctx->config;
-                    if (server->config_path[0] &&
-                        sso_config_load(server->config_path, rcfg) == SSO_OK) {
-                        sso_config_apply_env(rcfg);
-                        log_set_level((log_level_t)rcfg->log_level);
-                        log_set_format((log_format_t)rcfg->log_format);
-                        LOG_INFO("Configuration reloaded via SIGHUP");
+                    if (server->config_path[0]) {
+                        sso_config_t *new_cfg = (sso_config_t *)malloc(sizeof(sso_config_t));
+                        if (new_cfg) {
+                            sso_config_t *old_cfg = (sso_config_t *)sso_get_config(server->sso_ctx);
+                            memcpy(new_cfg, old_cfg, sizeof(sso_config_t));
+                            if (sso_config_load(server->config_path, new_cfg) == SSO_OK) {
+                                sso_config_apply_env(new_cfg);
+                                __atomic_store_n(&server->sso_ctx->config, new_cfg, __ATOMIC_RELEASE);
+                                log_set_level((log_level_t)new_cfg->log_level);
+                                log_set_format((log_format_t)new_cfg->log_format);
+                                LOG_INFO("Configuration reloaded via SIGHUP");
+                                sleep(2);
+                                free(old_cfg);
+                            } else {
+                                free(new_cfg);
+                                LOG_WARN("SIGHUP config reload failed: could not load config file");
+                            }
+                        } else {
+                            LOG_ERROR("SIGHUP config reload failed: OOM allocating new config");
+                        }
                     } else {
                         LOG_WARN("SIGHUP config reload failed (no config path set)");
                     }

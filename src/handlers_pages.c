@@ -84,8 +84,8 @@ sso_error_t handle_admin_status(sso_context_t *ctx, const http_request_t *req,
 sso_error_t handle_list_audit_logs(sso_context_t *ctx, const http_request_t *req,
                                             http_response_t *resp) {
     const char *log_path = "audit.log";
-    if (ctx && ctx->config) {
-        sso_config_t *cfg = (sso_config_t *)ctx->config;
+    sso_config_t *cfg = sso_get_config(ctx);
+    if (cfg) {
         if (cfg->audit_log_path[0]) {
             log_path = cfg->audit_log_path;
         }

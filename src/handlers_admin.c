@@ -14,6 +14,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define admin_audit_log(cfg, ...) admin_audit_log(sso_get_config(ctx), __VA_ARGS__)
+
+
 sso_error_t handle_create_user(sso_context_t *ctx, const http_request_t *req,
                                        http_response_t *resp) {
     if (!req->body) {

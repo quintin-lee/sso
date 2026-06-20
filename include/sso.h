@@ -336,6 +336,11 @@ struct eval_context {
 sso_error_t eval_context_init(eval_context_t *ctx, const user_t *user);
 void        eval_context_destroy(eval_context_t *ctx);
 
+static inline void *sso_get_config(const sso_context_t *ctx) {
+    if (!ctx) return NULL;
+    return __atomic_load_n(&ctx->config, __ATOMIC_ACQUIRE);
+}
+
 #ifdef __cplusplus
 }
 #endif

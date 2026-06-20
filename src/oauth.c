@@ -50,7 +50,7 @@ static void gen_auth_code(char *buf, size_t size) {
 
 /* Get the sso_config_t from ctx->config. */
 static sso_config_t *get_cfg(sso_context_t *ctx) {
-    return (sso_config_t *)ctx->config;
+    return (sso_config_t *)sso_get_config(ctx);
 }
 
 /* Get the storage backend from ctx->storage_backend. */
