@@ -356,13 +356,20 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
         return SSO_ERR_OUT_OF_MEMORY;
     }
 
-    char b64_payload[2048];
-    base64url_encode((unsigned char *)payload_str, strlen(payload_str), b64_payload, sizeof(b64_payload));
+    char *b64_payload = (char *)malloc(2048);
+    char *signing_input = (char *)malloc(2560);
+    if (!b64_payload || !signing_input) {
+        free(b64_payload);
+        free(signing_input);
+        cJSON_free(payload_str);
+        token_destroy(out);
+        return SSO_ERR_OUT_OF_MEMORY;
+    }
+    base64url_encode((unsigned char *)payload_str, strlen(payload_str), b64_payload, 2048);
     cJSON_free(payload_str);
 
     /* Construct the standard signing input string header.payload */
-    char signing_input[2560];
-    snprintf(signing_input, sizeof(signing_input), "%s.%s", b64_header, b64_payload);
+    snprintf(signing_input, 2560, "%s.%s", b64_header, b64_payload);
 
     /* --- Step C: Generate secure random refresh token string --- */
     unsigned char rt_bytes[32];
@@ -404,11 +411,15 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
         free(sig);
         free(sig_b64);
         EVP_MD_CTX_free(md_ctx);
+        free(b64_payload);
+        free(signing_input);
         return SSO_OK;
 
     rs_fail:
         token_destroy(out);
         if (md_ctx) EVP_MD_CTX_free(md_ctx);
+        free(b64_payload);
+        free(signing_input);
         return SSO_ERR_INIT;
     }
 
@@ -605,9 +616,18 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
     size_t b64_len = (size_t)(dot2 - dot1 - 1);
 
     char b64_header[128];
-    char b64_payload[2048];
-    if (hdr_len >= sizeof(b64_header) || b64_len >= sizeof(b64_payload))
-        return SSO_ERR_TOKEN_INVALID;
+    char *b64_payload = (char *)malloc(2048);
+    char *signing_input = (char *)malloc(2560);
+    unsigned char *decoded = (unsigned char *)malloc(4096);
+    sso_error_t tv_err = SSO_OK;
+    if (!b64_payload || !signing_input || !decoded) {
+        tv_err = SSO_ERR_OUT_OF_MEMORY;
+        goto token_verify_cleanup;
+    }
+    if (hdr_len >= sizeof(b64_header) || b64_len >= 2048) {
+        tv_err = SSO_ERR_TOKEN_INVALID;
+        goto token_verify_cleanup;
+    }
 
     memcpy(b64_header, token_str, hdr_len);
     b64_header[hdr_len] = '\0';
@@ -618,8 +638,7 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
     const char *sig_part = dot2 + 1;
 
     /* Reconstruct signing input string = header.payload */
-    char signing_input[2560];
-    snprintf(signing_input, sizeof(signing_input), "%s.%s", b64_header, b64_payload);
+    snprintf(signing_input, 2560, "%s.%s", b64_header, b64_payload);
 
     /* Detect hex-encoded legacy signature format vs new base64url format */
     bool legacy_hex = is_hex_str(sig_part);
@@ -636,13 +655,17 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         if (legacy_hex) {
             char expected_hex[EVP_MAX_MD_SIZE * 2 + 1];
             to_hex(hmac_result, hmac_len, expected_hex, sizeof(expected_hex));
-            if (strcmp(sig_part, expected_hex) != 0)
-                return SSO_ERR_TOKEN_INVALID;
+            if (strcmp(sig_part, expected_hex) != 0) {
+                tv_err = SSO_ERR_TOKEN_INVALID;
+                goto token_verify_cleanup;
+            }
         } else {
             char expected_b64[EVP_MAX_MD_SIZE * 2 + 1];
             base64url_encode(hmac_result, hmac_len, expected_b64, sizeof(expected_b64));
-            if (strcmp(sig_part, expected_b64) != 0)
-                return SSO_ERR_TOKEN_INVALID;
+            if (strcmp(sig_part, expected_b64) != 0) {
+                tv_err = SSO_ERR_TOKEN_INVALID;
+                goto token_verify_cleanup;
+            }
         }
     } else {
         /* Asymmetric RS256 RSA-SHA256 signature verification */
@@ -652,7 +675,7 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         if (legacy_hex) {
             sig_len = strlen(sig_part) / 2;
             sig = (unsigned char *)malloc(sig_len);
-            if (!sig) return SSO_ERR_TOKEN_INVALID;
+            if (!sig) { tv_err = SSO_ERR_TOKEN_INVALID; goto token_verify_cleanup; }
             for (size_t i = 0; i < sig_len; i++) {
                 unsigned int val;
                 sscanf(sig_part + i*2, "%02x", &val);
@@ -661,7 +684,7 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
         } else {
             sig_len = strlen(sig_part) / 4 * 3 + 4;
             sig = (unsigned char *)malloc(sig_len);
-            if (!sig) return SSO_ERR_TOKEN_INVALID;
+            if (!sig) { tv_err = SSO_ERR_TOKEN_INVALID; goto token_verify_cleanup; }
             sig_len = base64url_decode(sig_part, sig, sig_len);
         }
 
@@ -675,26 +698,32 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
 
         free(sig);
         EVP_MD_CTX_free(md_ctx);
-        if (v_err != SSO_OK) return v_err;
+        if (v_err != SSO_OK) { tv_err = v_err; goto token_verify_cleanup; }
     }
 
     /* --- Decode and Scan JSON Payload Claims --- */
-    unsigned char decoded[4096];
-    size_t decoded_len = base64url_decode(b64_payload, decoded, sizeof(decoded) - 1);
-    if (decoded_len == 0) return SSO_ERR_TOKEN_INVALID;
+    size_t decoded_len = base64url_decode(b64_payload, decoded, 4096 - 1);
+    if (decoded_len == 0) { tv_err = SSO_ERR_TOKEN_INVALID; goto token_verify_cleanup; }
     decoded[decoded_len] = '\0';
 
     /* Single-pass scan of standard and custom claims */
     sso_error_t scan_err = scan_jwt_payload((const char *)decoded, out);
-    if (scan_err != SSO_OK) return scan_err;
+    if (scan_err != SSO_OK) { tv_err = scan_err; goto token_verify_cleanup; }
 
     /* Verify if the token expiration date is in the past */
     if (sso_timestamp_now() > out->expires_at) {
         token_destroy(out);
-        return SSO_ERR_TOKEN_EXPIRED;
+        tv_err = SSO_ERR_TOKEN_EXPIRED;
+        goto token_verify_cleanup;
     }
 
-    return SSO_OK;
+    tv_err = SSO_OK;
+
+token_verify_cleanup:
+    free(b64_payload);
+    free(signing_input);
+    free(decoded);
+    return tv_err;
 }
 
 sso_error_t token_refresh(token_manager_t *mgr, const token_t *old_token,
@@ -859,7 +888,7 @@ sso_error_t token_set_nonce(token_manager_t *mgr, sso_id_t user_id, uint64_t non
             mgr->nonces[i].nonce = nonce;
             pthread_mutex_unlock(&mgr->nonce_lock);
             return SSO_OK;
-        }
+}
     }
     size_t new_cap = mgr->nonce_cap ? mgr->nonce_cap * 2 : 16;
     nonce_pair_t *new_nonces = (nonce_pair_t *)realloc(mgr->nonces, new_cap * sizeof(nonce_pair_t));
