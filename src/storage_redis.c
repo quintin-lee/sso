@@ -165,7 +165,6 @@ static sso_error_t redis_hash_set(redisContext *ctx, const char *key, ...) {
     return redis_ok(ctx, r);
 }
 
-typedef struct { const char *field; char *dest; size_t sz; } hash_field_t;
 
 /* ========================================================================
  * Entity generation helpers
@@ -374,7 +373,7 @@ static sso_error_t redis_user_create(storage_backend_t *self, user_t *user) {
         "attributes", user->attributes,
         "mfa_enabled", mfa_str,
         "mfa_secret", user->mfa_secret,
-        NULL);
+        (void *)NULL);
     if (err != SSO_OK) return err;
 
     /* Indexes */
@@ -476,7 +475,7 @@ static sso_error_t redis_user_update(storage_backend_t *self, const user_t *user
         "attributes", user->attributes,
         "mfa_enabled", mfa_str,
         "mfa_secret", user->mfa_secret,
-        NULL);
+        (void *)NULL);
 }
 
 static sso_error_t redis_user_delete(storage_backend_t *self, sso_id_t id) {
@@ -634,14 +633,6 @@ static sso_error_t redis_delete_sms_code(storage_backend_t *self, const char *ph
  * Generic Entity CRUD helpers (Role, Group, Policy)
  * ======================================================================== */
 
-/* Define hash field tables for each entity type */
-typedef struct {
-    const char *prefix;      /* Redis key prefix */
-    const char *list_key;    /* List key for pagination */
-    size_t name_max;         /* Max name length */
-    size_t desc_max;         /* Max description length */
-    size_t rules_max;        /* Max rules JSON length (policies only) */
-} entity_meta_t;
 
 /* ========================================================================
  * Role CRUD
@@ -727,7 +718,7 @@ static sso_error_t redis_role_create(storage_backend_t *self, role_t *role) {
     err = redis_hash_set(priv->ctx, idk,
         "id", sid, "name", role->name, "description", role->description,
         "parent_role_id", sparent, "status", sstatus,
-        "created_at", sc, "updated_at", su, NULL);
+        "created_at", sc, "updated_at", su, (void *)NULL);
     if (err != SSO_OK) return err;
 
     redis_set_index(priv->ctx, nk, role->id);
@@ -748,7 +739,7 @@ static sso_error_t redis_role_update(storage_backend_t *self, const role_t *role
     return redis_hash_set(priv->ctx, idk,
         "name", role->name, "description", role->description,
         "parent_role_id", sparent, "status", sstatus,
-        "updated_at", su, NULL);
+        "updated_at", su, (void *)NULL);
 }
 
 static sso_error_t redis_role_delete(storage_backend_t *self, sso_id_t id) {
@@ -919,7 +910,7 @@ static sso_error_t redis_group_create(storage_backend_t *self, group_t *group) {
     err = redis_hash_set(priv->ctx, idk,
         "id", sid, "name", group->name, "description", group->description,
         "parent_group_id", sparent, "status", sstatus,
-        "created_at", sc, "updated_at", su, NULL);
+        "created_at", sc, "updated_at", su, (void *)NULL);
     if (err != SSO_OK) return err;
 
     redis_set_index(priv->ctx, nk, group->id);
@@ -940,7 +931,7 @@ static sso_error_t redis_group_update(storage_backend_t *self, const group_t *gr
     return redis_hash_set(priv->ctx, idk,
         "name", group->name, "description", group->description,
         "parent_group_id", sparent, "status", sstatus,
-        "updated_at", su, NULL);
+        "updated_at", su, (void *)NULL);
 }
 
 static sso_error_t redis_group_delete(storage_backend_t *self, sso_id_t id) {
@@ -1078,7 +1069,7 @@ static sso_error_t redis_policy_create(storage_backend_t *self, policy_t *policy
         "strategy_type", stype, "effect", seffect,
         "priority", sprio, "rules", policy->rules,
         "status", sstatus,
-        "created_at", sc, "updated_at", su, NULL);
+        "created_at", sc, "updated_at", su, (void *)NULL);
     if (err != SSO_OK) return err;
 
     redis_set_index(priv->ctx, nk, policy->id);
@@ -1103,7 +1094,7 @@ static sso_error_t redis_policy_update(storage_backend_t *self, const policy_t *
         "strategy_type", stype, "effect", seffect,
         "priority", sprio, "rules", policy->rules,
         "status", sstatus,
-        "updated_at", su, NULL);
+        "updated_at", su, (void *)NULL);
 }
 
 static sso_error_t redis_policy_delete(storage_backend_t *self, sso_id_t id) {
@@ -1469,7 +1460,7 @@ static sso_error_t redis_oauth_code_create(storage_backend_t *self, const oauth_
         "code_challenge_method", code->code_challenge_method,
         "expires_at", expires,
         "used", used,
-        NULL);
+        (void *)NULL);
     if (err != SSO_OK) return err;
 
     /* Set TTL on the key */
@@ -1574,7 +1565,7 @@ static sso_error_t redis_oauth_client_create(storage_backend_t *self, oauth_clie
         "status", sstatus,
         "created_at", sc,
         "updated_at", su,
-        NULL);
+        (void *)NULL);
     if (err != SSO_OK) return err;
 
     char rk[KEYBUF];
@@ -1655,7 +1646,7 @@ static sso_error_t redis_oauth_client_update(storage_backend_t *self, const oaut
         "token_ttl_ms", sttl,
         "status", sstatus,
         "updated_at", su,
-        NULL);
+        (void *)NULL);
 }
 
 static sso_error_t redis_oauth_client_delete(storage_backend_t *self, const char *client_id) {
@@ -1761,7 +1752,7 @@ static sso_error_t redis_refresh_token_create(storage_backend_t *self, const ref
         "expires_at", expires,
         "issued_at", issued,
         "revoked", revoked,
-        NULL);
+        (void *)NULL);
 }
 
 static sso_error_t redis_refresh_token_get(storage_backend_t *self, const char *token_hash, refresh_token_t *out) {
