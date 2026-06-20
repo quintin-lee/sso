@@ -481,8 +481,9 @@ static void send_response(conn_t *c, const http_response_t *resp) {
     if (resp->cors_origin[0]) {
         snprintf(vary, sizeof(vary), "Vary: Origin\r\n");
     }
-    char header[16384];
-    int n = snprintf(header, sizeof(header),
+    char *header = (char *)malloc(16384);
+    if (!header) return;
+    int n = snprintf(header, 16384,
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: %s\r\n"
         "Content-Length: %zu\r\n"
@@ -521,6 +522,7 @@ static void send_response(conn_t *c, const http_response_t *resp) {
     if (resp->body && resp->body_len > 0) {
         conn_write_all(c, resp->body, resp->body_len);
     }
+    free(header);
 }
 
 static void cleanup_request(conn_t *conn, http_response_t *resp, http_request_t *req) {
