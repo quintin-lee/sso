@@ -45,6 +45,7 @@ SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/storage_postgres.c \
        $(SRCDIR)/storage_redis.c \
        $(SRCDIR)/ratelimit.c     \
+       $(SRCDIR)/risk.c          \
        $(SRCDIR)/cJSON.c         \
        $(SRCDIR)/toml.c          \
        $(SRCDIR)/config.c        \

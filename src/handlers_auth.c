@@ -10,6 +10,7 @@
 #include "storage.h"
 #include "role.h"
 #include "mfa.h"
+#include "risk.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,14 +47,33 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
     free(username); free(password);
 
     if (err != SSO_OK) {
+        risk_record_login_attempt(0, req->client_ip, 0);
         sso_response_error(resp, 401, "Invalid credentials");
         return SSO_OK;
     }
+
+    /* Risk Assessment */
+    int risk_score = risk_evaluate_login(user.id, req->client_ip, NULL);
+    if (risk_score >= RISK_SCORE_HIGH) {
+        risk_record_login_attempt(user.id, req->client_ip, 0);
+        sso_response_error(resp, 401, "High risk login blocked");
+        return SSO_OK;
+    }
+
+    if (risk_score >= RISK_SCORE_MEDIUM && !user.mfa_enabled) {
+        risk_record_login_attempt(user.id, req->client_ip, 0);
+        sso_response_error(resp, 401, "Medium risk login requires MFA, but MFA is not configured. Access blocked.");
+        return SSO_OK;
+    }
+
+    int force_mfa = (risk_score >= RISK_SCORE_MEDIUM);
 
     /* Success: reset rate limit for this IP */
     if (ctx->rate_limiter) {
         rate_limiter_reset((rate_limiter_t *)ctx->rate_limiter, req->client_ip);
     }
+    
+    risk_record_login_attempt(user.id, req->client_ip, 1);
 
     sso_id_t roles[16], groups[16];
     size_t rc = 0, gc = 0;
@@ -62,7 +82,7 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
 
     token_manager_t *tmgr = (token_manager_t *)ctx->token_mgr;
 
-    if (user.mfa_enabled) {
+    if (user.mfa_enabled || force_mfa) {
         token_t mfa_token;
         /* Issue a short-lived token with "mfa" scope */
         token_issue(tmgr, &user, NULL, 0, NULL, 0, "mfa", 300000, &mfa_token);
