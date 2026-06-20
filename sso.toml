@@ -42,3 +42,13 @@
 
 [ratelimit]
 # max_ips = 10000
+
+[password_policy]
+# min_length = 8
+# max_length = 128
+# require_upper = true
+# require_lower = true
+# require_digit = true
+# require_special = true
+# expiry_days = 0
+# history_count = 0
