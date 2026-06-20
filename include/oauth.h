@@ -32,6 +32,10 @@ sso_error_t handle_oauth_revoke(sso_context_t *ctx,
                                 const http_request_t *req,
                                 http_response_t *resp);
 
+sso_error_t handle_oauth_end_session(sso_context_t *ctx,
+                                     const http_request_t *req,
+                                     http_response_t *resp);
+
 sso_error_t handle_well_known_openid_config(sso_context_t *ctx,
                                             const http_request_t *req,
                                             http_response_t *resp);

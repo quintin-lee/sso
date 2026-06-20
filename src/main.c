@@ -323,6 +323,7 @@ static int run_server(sso_config_t *cfg, const char *config_path) {
         {"/api/v1/oauth/token",     HTTP_POST, handle_oauth_token,    false},
         {"/api/v1/oauth/introspect", HTTP_POST, handle_oauth_introspect, true},
         {"/api/v1/oauth/revoke",    HTTP_POST, handle_oauth_revoke,   true},
+        {"/api/v1/oauth/end-session", HTTP_GET, handle_oauth_end_session, false},
     };
 
     size_t route_count = sizeof(routes) / sizeof(routes[0]);

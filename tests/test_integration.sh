@@ -429,6 +429,41 @@ test_oauth_endpoints() {
             fail "OAuth PKCE plain token exchange failed: $plain_resp"
         fi
     fi
+
+    # 10. OAuth Single Logout (SLO) tests
+    # 10a. SLO without params (should return 200 logged_out)
+    local slo_resp
+    slo_resp=$(curl -sf "${BASE}/api/v1/oauth/end-session" 2>&1) || { fail "OAuth SLO basic"; }
+    local slo_status
+    slo_status=$(extract_json "status" "$slo_resp")
+    if [ "$slo_status" = "logged_out" ]; then
+        pass "OAuth SLO basic"
+    else
+        fail "OAuth SLO basic expected logged_out, got: $slo_resp"
+    fi
+
+    # 10b. SLO with id_token_hint, post_logout_redirect_uri and state (should return 302 redirect)
+    if [ -n "$id_token" ]; then
+        local slo_headers
+        slo_headers=$(mktemp)
+        local slo_http_code
+        local slo_redirect_body
+        slo_redirect_body=$(mktemp)
+        slo_http_code=$(curl -s -o "$slo_redirect_body" -w "%{http_code}" -D "$slo_headers" \
+            "${BASE}/api/v1/oauth/end-session?id_token_hint=${id_token}&post_logout_redirect_uri=http://localhost:3000/callback&state=mystate" 2>&1) || true
+        
+        local slo_location
+        slo_location=$(grep -i '^Location:' "$slo_headers" || echo "")
+        rm -f "$slo_headers" "$slo_redirect_body"
+
+        if [ "$slo_http_code" = "302" ] && echo "$slo_location" | grep -q "http://localhost:3000/callback?state=mystate"; then
+            pass "OAuth SLO with redirect and state"
+        else
+            fail "OAuth SLO redirect expected HTTP 302 and Location containing state, got status=$slo_http_code location=$slo_location"
+        fi
+    else
+        fail "OAuth SLO redirect test skipped (no id_token available)"
+    fi
 }
 
 test_permission_checks() {

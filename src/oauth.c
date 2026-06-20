@@ -469,18 +469,36 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
 
         /* Build JSON response */
         char buf[8192];
-        snprintf(buf, sizeof(buf),
-            "{"
-            "\"access_token\":\"%s\","
-            "\"token_type\":\"Bearer\","
-            "\"expires_in\":%lld,"
-            "\"refresh_token\":\"%s\","
-            "\"user_id\":%llu"
-            "}",
-            access_token.token_str,
-            (long long)(access_token.expires_at - access_token.issued_at) / 1000,
-            access_token.raw_refresh_token,
-            (unsigned long long)user.id);
+        bool is_openid = (strstr(ac.scope, "openid") != NULL);
+        if (is_openid) {
+            snprintf(buf, sizeof(buf),
+                "{"
+                "\"access_token\":\"%s\","
+                "\"token_type\":\"Bearer\","
+                "\"expires_in\":%lld,"
+                "\"refresh_token\":\"%s\","
+                "\"id_token\":\"%s\","
+                "\"user_id\":%llu"
+                "}",
+                access_token.token_str,
+                (long long)(access_token.expires_at - access_token.issued_at) / 1000,
+                access_token.raw_refresh_token,
+                access_token.token_str,
+                (unsigned long long)user.id);
+        } else {
+            snprintf(buf, sizeof(buf),
+                "{"
+                "\"access_token\":\"%s\","
+                "\"token_type\":\"Bearer\","
+                "\"expires_in\":%lld,"
+                "\"refresh_token\":\"%s\","
+                "\"user_id\":%llu"
+                "}",
+                access_token.token_str,
+                (long long)(access_token.expires_at - access_token.issued_at) / 1000,
+                access_token.raw_refresh_token,
+                (unsigned long long)user.id);
+        }
         sso_response_ok(resp, buf);
 
     } else if (strcmp(grant_type, "client_credentials") == 0) {
@@ -735,6 +753,7 @@ sso_error_t handle_well_known_openid_config(sso_context_t *ctx,
         "\"userinfo_endpoint\":\"%s/api/v1/auth/userinfo\","
         "\"introspection_endpoint\":\"%s/api/v1/oauth/introspect\","
         "\"revocation_endpoint\":\"%s/api/v1/oauth/revoke\","
+        "\"end_session_endpoint\":\"%s/api/v1/oauth/end-session\","
         "\"jwks_uri\":\"%s/api/v1/auth/jwks\","
         "\"scopes_supported\":[\"openid\",\"profile\"],"
         "\"response_types_supported\":[\"code\"],"
@@ -743,7 +762,7 @@ sso_error_t handle_well_known_openid_config(sso_context_t *ctx,
         "\"id_token_signing_alg_values_supported\":[\"HS256\",\"RS256\"],"
         "\"token_endpoint_auth_methods_supported\":[\"client_secret_post\"]"
         "}",
-        issuer, issuer, issuer, issuer, issuer, issuer, issuer);
+        issuer, issuer, issuer, issuer, issuer, issuer, issuer, issuer);
     sso_response_ok(resp, buf);
     return SSO_OK;
 }
@@ -869,5 +888,88 @@ sso_error_t handle_userinfo(sso_context_t *ctx,
         user->email,
         user->display_name);
     sso_response_ok(resp, buf);
+    return SSO_OK;
+}
+
+static const char *get_query_param(const http_request_t *req, const char *key) {
+    if (!req->query_params) return NULL;
+    size_t key_len = strlen(key);
+    for (size_t i = 0; req->query_params[i]; i++) {
+        const char *eq = strchr(req->query_params[i], '=');
+        if (eq) {
+            size_t klen = (size_t)(eq - req->query_params[i]);
+            if (klen == key_len && strncmp(req->query_params[i], key, key_len) == 0) {
+                return eq + 1;
+            }
+        }
+    }
+    return NULL;
+}
+
+sso_error_t handle_oauth_end_session(sso_context_t *ctx,
+                                     const http_request_t *req,
+                                     http_response_t *resp) {
+    token_manager_t *tmgr = get_token_mgr(ctx);
+    const char *id_token_hint = get_query_param(req, "id_token_hint");
+    const char *post_logout_redirect_uri = get_query_param(req, "post_logout_redirect_uri");
+    const char *state = get_query_param(req, "state");
+
+    token_t token;
+    memset(&token, 0, sizeof(token));
+    bool token_valid = false;
+
+    if (id_token_hint) {
+        if (token_verify(tmgr, id_token_hint, &token) == SSO_OK) {
+            token_valid = true;
+            token_revoke(tmgr, token.jti, token.expires_at);
+            token_bump_nonce(tmgr, token.user_id);
+            token_destroy(&token);
+        }
+    }
+
+    auth_context_t *auth = (auth_context_t *)req->userdata;
+    if (auth) {
+        token_revoke(tmgr, auth->token.jti, auth->token.expires_at);
+        token_bump_nonce(tmgr, auth->user.id);
+    }
+
+    bool redirect_allowed = false;
+    if (post_logout_redirect_uri) {
+        sso_config_t *cfg = get_cfg(ctx);
+        if (cfg && cfg->oauth_redirect_uris[0] && is_redirect_uri_allowed(cfg->oauth_redirect_uris, post_logout_redirect_uri)) {
+            redirect_allowed = true;
+        } else {
+            storage_backend_t *sb = get_storage(ctx);
+            oauth_client_t clients[64];
+            size_t count = 0;
+            if (sb && sb->oauth_client_list && sb->oauth_client_list(sb, 0, 64, clients, &count, 64) == SSO_OK) {
+                for (size_t i = 0; i < count; i++) {
+                    if (is_redirect_uri_allowed(clients[i].redirect_uris, post_logout_redirect_uri)) {
+                        redirect_allowed = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if (redirect_allowed && post_logout_redirect_uri) {
+        char redirect_url[1024];
+        if (state) {
+            snprintf(redirect_url, sizeof(redirect_url), "%s%cstate=%s",
+                     post_logout_redirect_uri,
+                     strchr(post_logout_redirect_uri, '?') ? '&' : '?',
+                     state);
+        } else {
+            snprintf(redirect_url, sizeof(redirect_url), "%s", post_logout_redirect_uri);
+        }
+        resp->status_code = 302;
+        snprintf(resp->extra_headers, sizeof(resp->extra_headers), "Location: %s\r\n", redirect_url);
+        resp->body = strdup("");
+        resp->body_len = 0;
+    } else {
+        sso_response_ok(resp, "{\"status\":\"logged_out\"}");
+    }
+
     return SSO_OK;
 }
