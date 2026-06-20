@@ -109,7 +109,7 @@ static void json_error_response(http_response_t *resp, int status, const char *e
 static bool is_redirect_uri_allowed(const char *allowed_uris, const char *redirect_uri) {
     if (!allowed_uris || !allowed_uris[0]) return false;
     char uris_copy[512];
-    strncpy(uris_copy, allowed_uris, sizeof(uris_copy) - 1);
+    sso_strlcpy(uris_copy, allowed_uris, sizeof(uris_copy));
     uris_copy[sizeof(uris_copy) - 1] = '\0';
     
     char *saveptr = NULL;
@@ -140,7 +140,7 @@ static void store_refresh_token(storage_backend_t *sb, sso_id_t user_id, const c
     }
     rt.user_id = user_id;
     if (client_id) {
-        strncpy(rt.client_id, client_id, sizeof(rt.client_id) - 1);
+        sso_strlcpy(rt.client_id, client_id, sizeof(rt.client_id));
         rt.client_id[sizeof(rt.client_id) - 1] = '\0';
     }
     rt.issued_at = sso_timestamp_now();
@@ -288,16 +288,16 @@ sso_error_t handle_oauth_authorize(sso_context_t *ctx,
     oauth_auth_code_t ac;
     memset(&ac, 0, sizeof(ac));
     gen_auth_code(ac.code, sizeof(ac.code));
-    strncpy(ac.client_id, client_id, sizeof(ac.client_id) - 1);
+    sso_strlcpy(ac.client_id, client_id, sizeof(ac.client_id));
     ac.client_id[sizeof(ac.client_id) - 1] = '\0';
     ac.user_id = user->id;
-    strncpy(ac.redirect_uri, redirect_uri, sizeof(ac.redirect_uri) - 1);
+    sso_strlcpy(ac.redirect_uri, redirect_uri, sizeof(ac.redirect_uri));
     ac.redirect_uri[sizeof(ac.redirect_uri) - 1] = '\0';
-    if (scope) { strncpy(ac.scope, scope, sizeof(ac.scope) - 1); ac.scope[sizeof(ac.scope) - 1] = '\0'; }
-    if (nonce) { strncpy(ac.nonce, nonce, sizeof(ac.nonce) - 1); ac.nonce[sizeof(ac.nonce) - 1] = '\0'; }
-    if (code_challenge) { strncpy(ac.code_challenge, code_challenge, sizeof(ac.code_challenge) - 1); ac.code_challenge[sizeof(ac.code_challenge) - 1] = '\0'; }
+    if (scope) { sso_strlcpy(ac.scope, scope, sizeof(ac.scope)); ac.scope[sizeof(ac.scope) - 1] = '\0'; }
+    if (nonce) { sso_strlcpy(ac.nonce, nonce, sizeof(ac.nonce)); ac.nonce[sizeof(ac.nonce) - 1] = '\0'; }
+    if (code_challenge) { sso_strlcpy(ac.code_challenge, code_challenge, sizeof(ac.code_challenge)); ac.code_challenge[sizeof(ac.code_challenge) - 1] = '\0'; }
     if (code_challenge_method) {
-        strncpy(ac.code_challenge_method, code_challenge_method, sizeof(ac.code_challenge_method) - 1);
+        sso_strlcpy(ac.code_challenge_method, code_challenge_method, sizeof(ac.code_challenge_method));
         ac.code_challenge_method[sizeof(ac.code_challenge_method) - 1] = '\0';
     } else if (code_challenge) {
         strcpy(ac.code_challenge_method, "plain");
@@ -541,7 +541,7 @@ sso_error_t handle_oauth_token(sso_context_t *ctx,
         user_t client_user;
         memset(&client_user, 0, sizeof(client_user));
         client_user.id = 0;
-        strncpy(client_user.username, "oauth_client", sizeof(client_user.username) - 1);
+        sso_strlcpy(client_user.username, "oauth_client", sizeof(client_user.username));
         client_user.username[sizeof(client_user.username) - 1] = '\0';
         client_user.status = USER_STATUS_ACTIVE;
 

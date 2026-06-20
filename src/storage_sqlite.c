@@ -294,23 +294,23 @@ static void read_user(sqlite3_stmt *stmt, user_t *u) {
     memset(u, 0, sizeof(*u));
     u->id = (sso_id_t)sqlite3_column_int64(stmt, 0);
     const char *username = (const char *)sqlite3_column_text(stmt, 1);
-    if (username) strncpy(u->username, username, SSO_MAX_USERNAME - 1);
+    if (username) sso_strlcpy(u->username, username, SSO_MAX_USERNAME);
     const char *phone = (const char *)sqlite3_column_text(stmt, 2);
-    if (phone) strncpy(u->phone, phone, SSO_MAX_PHONE - 1);
+    if (phone) sso_strlcpy(u->phone, phone, SSO_MAX_PHONE);
     const char *phash = (const char *)sqlite3_column_text(stmt, 3);
-    if (phash) strncpy(u->password_hash, phash, SSO_MAX_PASSWORD_HASH - 1);
+    if (phash) sso_strlcpy(u->password_hash, phash, SSO_MAX_PASSWORD_HASH);
     const char *email = (const char *)sqlite3_column_text(stmt, 4);
-    if (email) strncpy(u->email, email, SSO_MAX_EMAIL - 1);
+    if (email) sso_strlcpy(u->email, email, SSO_MAX_EMAIL);
     const char *disp = (const char *)sqlite3_column_text(stmt, 5);
-    if (disp) strncpy(u->display_name, disp, SSO_MAX_DISPLAY_NAME - 1);
+    if (disp) sso_strlcpy(u->display_name, disp, SSO_MAX_DISPLAY_NAME);
     u->status = (user_status_t)sqlite3_column_int(stmt, 6);
     u->created_at = sqlite3_column_int64(stmt, 7);
     u->updated_at = sqlite3_column_int64(stmt, 8);
     const char *attrs = (const char *)sqlite3_column_text(stmt, 9);
-    if (attrs) strncpy(u->attributes, attrs, SSO_MAX_ATTRIBUTES - 1);
+    if (attrs) sso_strlcpy(u->attributes, attrs, SSO_MAX_ATTRIBUTES);
     u->mfa_enabled = sqlite3_column_int(stmt, 10);
     const char *sec = (const char *)sqlite3_column_text(stmt, 11);
-    if (sec) strncpy(u->mfa_secret, sec, sizeof(u->mfa_secret) - 1);
+    if (sec) sso_strlcpy(u->mfa_secret, sec, sizeof(u->mfa_secret));
 }
 
 /* Similar for role, group, policy — in production, factor out with macros. */
@@ -326,8 +326,8 @@ static void bind_role(sqlite3_stmt *stmt, const role_t *r) {
 static void read_role(sqlite3_stmt *stmt, role_t *r) {
     memset(r, 0, sizeof(*r));
     r->id = (sso_id_t)sqlite3_column_int64(stmt, 0);
-    strncpy(r->name, (const char *)sqlite3_column_text(stmt, 1), SSO_MAX_ROLE_NAME - 1);
-    strncpy(r->description, (const char *)sqlite3_column_text(stmt, 2), SSO_MAX_DESCRIPTION - 1);
+    sso_strlcpy(r->name, (const char *)sqlite3_column_text(stmt, 1), SSO_MAX_ROLE_NAME);
+    sso_strlcpy(r->description, (const char *)sqlite3_column_text(stmt, 2), SSO_MAX_DESCRIPTION);
     r->parent_role_id = (sso_id_t)sqlite3_column_int64(stmt, 3);
     r->status = (role_status_t)sqlite3_column_int(stmt, 4);
     r->created_at = sqlite3_column_int64(stmt, 5);
@@ -346,8 +346,8 @@ static void bind_group(sqlite3_stmt *stmt, const group_t *g) {
 static void read_group(sqlite3_stmt *stmt, group_t *g) {
     memset(g, 0, sizeof(*g));
     g->id = (sso_id_t)sqlite3_column_int64(stmt, 0);
-    strncpy(g->name, (const char *)sqlite3_column_text(stmt, 1), SSO_MAX_GROUP_NAME - 1);
-    strncpy(g->description, (const char *)sqlite3_column_text(stmt, 2), SSO_MAX_DESCRIPTION - 1);
+    sso_strlcpy(g->name, (const char *)sqlite3_column_text(stmt, 1), SSO_MAX_GROUP_NAME);
+    sso_strlcpy(g->description, (const char *)sqlite3_column_text(stmt, 2), SSO_MAX_DESCRIPTION);
     g->parent_group_id = (sso_id_t)sqlite3_column_int64(stmt, 3);
     g->status = (group_status_t)sqlite3_column_int(stmt, 4);
     g->created_at = sqlite3_column_int64(stmt, 5);
@@ -368,12 +368,12 @@ static void bind_policy(sqlite3_stmt *stmt, const policy_t *p) {
 static void read_policy(sqlite3_stmt *stmt, policy_t *p) {
     memset(p, 0, sizeof(*p));
     p->id = (sso_id_t)sqlite3_column_int64(stmt, 0);
-    strncpy(p->name, (const char *)sqlite3_column_text(stmt, 1), SSO_MAX_POLICY_NAME - 1);
+    sso_strlcpy(p->name, (const char *)sqlite3_column_text(stmt, 1), SSO_MAX_POLICY_NAME);
     p->strategy_type = (perm_strategy_type_t)sqlite3_column_int(stmt, 2);
     p->effect = (policy_effect_t)sqlite3_column_int(stmt, 3);
     p->priority = sqlite3_column_int(stmt, 4);
     const char *rules = (const char *)sqlite3_column_text(stmt, 5);
-    if (rules) strncpy(p->rules, rules, SSO_MAX_RULES_JSON - 1);
+    if (rules) sso_strlcpy(p->rules, rules, SSO_MAX_RULES_JSON);
     p->status = (policy_status_t)sqlite3_column_int(stmt, 6);
     p->created_at = sqlite3_column_int64(stmt, 7);
     p->updated_at = sqlite3_column_int64(stmt, 8);
@@ -403,7 +403,7 @@ static sso_error_t sqlite_open(storage_backend_t *self, const char *dsn) {
     sqlite_priv_t *priv = (sqlite_priv_t *)self->handle;
     if (!priv) return SSO_ERR_INVALID_PARAM;
 
-    strncpy(priv->dsn, dsn, sizeof(priv->dsn) - 1);
+    sso_strlcpy(priv->dsn, dsn, sizeof(priv->dsn));
     priv->dsn[sizeof(priv->dsn) - 1] = '\0';
 
     int rc = sqlite3_open(dsn, &priv->db);
@@ -1286,7 +1286,7 @@ static sso_error_t sqlite_get_sms_code(storage_backend_t *self, const char *phon
 
     const char *code = (const char *)sqlite3_column_text(stmt, 0);
     if (code) {
-        strncpy(code_out, code, 15);
+        sso_strlcpy(code_out, code, 15);
         code_out[15] = '\0';
     } else {
         code_out[0] = '\0';
@@ -1347,14 +1347,14 @@ static sso_error_t sqlite_oauth_code_get(storage_backend_t *self, const char *co
     int rc = sqlite3_step(stmt);
     if (rc != SQLITE_ROW) { sqlite3_finalize(stmt); return SSO_ERR_NOT_FOUND; }
     memset(out, 0, sizeof(*out));
-    strncpy(out->code, (const char*)sqlite3_column_text(stmt, 0), sizeof(out->code)-1);
-    strncpy(out->client_id, (const char*)sqlite3_column_text(stmt, 1), sizeof(out->client_id)-1);
+    sso_strlcpy(out->code, (const char*)sqlite3_column_text(stmt, 0), sizeof(out->code)-1);
+    sso_strlcpy(out->client_id, (const char*)sqlite3_column_text(stmt, 1), sizeof(out->client_id)-1);
     out->user_id = (sso_id_t)sqlite3_column_int64(stmt, 2);
-    strncpy(out->redirect_uri, (const char*)sqlite3_column_text(stmt, 3), sizeof(out->redirect_uri)-1);
-    strncpy(out->scope, (const char*)sqlite3_column_text(stmt, 4), sizeof(out->scope)-1);
-    strncpy(out->nonce, (const char*)sqlite3_column_text(stmt, 5), sizeof(out->nonce)-1);
-    strncpy(out->code_challenge, (const char*)sqlite3_column_text(stmt, 6), sizeof(out->code_challenge)-1);
-    strncpy(out->code_challenge_method, (const char*)sqlite3_column_text(stmt, 7), sizeof(out->code_challenge_method)-1);
+    sso_strlcpy(out->redirect_uri, (const char*)sqlite3_column_text(stmt, 3), sizeof(out->redirect_uri)-1);
+    sso_strlcpy(out->scope, (const char*)sqlite3_column_text(stmt, 4), sizeof(out->scope)-1);
+    sso_strlcpy(out->nonce, (const char*)sqlite3_column_text(stmt, 5), sizeof(out->nonce)-1);
+    sso_strlcpy(out->code_challenge, (const char*)sqlite3_column_text(stmt, 6), sizeof(out->code_challenge)-1);
+    sso_strlcpy(out->code_challenge_method, (const char*)sqlite3_column_text(stmt, 7), sizeof(out->code_challenge_method)-1);
     out->expires_at = (sso_timestamp_t)sqlite3_column_int64(stmt, 8);
     out->used = sqlite3_column_int(stmt, 9);
     sqlite3_finalize(stmt);
@@ -1407,21 +1407,21 @@ static void read_oauth_client(sqlite3_stmt *stmt, oauth_client_t *c) {
     memset(c, 0, sizeof(*c));
     c->id = (sso_id_t)sqlite3_column_int64(stmt, 0);
     const char *client_id = (const char *)sqlite3_column_text(stmt, 1);
-    if(client_id) strncpy(c->client_id, client_id, sizeof(c->client_id)-1);
+    if(client_id) sso_strlcpy(c->client_id, client_id, sizeof(c->client_id)-1);
     const char *hash = (const char *)sqlite3_column_text(stmt, 2);
-    if(hash) strncpy(c->client_secret_hash, hash, sizeof(c->client_secret_hash)-1);
+    if(hash) sso_strlcpy(c->client_secret_hash, hash, sizeof(c->client_secret_hash)-1);
     const char *uris = (const char *)sqlite3_column_text(stmt, 3);
-    if(uris) strncpy(c->redirect_uris, uris, sizeof(c->redirect_uris)-1);
+    if(uris) sso_strlcpy(c->redirect_uris, uris, sizeof(c->redirect_uris)-1);
     const char *name = (const char *)sqlite3_column_text(stmt, 4);
-    if(name) strncpy(c->app_name, name, sizeof(c->app_name)-1);
+    if(name) sso_strlcpy(c->app_name, name, sizeof(c->app_name)-1);
     const char *desc = (const char *)sqlite3_column_text(stmt, 5);
-    if(desc) strncpy(c->app_description, desc, sizeof(c->app_description)-1);
+    if(desc) sso_strlcpy(c->app_description, desc, sizeof(c->app_description)-1);
     const char *logo = (const char *)sqlite3_column_text(stmt, 6);
-    if(logo) strncpy(c->app_logo_url, logo, sizeof(c->app_logo_url)-1);
+    if(logo) sso_strlcpy(c->app_logo_url, logo, sizeof(c->app_logo_url)-1);
     const char *scopes = (const char *)sqlite3_column_text(stmt, 7);
-    if(scopes) strncpy(c->allowed_scopes, scopes, sizeof(c->allowed_scopes)-1);
+    if(scopes) sso_strlcpy(c->allowed_scopes, scopes, sizeof(c->allowed_scopes)-1);
     const char *grants = (const char *)sqlite3_column_text(stmt, 8);
-    if(grants) strncpy(c->allowed_grant_types, grants, sizeof(c->allowed_grant_types)-1);
+    if(grants) sso_strlcpy(c->allowed_grant_types, grants, sizeof(c->allowed_grant_types)-1);
     c->token_ttl_ms = (long)sqlite3_column_int64(stmt, 9);
     c->status = sqlite3_column_int(stmt, 10);
     c->created_at = (sso_timestamp_t)sqlite3_column_int64(stmt, 11);
@@ -1519,10 +1519,10 @@ static sso_error_t sqlite_refresh_token_get(storage_backend_t *self, const char 
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         memset(out, 0, sizeof(*out));
         const char *token_hash_val = (const char *)sqlite3_column_text(stmt, 0);
-        if (token_hash_val) strncpy(out->token_hash, token_hash_val, sizeof(out->token_hash)-1);
+        if (token_hash_val) sso_strlcpy(out->token_hash, token_hash_val, sizeof(out->token_hash)-1);
         out->user_id = sqlite3_column_int64(stmt, 1);
         const char *client_id_val = (const char *)sqlite3_column_text(stmt, 2);
-        if (client_id_val) strncpy(out->client_id, client_id_val, sizeof(out->client_id)-1);
+        if (client_id_val) sso_strlcpy(out->client_id, client_id_val, sizeof(out->client_id)-1);
         out->expires_at = sqlite3_column_int64(stmt, 3);
         out->issued_at = sqlite3_column_int64(stmt, 4);
         out->revoked = sqlite3_column_int(stmt, 5);
@@ -1757,7 +1757,7 @@ sso_error_t storage_sqlite_create(storage_backend_t **backend) {
     }
 
     (*backend)->handle = priv;
-    strncpy((*backend)->name, "sqlite", sizeof((*backend)->name) - 1);
+    sso_strlcpy((*backend)->name, "sqlite", sizeof((*backend)->name));
 
     /* Lifecycle */
     (*backend)->open       = sqlite_open;

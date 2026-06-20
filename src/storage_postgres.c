@@ -119,7 +119,7 @@ static sso_error_t postgres_open(storage_backend_t *self, const char *dsn) {
     postgres_priv_t *priv = postgres_get_priv(self);
     
     // Copy DSN
-    strncpy(priv->dsn, dsn, sizeof(priv->dsn) - 1);
+    sso_strlcpy(priv->dsn, dsn, sizeof(priv->dsn));
     priv->dsn[sizeof(priv->dsn) - 1] = '\0';
     
     // Init synchronization primitives
@@ -345,19 +345,19 @@ static void map_user(PGresult *res, int row, user_t *u) {
     val = PQgetvalue(res, row, 0);
     u->id = (sso_id_t)(val ? strtoull(val, NULL, 10) : 0);
     
-    strncpy(u->username, PQgetvalue(res, row, 1), sizeof(u->username) - 1);
+    sso_strlcpy(u->username, PQgetvalue(res, row, 1), sizeof(u->username));
     u->username[sizeof(u->username) - 1] = '\0';
     
-    strncpy(u->phone, PQgetvalue(res, row, 2), sizeof(u->phone) - 1);
+    sso_strlcpy(u->phone, PQgetvalue(res, row, 2), sizeof(u->phone));
     u->phone[sizeof(u->phone) - 1] = '\0';
     
-    strncpy(u->password_hash, PQgetvalue(res, row, 3), sizeof(u->password_hash) - 1);
+    sso_strlcpy(u->password_hash, PQgetvalue(res, row, 3), sizeof(u->password_hash));
     u->password_hash[sizeof(u->password_hash) - 1] = '\0';
     
-    strncpy(u->email, PQgetvalue(res, row, 4), sizeof(u->email) - 1);
+    sso_strlcpy(u->email, PQgetvalue(res, row, 4), sizeof(u->email));
     u->email[sizeof(u->email) - 1] = '\0';
     
-    strncpy(u->display_name, PQgetvalue(res, row, 5), sizeof(u->display_name) - 1);
+    sso_strlcpy(u->display_name, PQgetvalue(res, row, 5), sizeof(u->display_name));
     u->display_name[sizeof(u->display_name) - 1] = '\0';
     
     val = PQgetvalue(res, row, 6);
@@ -369,13 +369,13 @@ static void map_user(PGresult *res, int row, user_t *u) {
     val = PQgetvalue(res, row, 8);
     u->updated_at = (sso_timestamp_t)(val ? strtoll(val, NULL, 10) : 0);
     
-    strncpy(u->attributes, PQgetvalue(res, row, 9), sizeof(u->attributes) - 1);
+    sso_strlcpy(u->attributes, PQgetvalue(res, row, 9), sizeof(u->attributes));
     u->attributes[sizeof(u->attributes) - 1] = '\0';
     
     val = PQgetvalue(res, row, 10);
     u->mfa_enabled = val ? atoi(val) : 0;
     
-    strncpy(u->mfa_secret, PQgetvalue(res, row, 11), sizeof(u->mfa_secret) - 1);
+    sso_strlcpy(u->mfa_secret, PQgetvalue(res, row, 11), sizeof(u->mfa_secret));
     u->mfa_secret[sizeof(u->mfa_secret) - 1] = '\0';
 }
 
@@ -383,9 +383,9 @@ static void read_role(PGresult *res, int row, role_t *r) {
     const char *val;
     val = PQgetvalue(res, row, 0);
     r->id = (sso_id_t)(val ? strtoull(val, NULL, 10) : 0);
-    strncpy(r->name, PQgetvalue(res, row, 1), sizeof(r->name) - 1);
+    sso_strlcpy(r->name, PQgetvalue(res, row, 1), sizeof(r->name));
     r->name[sizeof(r->name) - 1] = '\0';
-    strncpy(r->description, PQgetvalue(res, row, 2), sizeof(r->description) - 1);
+    sso_strlcpy(r->description, PQgetvalue(res, row, 2), sizeof(r->description));
     r->description[sizeof(r->description) - 1] = '\0';
     val = PQgetvalue(res, row, 3);
     r->parent_role_id = (sso_id_t)(val ? strtoull(val, NULL, 10) : 0);
@@ -401,9 +401,9 @@ static void read_group(PGresult *res, int row, group_t *g) {
     const char *val;
     val = PQgetvalue(res, row, 0);
     g->id = (sso_id_t)(val ? strtoull(val, NULL, 10) : 0);
-    strncpy(g->name, PQgetvalue(res, row, 1), sizeof(g->name) - 1);
+    sso_strlcpy(g->name, PQgetvalue(res, row, 1), sizeof(g->name));
     g->name[sizeof(g->name) - 1] = '\0';
-    strncpy(g->description, PQgetvalue(res, row, 2), sizeof(g->description) - 1);
+    sso_strlcpy(g->description, PQgetvalue(res, row, 2), sizeof(g->description));
     g->description[sizeof(g->description) - 1] = '\0';
     val = PQgetvalue(res, row, 3);
     g->parent_group_id = (sso_id_t)(val ? strtoull(val, NULL, 10) : 0);
@@ -419,7 +419,7 @@ static void read_policy(PGresult *res, int row, policy_t *p) {
     const char *val;
     val = PQgetvalue(res, row, 0);
     p->id = (sso_id_t)(val ? strtoull(val, NULL, 10) : 0);
-    strncpy(p->name, PQgetvalue(res, row, 1), sizeof(p->name) - 1);
+    sso_strlcpy(p->name, PQgetvalue(res, row, 1), sizeof(p->name));
     p->name[sizeof(p->name) - 1] = '\0';
     val = PQgetvalue(res, row, 2);
     p->strategy_type = (perm_strategy_type_t)(val ? atoi(val) : 0);
@@ -427,7 +427,7 @@ static void read_policy(PGresult *res, int row, policy_t *p) {
     p->effect = (policy_effect_t)(val ? atoi(val) : 0);
     val = PQgetvalue(res, row, 4);
     p->priority = val ? atoi(val) : 0;
-    strncpy(p->rules, PQgetvalue(res, row, 5), sizeof(p->rules) - 1);
+    sso_strlcpy(p->rules, PQgetvalue(res, row, 5), sizeof(p->rules));
     p->rules[sizeof(p->rules) - 1] = '\0';
     val = PQgetvalue(res, row, 6);
     p->status = (policy_status_t)(val ? atoi(val) : 0);
@@ -444,35 +444,35 @@ static void read_oauth_client(PGresult *res, int row, oauth_client_t *c) {
     c->id = (sso_id_t)(val ? strtoull(val, NULL, 10) : 0);
     
     val = PQgetvalue(res, row, 1);
-    strncpy(c->client_id, val ? val : "", sizeof(c->client_id) - 1);
+    sso_strlcpy(c->client_id, val ? val : "", sizeof(c->client_id));
     c->client_id[sizeof(c->client_id) - 1] = '\0';
     
     val = PQgetvalue(res, row, 2);
-    strncpy(c->client_secret_hash, val ? val : "", sizeof(c->client_secret_hash) - 1);
+    sso_strlcpy(c->client_secret_hash, val ? val : "", sizeof(c->client_secret_hash));
     c->client_secret_hash[sizeof(c->client_secret_hash) - 1] = '\0';
     
     val = PQgetvalue(res, row, 3);
-    strncpy(c->redirect_uris, val ? val : "", sizeof(c->redirect_uris) - 1);
+    sso_strlcpy(c->redirect_uris, val ? val : "", sizeof(c->redirect_uris));
     c->redirect_uris[sizeof(c->redirect_uris) - 1] = '\0';
     
     val = PQgetvalue(res, row, 4);
-    strncpy(c->app_name, val ? val : "", sizeof(c->app_name) - 1);
+    sso_strlcpy(c->app_name, val ? val : "", sizeof(c->app_name));
     c->app_name[sizeof(c->app_name) - 1] = '\0';
     
     val = PQgetvalue(res, row, 5);
-    strncpy(c->app_description, val ? val : "", sizeof(c->app_description) - 1);
+    sso_strlcpy(c->app_description, val ? val : "", sizeof(c->app_description));
     c->app_description[sizeof(c->app_description) - 1] = '\0';
     
     val = PQgetvalue(res, row, 6);
-    strncpy(c->app_logo_url, val ? val : "", sizeof(c->app_logo_url) - 1);
+    sso_strlcpy(c->app_logo_url, val ? val : "", sizeof(c->app_logo_url));
     c->app_logo_url[sizeof(c->app_logo_url) - 1] = '\0';
     
     val = PQgetvalue(res, row, 7);
-    strncpy(c->allowed_scopes, val ? val : "", sizeof(c->allowed_scopes) - 1);
+    sso_strlcpy(c->allowed_scopes, val ? val : "", sizeof(c->allowed_scopes));
     c->allowed_scopes[sizeof(c->allowed_scopes) - 1] = '\0';
     
     val = PQgetvalue(res, row, 8);
-    strncpy(c->allowed_grant_types, val ? val : "", sizeof(c->allowed_grant_types) - 1);
+    sso_strlcpy(c->allowed_grant_types, val ? val : "", sizeof(c->allowed_grant_types));
     c->allowed_grant_types[sizeof(c->allowed_grant_types) - 1] = '\0';
     
     val = PQgetvalue(res, row, 9);
@@ -763,7 +763,7 @@ static sso_error_t postgres_get_sms_code(storage_backend_t *self, const char *ph
         return SSO_ERR_TOKEN_EXPIRED;
     }
 
-    strncpy(code_out, PQgetvalue(res, 0, 0), 15);
+    sso_strlcpy(code_out, PQgetvalue(res, 0, 0), 15);
     code_out[15] = '\0';
     PQclear(res);
     return SSO_OK;
@@ -1538,14 +1538,14 @@ static sso_error_t postgres_oauth_code_get(storage_backend_t *self, const char *
         return SSO_ERR_NOT_FOUND;
     }
     memset(out, 0, sizeof(*out));
-    strncpy(out->code, PQgetvalue(res, 0, 0), sizeof(out->code)-1);
-    strncpy(out->client_id, PQgetvalue(res, 0, 1), sizeof(out->client_id)-1);
+    sso_strlcpy(out->code, PQgetvalue(res, 0, 0), sizeof(out->code)-1);
+    sso_strlcpy(out->client_id, PQgetvalue(res, 0, 1), sizeof(out->client_id)-1);
     out->user_id = strtoull(PQgetvalue(res, 0, 2), NULL, 10);
-    strncpy(out->redirect_uri, PQgetvalue(res, 0, 3), sizeof(out->redirect_uri)-1);
-    strncpy(out->scope, PQgetvalue(res, 0, 4), sizeof(out->scope)-1);
-    strncpy(out->nonce, PQgetvalue(res, 0, 5), sizeof(out->nonce)-1);
-    strncpy(out->code_challenge, PQgetvalue(res, 0, 6), sizeof(out->code_challenge)-1);
-    strncpy(out->code_challenge_method, PQgetvalue(res, 0, 7), sizeof(out->code_challenge_method)-1);
+    sso_strlcpy(out->redirect_uri, PQgetvalue(res, 0, 3), sizeof(out->redirect_uri)-1);
+    sso_strlcpy(out->scope, PQgetvalue(res, 0, 4), sizeof(out->scope)-1);
+    sso_strlcpy(out->nonce, PQgetvalue(res, 0, 5), sizeof(out->nonce)-1);
+    sso_strlcpy(out->code_challenge, PQgetvalue(res, 0, 6), sizeof(out->code_challenge)-1);
+    sso_strlcpy(out->code_challenge_method, PQgetvalue(res, 0, 7), sizeof(out->code_challenge_method)-1);
     out->expires_at = strtoll(PQgetvalue(res, 0, 8), NULL, 10);
     out->used = atoi(PQgetvalue(res, 0, 9));
     PQclear(res);
@@ -1718,13 +1718,13 @@ static sso_error_t postgres_rt_get(storage_backend_t *self, const char *token_ha
     }
 
     const char *val;
-    strncpy(out->token_hash, PQgetvalue(res, 0, 0), sizeof(out->token_hash) - 1);
+    sso_strlcpy(out->token_hash, PQgetvalue(res, 0, 0), sizeof(out->token_hash));
     out->token_hash[sizeof(out->token_hash) - 1] = '\0';
     
     val = PQgetvalue(res, 0, 1);
     out->user_id = (sso_id_t)(val ? strtoull(val, NULL, 10) : 0);
     
-    strncpy(out->client_id, PQgetvalue(res, 0, 2), sizeof(out->client_id) - 1);
+    sso_strlcpy(out->client_id, PQgetvalue(res, 0, 2), sizeof(out->client_id));
     out->client_id[sizeof(out->client_id) - 1] = '\0';
     
     val = PQgetvalue(res, 0, 3);
@@ -1980,7 +1980,7 @@ sso_error_t storage_postgres_create(storage_backend_t **backend) {
     }
 
     (*backend)->handle = priv;
-    strncpy((*backend)->name, "postgres", sizeof((*backend)->name) - 1);
+    sso_strlcpy((*backend)->name, "postgres", sizeof((*backend)->name));
     (*backend)->name[sizeof((*backend)->name) - 1] = '\0';
 
     /* Lifecycle */

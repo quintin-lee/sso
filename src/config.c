@@ -24,8 +24,8 @@ void sso_config_default(sso_config_t *cfg) {
     /* [database] defaults */
     memcpy(cfg->path, "sso_server.db", 14);
     cfg->use_memory = false;
-    strncpy(cfg->database_type, "sqlite", sizeof(cfg->database_type)-1);
-    strncpy(cfg->database_url, "sso_server.db", sizeof(cfg->database_url)-1);
+    sso_strlcpy(cfg->database_type, "sqlite", sizeof(cfg->database_type)-1);
+    sso_strlcpy(cfg->database_url, "sso_server.db", sizeof(cfg->database_url)-1);
 
     /* [security] defaults */
     cfg->token_ttl_ms = 3600000; /* 1 hour */
@@ -46,7 +46,7 @@ void sso_config_default(sso_config_t *cfg) {
 static void get_string(toml_table_t *table, const char *key, char *dest, size_t dest_size) {
     toml_datum_t d = toml_string_in(table, key);
     if (d.ok) {
-        strncpy(dest, d.u.s, dest_size - 1);
+        sso_strlcpy(dest, d.u.s, dest_size);
         dest[dest_size - 1] = '\0';
         free(d.u.s);
     }
@@ -61,7 +61,7 @@ static void get_string_array(toml_table_t *table, const char *key,
                              char *dest, size_t dest_size) {
     toml_datum_t d = toml_string_in(table, key);
     if (d.ok) {
-        strncpy(dest, d.u.s, dest_size - 1);
+        sso_strlcpy(dest, d.u.s, dest_size);
         dest[dest_size - 1] = '\0';
         free(d.u.s);
         return;
@@ -148,7 +148,7 @@ sso_error_t sso_config_load(const char *filename, sso_config_t *cfg) {
 
         /* Legacy fallback: if url is NOT provided but path IS provided, use path as url */
         if (!url_provided && path_provided) {
-            strncpy(cfg->database_url, cfg->path, sizeof(cfg->database_url) - 1);
+            sso_strlcpy(cfg->database_url, cfg->path, sizeof(cfg->database_url));
             cfg->database_url[sizeof(cfg->database_url) - 1] = '\0';
         }
     }
@@ -208,7 +208,7 @@ void sso_config_apply_env(sso_config_t *cfg) {
     if (!cfg) return;
 
     char *val;
-#define SSO_STRNCPY_DST(dst, src) do { strncpy((dst), (src), sizeof(dst)-1); (dst)[sizeof(dst)-1] = '\0'; } while(0)
+#define SSO_STRNCPY_DST(dst, src) do { sso_strlcpy((dst), (src), sizeof(dst)-1); (dst)[sizeof(dst)-1] = '\0'; } while(0)
     if ((val = getenv("SSO_HOST"))) SSO_STRNCPY_DST(cfg->host, val);
     if ((val = getenv("SSO_PORT"))) cfg->port = atoi(val);
     if ((val = getenv("SSO_DATABASE_TYPE"))) SSO_STRNCPY_DST(cfg->database_type, val);

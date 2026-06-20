@@ -432,7 +432,7 @@ static sso_error_t mem_get_user_roles_with_ancestors(storage_backend_t *self, ss
 
 static sso_error_t mem_save_sms_code(storage_backend_t *self, const char *p, const char *c, sso_timestamp_t ex) {
     for (size_t i=0;i<P->sms_n;i++) if (strcmp(P->sms[i].p,p)==0) {
-        strncpy(P->sms[i].c,c,15); P->sms[i].ex=ex; return SSO_OK;
+        sso_strlcpy(P->sms[i].c,c,15); P->sms[i].ex=ex; return SSO_OK;
     }
     if (P->sms_n>=P->sms_cap) {
         size_t nc=P->sms_cap?P->sms_cap*2:16;
@@ -440,14 +440,14 @@ static sso_error_t mem_save_sms_code(storage_backend_t *self, const char *p, con
         if (!n) return SSO_ERR_OUT_OF_MEMORY;
         P->sms=n; P->sms_cap=nc;
     }
-    strncpy(P->sms[P->sms_n].p,p,31); strncpy(P->sms[P->sms_n].c,c,15);
+    sso_strlcpy(P->sms[P->sms_n].p,p,31); sso_strlcpy(P->sms[P->sms_n].c,c,15);
     P->sms[P->sms_n].ex=ex; P->sms_n++; return SSO_OK;
 }
 
 static sso_error_t mem_get_sms_code(storage_backend_t *self, const char *p, char *out) {
     for (size_t i=0;i<P->sms_n;i++) if (strcmp(P->sms[i].p,p)==0) {
         if (sso_timestamp_now()>P->sms[i].ex) return SSO_ERR_TOKEN_EXPIRED;
-        strncpy(out,P->sms[i].c,15); out[15]=0; return SSO_OK;
+        sso_strlcpy(out,P->sms[i].c,15); out[15]=0; return SSO_OK;
     }
     return SSO_ERR_NOT_FOUND;
 }
@@ -554,7 +554,7 @@ static sso_error_t mem_jti_revoke(storage_backend_t *self, const char *jti, sso_
         if (!n) return SSO_ERR_OUT_OF_MEMORY;
         p->revoked_jtis = n; p->jti_cap = nc;
     }
-    strncpy(p->revoked_jtis[p->jti_n].jti, jti, TOKEN_REVOCATION_STR_LEN - 1);
+    sso_strlcpy(p->revoked_jtis[p->jti_n].jti, jti, TOKEN_REVOCATION_STR_LEN);
     p->revoked_jtis[p->jti_n].jti[TOKEN_REVOCATION_STR_LEN - 1] = '\0';
     p->revoked_jtis[p->jti_n].expires_at = expires_at;
     p->jti_n++;
@@ -586,7 +586,7 @@ sso_error_t storage_memory_create(storage_backend_t **backend) {
     mem_priv_t *priv = (mem_priv_t*)calloc(1,sizeof(mem_priv_t));
     if (!priv) { free(*backend); *backend=NULL; return SSO_ERR_OUT_OF_MEMORY; }
 
-    strncpy((*backend)->name,"memory",sizeof((*backend)->name)-1);
+    sso_strlcpy((*backend)->name,"memory",sizeof((*backend)->name));
     (*backend)->open=mem_open; (*backend)->close=mem_close;
     (*backend)->begin=mem_begin; (*backend)->commit=mem_commit; (*backend)->rollback=mem_rollback;
 

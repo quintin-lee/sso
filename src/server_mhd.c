@@ -26,24 +26,6 @@
 #include "config.h"
 #include "cJSON.h"
 
-static _Thread_local arena_t *t_current_arena = NULL;
-
-static void *cjson_arena_malloc(size_t sz) {
-    if (t_current_arena) {
-        return arena_alloc(t_current_arena, sz);
-    }
-    return malloc(sz);
-}
-
-static void cjson_arena_free(void *ptr) {
-    if (t_current_arena) {
-        (void)ptr;
-    } else {
-        free(ptr);
-    }
-}
-
-
 /* ========================================================================
  * Per-connection state for the MHD access handler callback
  *
@@ -204,14 +186,11 @@ mhd_access_handler(void *cls,
         return MHD_YES;
     }
 
-    t_current_arena = &state->arena;
-
     /* ---- Phase 2: accumulate request body ---- */
     if (*upload_data_size > 0) {
         size_t new_size = state->body_size + *upload_data_size;
         char *new_body = (char *)arena_realloc(&state->arena, state->body, state->body_size + 1, new_size + 1);
         if (!new_body) {
-            t_current_arena = NULL;
             return MHD_NO;
         }
         memcpy(new_body + state->body_size, upload_data, *upload_data_size);
@@ -219,7 +198,6 @@ mhd_access_handler(void *cls,
         state->body_size = new_size;
         state->body[new_size] = '\0';
         *upload_data_size = 0;
-        t_current_arena = NULL;
         return MHD_YES;
     }
 
@@ -239,7 +217,7 @@ mhd_access_handler(void *cls,
     req.body_len = state->body_size;
 
     /* URL → path */
-    strncpy(req.path, url, sizeof(req.path) - 1);
+    sso_strlcpy(req.path, url, sizeof(req.path));
     req.path[sizeof(req.path) - 1] = '\0';
 
     /* Extract query parameters using MHD API */
@@ -253,13 +231,13 @@ mhd_access_handler(void *cls,
     const char *auth_hdr = MHD_lookup_connection_value(connection,
                               MHD_HEADER_KIND, "Authorization");
     if (auth_hdr && strncasecmp(auth_hdr, "Bearer ", 7) == 0) {
-        strncpy(req.auth_token, auth_hdr + 7, sizeof(req.auth_token) - 1);
+        sso_strlcpy(req.auth_token, auth_hdr + 7, sizeof(req.auth_token));
     }
 
     const char *origin = MHD_lookup_connection_value(connection,
                              MHD_HEADER_KIND, "Origin");
     if (origin) {
-        strncpy(req.origin, origin, sizeof(req.origin) - 1);
+        sso_strlcpy(req.origin, origin, sizeof(req.origin));
     }
 
     /* ---- Build response ---- */
@@ -346,7 +324,6 @@ send_response:
         if (resp.body && !arena_contains(&state->arena, resp.body)) {
             free(resp.body);
         }
-        t_current_arena = NULL;
         return MHD_NO;
     }
 
@@ -396,7 +373,6 @@ send_response:
                              (unsigned int)resp.status_code, mhd_resp);
     MHD_destroy_response(mhd_resp);
 
-    t_current_arena = NULL;
     return ret;
     }
 }
@@ -420,8 +396,6 @@ mhd_completed_cb(void *cls, struct MHD_Connection *connection,
 
     atomic_fetch_sub(&g_metric_active_connections, 1);
 
-    t_current_arena = &state->arena;
-
     /* Free token's inner role_ids/group_ids arrays if allocated */
     if (state->userdata) {
         token_destroy(&((auth_context_t *)state->userdata)->token);
@@ -435,7 +409,6 @@ mhd_completed_cb(void *cls, struct MHD_Connection *connection,
         arena_destroy(&state->arena);
     }
 
-    t_current_arena = NULL;
     free(state);
     *req_cls = NULL;
 }
@@ -451,17 +424,12 @@ sso_error_t sso_server_init(sso_server_t *server, sso_context_t *ctx,
 
     memset(server, 0, sizeof(*server));
     server->sso_ctx = ctx;
-    strncpy(server->host, host ? host : "0.0.0.0", sizeof(server->host) - 1);
+    sso_strlcpy(server->host, host ? host : "0.0.0.0", sizeof(server->host));
     server->port = port;
     server->routes = (route_t *)routes;
     server->route_count = route_count;
     server->server_data = NULL;
     server->ssl_ctx = NULL;
-
-    cJSON_Hooks hooks;
-    hooks.malloc_fn = cjson_arena_malloc;
-    hooks.free_fn = cjson_arena_free;
-    cJSON_InitHooks(&hooks);
 
     return SSO_OK;
 }

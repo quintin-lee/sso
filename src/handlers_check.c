@@ -39,21 +39,21 @@ sso_error_t handle_check_permission(sso_context_t *ctx, const http_request_t *re
     /* Populate the context with all available parameters from the JSON body */
     char *function_code = json_str_value(req->body, "function_code");
     if (function_code) {
-        strncpy(ectx.params.functional.function_code, function_code, sizeof(ectx.params.functional.function_code) - 1);
+        sso_strlcpy(ectx.params.functional.function_code, function_code, sizeof(ectx.params.functional.function_code));
         free(function_code);
     }
 
     char *api_method = json_str_value(req->body, "api_method");
     char *api_path = json_str_value(req->body, "api_path");
     if (api_method && api_path) {
-        strncpy(ectx.params.api.http_method, api_method, sizeof(ectx.params.api.http_method) - 1);
-        strncpy(ectx.params.api.request_path, api_path, sizeof(ectx.params.api.request_path) - 1);
+        sso_strlcpy(ectx.params.api.http_method, api_method, sizeof(ectx.params.api.http_method));
+        sso_strlcpy(ectx.params.api.request_path, api_path, sizeof(ectx.params.api.request_path));
         free(api_method); free(api_path);
     }
 
     char *resource_type = json_str_value(req->body, "resource_type");
     if (resource_type) {
-        strncpy(ectx.params.data.resource_type, resource_type, sizeof(ectx.params.data.resource_type) - 1);
+        sso_strlcpy(ectx.params.data.resource_type, resource_type, sizeof(ectx.params.data.resource_type));
         free(resource_type);
         
         char *record = json_str_value(req->body, "record");
@@ -64,21 +64,21 @@ sso_error_t handle_check_permission(sso_context_t *ctx, const http_request_t *re
 
     char *role_name = json_str_value(req->body, "role_name");
     if (role_name) {
-        strncpy(ectx.params.rbac.role_name, role_name, sizeof(ectx.params.rbac.role_name) - 1);
+        sso_strlcpy(ectx.params.rbac.role_name, role_name, sizeof(ectx.params.rbac.role_name));
         free(role_name);
     }
 
     char *source_ip = json_str_value(req->body, "source_ip");
     if (source_ip) {
-        strncpy(ectx.params.location.source_ip, source_ip, sizeof(ectx.params.location.source_ip) - 1);
+        sso_strlcpy(ectx.params.location.source_ip, source_ip, sizeof(ectx.params.location.source_ip));
         free(source_ip);
     }
 
     char *lbac_user_labels = json_str_value(req->body, "lbac_user_labels");
     char *lbac_resource_label = json_str_value(req->body, "lbac_resource_label");
     if (lbac_user_labels && lbac_resource_label) {
-        strncpy(ectx.params.lbac.user_labels, lbac_user_labels, sizeof(ectx.params.lbac.user_labels) - 1);
-        strncpy(ectx.params.lbac.resource_label, lbac_resource_label, sizeof(ectx.params.lbac.resource_label) - 1);
+        sso_strlcpy(ectx.params.lbac.user_labels, lbac_user_labels, sizeof(ectx.params.lbac.user_labels));
+        sso_strlcpy(ectx.params.lbac.resource_label, lbac_resource_label, sizeof(ectx.params.lbac.resource_label));
         free(lbac_user_labels); free(lbac_resource_label);
     }
 
@@ -86,21 +86,21 @@ sso_error_t handle_check_permission(sso_context_t *ctx, const http_request_t *re
     char *abac_resource_attrs = json_str_value(req->body, "abac_resource_attrs");
     char *abac_action = json_str_value(req->body, "abac_action");
     if (abac_subject_attrs) {
-        strncpy(ectx.params.abac.subject_attrs, abac_subject_attrs, sizeof(ectx.params.abac.subject_attrs) - 1);
+        sso_strlcpy(ectx.params.abac.subject_attrs, abac_subject_attrs, sizeof(ectx.params.abac.subject_attrs));
         free(abac_subject_attrs);
     }
     if (abac_resource_attrs) {
-        strncpy(ectx.params.abac.resource_attrs, abac_resource_attrs, sizeof(ectx.params.abac.resource_attrs) - 1);
+        sso_strlcpy(ectx.params.abac.resource_attrs, abac_resource_attrs, sizeof(ectx.params.abac.resource_attrs));
         free(abac_resource_attrs);
     }
     if (abac_action) {
-        strncpy(ectx.params.abac.action, abac_action, sizeof(ectx.params.abac.action) - 1);
+        sso_strlcpy(ectx.params.abac.action, abac_action, sizeof(ectx.params.abac.action));
         free(abac_action);
     }
 
     char *env_attrs = json_str_value(req->body, "environment");
     if (env_attrs) {
-        strncpy(ectx.environment, env_attrs, sizeof(ectx.environment) - 1);
+        sso_strlcpy(ectx.environment, env_attrs, sizeof(ectx.environment));
         free(env_attrs);
     }
 
@@ -192,7 +192,7 @@ sso_error_t handle_check_functional(sso_context_t *ctx, const http_request_t *re
     sso_error_t err = perm_check_function(ctx, user_id, function_code, &allowed);
 
     char result_code[64];
-    strncpy(result_code, function_code, sizeof(result_code) - 1);
+    sso_strlcpy(result_code, function_code, sizeof(result_code));
     free(function_code);
 
     if (err != SSO_OK) {

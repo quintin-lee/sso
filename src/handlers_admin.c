@@ -745,11 +745,11 @@ sso_error_t handle_update_user(sso_context_t *ctx, const http_request_t *req,
     int status = (int)json_int_value(req->body, "status", -1);
 
     if (email) {
-        strncpy(user.email, email, SSO_MAX_EMAIL - 1);
+        sso_strlcpy(user.email, email, SSO_MAX_EMAIL);
         free(email);
     }
     if (display) {
-        strncpy(user.display_name, display, SSO_MAX_DISPLAY_NAME - 1);
+        sso_strlcpy(user.display_name, display, SSO_MAX_DISPLAY_NAME);
         free(display);
     }
     if (status >= 0) {
@@ -822,11 +822,11 @@ sso_error_t handle_update_role(sso_context_t *ctx, const http_request_t *req,
     int status = (int)json_int_value(req->body, "status", -1);
 
     if (name) {
-        strncpy(role.name, name, SSO_MAX_ROLE_NAME - 1);
+        sso_strlcpy(role.name, name, SSO_MAX_ROLE_NAME);
         free(name);
     }
     if (desc) {
-        strncpy(role.description, desc, SSO_MAX_DESCRIPTION - 1);
+        sso_strlcpy(role.description, desc, SSO_MAX_DESCRIPTION);
         free(desc);
     }
     if (parent != (sso_id_t)-1) {
@@ -944,11 +944,11 @@ sso_error_t handle_update_group(sso_context_t *ctx, const http_request_t *req,
     int status = (int)json_int_value(req->body, "status", -1);
 
     if (name) {
-        strncpy(group.name, name, SSO_MAX_GROUP_NAME - 1);
+        sso_strlcpy(group.name, name, SSO_MAX_GROUP_NAME);
         free(name);
     }
     if (desc) {
-        strncpy(group.description, desc, SSO_MAX_DESCRIPTION - 1);
+        sso_strlcpy(group.description, desc, SSO_MAX_DESCRIPTION);
         free(desc);
     }
     if (parent != (sso_id_t)-1) {
@@ -1026,11 +1026,11 @@ sso_error_t handle_update_policy(sso_context_t *ctx, const http_request_t *req,
     int status = (int)json_int_value(req->body, "status", -1);
 
     if (name) {
-        strncpy(policy.name, name, SSO_MAX_POLICY_NAME - 1);
+        sso_strlcpy(policy.name, name, SSO_MAX_POLICY_NAME);
         free(name);
     }
     if (rules) {
-        strncpy(policy.rules, rules, SSO_MAX_RULES_JSON - 1);
+        sso_strlcpy(policy.rules, rules, SSO_MAX_RULES_JSON);
         free(rules);
     }
     if (effect >= 0) policy.effect = (policy_effect_t)effect;
@@ -1424,13 +1424,13 @@ sso_error_t handle_create_client(sso_context_t *ctx, const http_request_t *req,
     oauth_client_t client;
     memset(&client, 0, sizeof(client));
 
-    strncpy(client.client_id, client_id, sizeof(client.client_id) - 1);
-    strncpy(client.redirect_uris, redirect_uris, sizeof(client.redirect_uris) - 1);
-    if (app_name) strncpy(client.app_name, app_name, sizeof(client.app_name) - 1);
-    if (app_description) strncpy(client.app_description, app_description, sizeof(client.app_description) - 1);
-    if (app_logo_url) strncpy(client.app_logo_url, app_logo_url, sizeof(client.app_logo_url) - 1);
-    if (allowed_scopes) strncpy(client.allowed_scopes, allowed_scopes, sizeof(client.allowed_scopes) - 1);
-    if (allowed_grant_types) strncpy(client.allowed_grant_types, allowed_grant_types, sizeof(client.allowed_grant_types) - 1);
+    sso_strlcpy(client.client_id, client_id, sizeof(client.client_id));
+    sso_strlcpy(client.redirect_uris, redirect_uris, sizeof(client.redirect_uris));
+    if (app_name) sso_strlcpy(client.app_name, app_name, sizeof(client.app_name));
+    if (app_description) sso_strlcpy(client.app_description, app_description, sizeof(client.app_description));
+    if (app_logo_url) sso_strlcpy(client.app_logo_url, app_logo_url, sizeof(client.app_logo_url));
+    if (allowed_scopes) sso_strlcpy(client.allowed_scopes, allowed_scopes, sizeof(client.allowed_scopes));
+    if (allowed_grant_types) sso_strlcpy(client.allowed_grant_types, allowed_grant_types, sizeof(client.allowed_grant_types));
     client.token_ttl_ms = token_ttl_ms;
     client.status = status;
     client.created_at = get_time_ms();
@@ -1484,7 +1484,7 @@ sso_error_t handle_update_client(sso_context_t *ctx, const http_request_t *req,
     p += 9; // past "/clients/"
     
     char path_client_id[64];
-    strncpy(path_client_id, p, sizeof(path_client_id) - 1);
+    sso_strlcpy(path_client_id, p, sizeof(path_client_id));
     path_client_id[sizeof(path_client_id) - 1] = '\0';
     // Remove any trailing slash if present
     char *slash = strchr(path_client_id, '/');
@@ -1520,27 +1520,27 @@ sso_error_t handle_update_client(sso_context_t *ctx, const http_request_t *req,
     long token_ttl_ms = (long)json_int_value(req->body, "token_ttl_ms", -1);
 
     if (redirect_uris) {
-        strncpy(client.redirect_uris, redirect_uris, sizeof(client.redirect_uris) - 1);
+        sso_strlcpy(client.redirect_uris, redirect_uris, sizeof(client.redirect_uris));
         free(redirect_uris);
     }
     if (app_name) {
-        strncpy(client.app_name, app_name, sizeof(client.app_name) - 1);
+        sso_strlcpy(client.app_name, app_name, sizeof(client.app_name));
         free(app_name);
     }
     if (app_description) {
-        strncpy(client.app_description, app_description, sizeof(client.app_description) - 1);
+        sso_strlcpy(client.app_description, app_description, sizeof(client.app_description));
         free(app_description);
     }
     if (app_logo_url) {
-        strncpy(client.app_logo_url, app_logo_url, sizeof(client.app_logo_url) - 1);
+        sso_strlcpy(client.app_logo_url, app_logo_url, sizeof(client.app_logo_url));
         free(app_logo_url);
     }
     if (allowed_scopes) {
-        strncpy(client.allowed_scopes, allowed_scopes, sizeof(client.allowed_scopes) - 1);
+        sso_strlcpy(client.allowed_scopes, allowed_scopes, sizeof(client.allowed_scopes));
         free(allowed_scopes);
     }
     if (allowed_grant_types) {
-        strncpy(client.allowed_grant_types, allowed_grant_types, sizeof(client.allowed_grant_types) - 1);
+        sso_strlcpy(client.allowed_grant_types, allowed_grant_types, sizeof(client.allowed_grant_types));
         free(allowed_grant_types);
     }
     if (status >= 0) {
@@ -1591,7 +1591,7 @@ sso_error_t handle_delete_client(sso_context_t *ctx, const http_request_t *req,
     p += 9; // past "/clients/"
     
     char path_client_id[64];
-    strncpy(path_client_id, p, sizeof(path_client_id) - 1);
+    sso_strlcpy(path_client_id, p, sizeof(path_client_id));
     path_client_id[sizeof(path_client_id) - 1] = '\0';
     // Remove any trailing slash if present
     char *slash = strchr(path_client_id, '/');

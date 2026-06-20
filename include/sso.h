@@ -27,6 +27,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 #include <time.h>
 
 #ifdef __cplusplus
@@ -340,6 +341,19 @@ static inline void *sso_get_config(const sso_context_t *ctx) {
     if (!ctx) return NULL;
     return __atomic_load_n(&ctx->config, __ATOMIC_ACQUIRE);
 }
+
+/* Truncation is expected — we always null-terminate. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+
+static inline void sso_strlcpy(char *dst, const char *src, size_t size) {
+    if (size > 0) {
+        strncpy(dst, src ? src : "", size - 1);
+        dst[size - 1] = '\0';
+    }
+}
+
+#pragma GCC diagnostic pop
 
 #include <stdatomic.h>
 extern atomic_int g_metric_active_connections;

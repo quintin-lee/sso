@@ -32,7 +32,7 @@ static sso_config_t g_config;
 static void parse_args(int argc, char **argv, char *config_path) {
     for (int i = 1; i < argc; i++) {
         if ((strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--config") == 0) && i + 1 < argc) {
-            strncpy(config_path, argv[++i], SSO_MAX_PATH - 1);
+            sso_strlcpy(config_path, argv[++i], SSO_MAX_PATH);
         }
     }
 }
@@ -330,7 +330,7 @@ static int run_server(sso_config_t *cfg, const char *config_path) {
 
     sso_server_t server;
     sso_server_init(&server, &ctx, cfg->host, cfg->port, routes, route_count);
-    strncpy(server.config_path, config_path, sizeof(server.config_path) - 1);
+    sso_strlcpy(server.config_path, config_path, sizeof(server.config_path));
     server.config_path[sizeof(server.config_path) - 1] = '\0';
 
     printf("  Login: http://%s:%d/\n", cfg->host, cfg->port);

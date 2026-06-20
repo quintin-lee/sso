@@ -116,8 +116,8 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
     memset(&access_token, 0, sizeof(access_token));
     memset(&refresh_token, 0, sizeof(refresh_token));
     if (dpop_jkt[0]) {
-        strncpy(access_token.jkt, dpop_jkt, sizeof(access_token.jkt) - 1);
-        strncpy(refresh_token.jkt, dpop_jkt, sizeof(refresh_token.jkt) - 1);
+        sso_strlcpy(access_token.jkt, dpop_jkt, sizeof(access_token.jkt));
+        sso_strlcpy(refresh_token.jkt, dpop_jkt, sizeof(refresh_token.jkt));
     }
     err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 900000, &access_token);
     if (err != SSO_OK) {
@@ -209,7 +209,7 @@ sso_error_t handle_mfa_enable(sso_context_t *ctx, const http_request_t *req,
     user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;
     user_t user = auth->user;
     user.mfa_enabled = 1;
-    strncpy(user.mfa_secret, secret, sizeof(user.mfa_secret) - 1);
+    sso_strlcpy(user.mfa_secret, secret, sizeof(user.mfa_secret));
     
     sso_error_t err = user_update(umgr, &user);
     free(secret); free(code);
@@ -613,7 +613,7 @@ sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
     if (ttl > 0 && now >= tok.issued_at && (now - tok.issued_at) > (ttl / 2)) {
         token_t new_tok;
         memset(&new_tok, 0, sizeof(new_tok));
-        if (tok.jkt[0]) strncpy(new_tok.jkt, tok.jkt, sizeof(new_tok.jkt) - 1);
+        if (tok.jkt[0]) sso_strlcpy(new_tok.jkt, tok.jkt, sizeof(new_tok.jkt));
         
         if (token_issue(tmgr, &user, tok.role_ids, tok.role_count, tok.group_ids, tok.group_count, tok.scope, ttl, &new_tok) == SSO_OK) {
             snprintf(rotation_header, sizeof(rotation_header), "X-SSO-Access-Token: %s\r\n", new_tok.token_str);

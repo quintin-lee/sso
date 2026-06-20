@@ -55,11 +55,11 @@ sso_error_t policy_create(policy_manager_t *mgr, const char *name,
 
     policy_t policy;
     memset(&policy, 0, sizeof(policy));
-    strncpy(policy.name, name, SSO_MAX_POLICY_NAME - 1);
+    sso_strlcpy(policy.name, name, SSO_MAX_POLICY_NAME);
     policy.strategy_type = strategy;
     policy.effect = effect;
     policy.priority = priority;
-    strncpy(policy.rules, rules_json, SSO_MAX_RULES_JSON - 1);
+    sso_strlcpy(policy.rules, rules_json, SSO_MAX_RULES_JSON);
     policy.status = POLICY_STATUS_ENABLED;
     policy.created_at = sso_timestamp_now();
     policy.updated_at = policy.created_at;

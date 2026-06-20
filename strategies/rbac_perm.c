@@ -125,7 +125,7 @@ static sso_error_t rbac_compile(permission_strategy_t *self,
         const cJSON *effect = cJSON_GetObjectItem(item, "effect");
 
         if (cJSON_IsString(name)) {
-            strncpy(compiled->items[i].role_name, name->valuestring, 63);
+            sso_strlcpy(compiled->items[i].role_name, name->valuestring, 63);
         }
         if (cJSON_IsString(effect)) {
             compiled->items[i].is_allow = (strcmp(effect->valuestring, "allow") == 0);

@@ -58,7 +58,7 @@ static bool apply_operator(const char *op, const char *actual, const char *expec
     }
     if (strcmp(op, "in") == 0) {
         char list[1024];
-        strncpy(list, expected, sizeof(list) - 1);
+        sso_strlcpy(list, expected, sizeof(list));
         list[sizeof(list) - 1] = '\0';
         char *item = strtok(list, ",");
         while (item) {
@@ -141,7 +141,7 @@ static sso_error_t abac_compile(permission_strategy_t *self,
         const cJSON *val = cJSON_GetObjectItem(item, "value");
 
         if (attr && cJSON_IsString(attr)) {
-            strncpy(compiled->conditions[i].attr_name, attr->valuestring, 63);
+            sso_strlcpy(compiled->conditions[i].attr_name, attr->valuestring, 63);
         }
 
         if (src && cJSON_IsString(src)) {
@@ -153,14 +153,14 @@ static sso_error_t abac_compile(permission_strategy_t *self,
         }
 
         if (op && cJSON_IsString(op)) {
-            strncpy(compiled->conditions[i].op, op->valuestring, 15);
+            sso_strlcpy(compiled->conditions[i].op, op->valuestring, 15);
         } else {
             strcpy(compiled->conditions[i].op, "eq");
         }
 
         if (val) {
             if (cJSON_IsString(val)) {
-                strncpy(compiled->conditions[i].expected_value, val->valuestring, 255);
+                sso_strlcpy(compiled->conditions[i].expected_value, val->valuestring, 255);
             } else if (cJSON_IsNumber(val)) {
                 snprintf(compiled->conditions[i].expected_value, 255, "%g", val->valuedouble);
             }
@@ -187,7 +187,7 @@ static const char *get_attr_from_cjson(cJSON *root, const char *attr_name, char 
     if (!item) return NULL;
     
     if (cJSON_IsString(item)) {
-        strncpy(buffer, item->valuestring, buf_size - 1);
+        sso_strlcpy(buffer, item->valuestring, buf_size);
     } else if (cJSON_IsNumber(item)) {
         snprintf(buffer, buf_size, "%g", item->valuedouble);
     } else {

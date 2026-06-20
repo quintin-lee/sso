@@ -85,7 +85,7 @@ static sso_error_t lbac_compile(permission_strategy_t *self,
 
         if (cJSON_IsString(item)) {
             /* Simple string: {array of strings} */
-            strncpy(compiled->items[i].label_name,
+            sso_strlcpy(compiled->items[i].label_name,
                     item->valuestring, 63);
             compiled->items[i].is_allow = true;
         } else if (cJSON_IsObject(item)) {
@@ -94,7 +94,7 @@ static sso_error_t lbac_compile(permission_strategy_t *self,
             const cJSON *effect = cJSON_GetObjectItem(item, "effect");
 
             if (name && cJSON_IsString(name)) {
-                strncpy(compiled->items[i].label_name,
+                sso_strlcpy(compiled->items[i].label_name,
                         name->valuestring, 63);
             }
 

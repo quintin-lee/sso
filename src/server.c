@@ -10,23 +10,6 @@
 #include "config.h"
 #include "cJSON.h"
 
-static _Thread_local arena_t *t_current_arena = NULL;
-
-static void *cjson_arena_malloc(size_t sz) {
-    if (t_current_arena) {
-        return arena_alloc(t_current_arena, sz);
-    }
-    return malloc(sz);
-}
-
-static void cjson_arena_free(void *ptr) {
-    if (t_current_arena) {
-        (void)ptr;
-    } else {
-        free(ptr);
-    }
-}
-
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
@@ -170,10 +153,10 @@ static sso_context_t *get_tenant_context(sso_server_t *server, const char *host)
     if (dot) {
         size_t len = dot - host;
         if (len >= sizeof(tenant_id)) len = sizeof(tenant_id) - 1;
-        strncpy(tenant_id, host, len);
+        sso_strlcpy(tenant_id, host, len);
         tenant_id[len] = '\0';
     } else {
-        strncpy(tenant_id, host, sizeof(tenant_id) - 1);
+        sso_strlcpy(tenant_id, host, sizeof(tenant_id));
         tenant_id[sizeof(tenant_id) - 1] = '\0';
     }
     
@@ -212,7 +195,7 @@ static sso_context_t *get_tenant_context(sso_server_t *server, const char *host)
     } else {
         snprintf(new_db_url, sizeof(new_db_url), "%s_%s", new_config.database_url, tenant_id);
     }
-    strncpy(new_config.database_url, new_db_url, sizeof(new_config.database_url) - 1);
+    sso_strlcpy(new_config.database_url, new_db_url, sizeof(new_config.database_url));
     
     storage_backend_t *new_storage = NULL;
     if (new_config.use_memory) {
@@ -234,7 +217,7 @@ static sso_context_t *get_tenant_context(sso_server_t *server, const char *host)
         return server->sso_ctx; /* fallback to default */
     }
     
-    strncpy(g_tenants[g_tenant_count].tenant_id, tenant_id, sizeof(g_tenants[0].tenant_id) - 1);
+    sso_strlcpy(g_tenants[g_tenant_count].tenant_id, tenant_id, sizeof(g_tenants[0].tenant_id));
     g_tenants[g_tenant_count].ctx = new_ctx;
     g_tenant_count++;
     
@@ -356,7 +339,6 @@ static void pool_shutdown(void) {
  * ======================================================================== */
 
 static void parse_err(http_request_t *req) {
-    t_current_arena = NULL;
     arena_destroy(&req->arena);
     if (t_arena_init) t_arena = req->arena;
 }
@@ -368,7 +350,6 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
     } else {
         arena_init(&req->arena, 4096);
     }
-    t_current_arena = &req->arena;
 
     char line[4096];
     if (br_read_line(br, line, sizeof(line)) <= 0) {
@@ -382,7 +363,7 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
         return -1;
     }
 
-    strncpy(req->method_str, method, sizeof(req->method_str) - 1);
+    sso_strlcpy(req->method_str, method, sizeof(req->method_str));
 
     if (strcmp(method, "GET") == 0)        req->method = HTTP_GET;
     else if (strcmp(method, "POST") == 0)  req->method = HTTP_POST;
@@ -430,12 +411,12 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
             const char *token = line + 14;
             while (*token == ' ') token++;
             if (strncasecmp(token, "Bearer ", 7) == 0) {
-                strncpy(req->auth_token, token + 7, SSO_MAX_TOKEN_STR - 1);
+                sso_strlcpy(req->auth_token, token + 7, SSO_MAX_TOKEN_STR);
             }
         } else if (strncasecmp(line, "Origin:", 7) == 0) {
             const char *origin = line + 7;
             while (*origin == ' ') origin++;
-            strncpy(req->origin, origin, sizeof(req->origin) - 1);
+            sso_strlcpy(req->origin, origin, sizeof(req->origin));
             req->origin[sizeof(req->origin) - 1] = '\0';
             /* Strip trailing whitespace/CR */
             size_t olen = strlen(req->origin);
@@ -444,14 +425,14 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
         } else if (strncasecmp(line, "DPoP:", 5) == 0) {
             const char *val = line + 5;
             while (*val == ' ') val++;
-            strncpy(req->dpop_proof, val, sizeof(req->dpop_proof) - 1);
+            sso_strlcpy(req->dpop_proof, val, sizeof(req->dpop_proof));
             req->dpop_proof[sizeof(req->dpop_proof) - 1] = '\0';
             size_t olen = strlen(req->dpop_proof);
             while (olen > 0 && (req->dpop_proof[olen-1] == ' ' || req->dpop_proof[olen-1] == '\r')) req->dpop_proof[--olen] = '\0';
         } else if (strncasecmp(line, "Host:", 5) == 0) {
             const char *val = line + 5;
             while (*val == ' ') val++;
-            strncpy(req->host, val, sizeof(req->host) - 1);
+            sso_strlcpy(req->host, val, sizeof(req->host));
             req->host[sizeof(req->host) - 1] = '\0';
             size_t olen = strlen(req->host);
             while (olen > 0 && (req->host[olen-1] == ' ' || req->host[olen-1] == '\r')) req->host[--olen] = '\0';
@@ -555,7 +536,6 @@ static void cleanup_request(conn_t *conn, http_response_t *resp, http_request_t 
     } else {
         arena_destroy(&req->arena);
     }
-    t_current_arena = NULL;
     conn_close(conn);
 }
 
@@ -582,7 +562,7 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
         conn_close(conn);
         return;
     }
-    strncpy(req.client_ip, client_ip, sizeof(req.client_ip) - 1);
+    sso_strlcpy(req.client_ip, client_ip, sizeof(req.client_ip));
     req.client_ip[sizeof(req.client_ip) - 1] = '\0';
     
     /* ---------------------------------------------------------
@@ -688,17 +668,12 @@ sso_error_t sso_server_init(sso_server_t *server, sso_context_t *ctx,
 
     memset(server, 0, sizeof(*server));
     server->sso_ctx = ctx;
-    strncpy(server->host, host ? host : "0.0.0.0", sizeof(server->host) - 1);
+    sso_strlcpy(server->host, host ? host : "0.0.0.0", sizeof(server->host));
     server->port = port;
     server->routes = (route_t *)routes;
     server->route_count = route_count;
     server->server_data = NULL;
     server->ssl_ctx = NULL;
-
-    cJSON_Hooks hooks;
-    hooks.malloc_fn = cjson_arena_malloc;
-    hooks.free_fn = cjson_arena_free;
-    cJSON_InitHooks(&hooks);
 
     return SSO_OK;
 }

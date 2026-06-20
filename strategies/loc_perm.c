@@ -56,7 +56,7 @@ static unsigned int ip_to_uint(const char *s) {
 
 static bool parse_cidr(const char *str, unsigned int *net, unsigned int *pre) {
     char buf[256];
-    strncpy(buf, str, 255);
+    sso_strlcpy(buf, str, 255);
     buf[255] = 0;
     char *slash = strchr(buf, '/');
     if (!slash) return false;
@@ -138,7 +138,7 @@ static sso_error_t loc_compile(permission_strategy_t *self,
 
         if (cJSON_IsString(item)) {
             /* Simple string format: exact IP match */
-            strncpy(compiled->items[i].value,
+            sso_strlcpy(compiled->items[i].value,
                     item->valuestring, 255);
             compiled->items[i].type = LOC_TYPE_EXACT;
             compiled->items[i].is_allow = true;
@@ -149,7 +149,7 @@ static sso_error_t loc_compile(permission_strategy_t *self,
             const cJSON *effect = cJSON_GetObjectItem(item, "effect");
 
             if (value && cJSON_IsString(value))
-                strncpy(compiled->items[i].value,
+                sso_strlcpy(compiled->items[i].value,
                         value->valuestring, 255);
 
             if (type && cJSON_IsString(type) &&

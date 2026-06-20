@@ -166,7 +166,7 @@ static sso_error_t redis_str_copy(redisReply *r, char *dest, size_t dest_sz) {
     if (!r) return SSO_ERR_STORAGE;
     if (r->type == REDIS_REPLY_NIL) { freeReplyObject(r); return SSO_ERR_NOT_FOUND; }
     if (r->type != REDIS_REPLY_STRING) { freeReplyObject(r); return SSO_ERR_STORAGE; }
-    strncpy(dest, r->str, dest_sz - 1);
+    sso_strlcpy(dest, r->str, dest_sz);
     dest[dest_sz - 1] = '\0';
     freeReplyObject(r);
     return SSO_OK;
@@ -566,15 +566,15 @@ static sso_error_t redis_user_get_by_id(storage_backend_t *self, sso_id_t id, us
         const char *fv = r->element[i + 1]->str;
         if (!fn || !fv) continue;
         if (strcmp(fn, "username") == 0)
-            strncpy(user->username, fv, sizeof(user->username) - 1);
+            sso_strlcpy(user->username, fv, sizeof(user->username));
         else if (strcmp(fn, "phone") == 0)
-            strncpy(user->phone, fv, sizeof(user->phone) - 1);
+            sso_strlcpy(user->phone, fv, sizeof(user->phone));
         else if (strcmp(fn, "password_hash") == 0)
-            strncpy(user->password_hash, fv, sizeof(user->password_hash) - 1);
+            sso_strlcpy(user->password_hash, fv, sizeof(user->password_hash));
         else if (strcmp(fn, "email") == 0)
-            strncpy(user->email, fv, sizeof(user->email) - 1);
+            sso_strlcpy(user->email, fv, sizeof(user->email));
         else if (strcmp(fn, "display_name") == 0)
-            strncpy(user->display_name, fv, sizeof(user->display_name) - 1);
+            sso_strlcpy(user->display_name, fv, sizeof(user->display_name));
         else if (strcmp(fn, "status") == 0)
             user->status = (user_status_t)atoi(fv);
         else if (strcmp(fn, "created_at") == 0)
@@ -582,11 +582,11 @@ static sso_error_t redis_user_get_by_id(storage_backend_t *self, sso_id_t id, us
         else if (strcmp(fn, "updated_at") == 0)
             user->updated_at = (sso_timestamp_t)atoll(fv);
         else if (strcmp(fn, "attributes") == 0)
-            strncpy(user->attributes, fv, sizeof(user->attributes) - 1);
+            sso_strlcpy(user->attributes, fv, sizeof(user->attributes));
         else if (strcmp(fn, "mfa_enabled") == 0)
             user->mfa_enabled = atoi(fv);
         else if (strcmp(fn, "mfa_secret") == 0)
-            strncpy(user->mfa_secret, fv, sizeof(user->mfa_secret) - 1);
+            sso_strlcpy(user->mfa_secret, fv, sizeof(user->mfa_secret));
     }
     freeReplyObject(r);
     return SSO_OK;
@@ -809,9 +809,9 @@ static sso_error_t redis_role_from_hash(redisReply *r, role_t *role) {
         if (strcmp(fn, "id") == 0)
             role->id = (sso_id_t)atoll(fv);
         else if (strcmp(fn, "name") == 0)
-            strncpy(role->name, fv, sizeof(role->name) - 1);
+            sso_strlcpy(role->name, fv, sizeof(role->name));
         else if (strcmp(fn, "description") == 0)
-            strncpy(role->description, fv, sizeof(role->description) - 1);
+            sso_strlcpy(role->description, fv, sizeof(role->description));
         else if (strcmp(fn, "parent_role_id") == 0)
             role->parent_role_id = (sso_id_t)atoll(fv);
         else if (strcmp(fn, "status") == 0)
@@ -1019,9 +1019,9 @@ static sso_error_t redis_group_from_hash(redisReply *r, group_t *group) {
         if (strcmp(fn, "id") == 0)
             group->id = (sso_id_t)atoll(fv);
         else if (strcmp(fn, "name") == 0)
-            strncpy(group->name, fv, sizeof(group->name) - 1);
+            sso_strlcpy(group->name, fv, sizeof(group->name));
         else if (strcmp(fn, "description") == 0)
-            strncpy(group->description, fv, sizeof(group->description) - 1);
+            sso_strlcpy(group->description, fv, sizeof(group->description));
         else if (strcmp(fn, "parent_group_id") == 0)
             group->parent_group_id = (sso_id_t)atoll(fv);
         else if (strcmp(fn, "status") == 0)
@@ -1170,7 +1170,7 @@ static sso_error_t redis_policy_from_hash(redisReply *r, policy_t *policy) {
         if (strcmp(fn, "id") == 0)
             policy->id = (sso_id_t)atoll(fv);
         else if (strcmp(fn, "name") == 0)
-            strncpy(policy->name, fv, sizeof(policy->name) - 1);
+            sso_strlcpy(policy->name, fv, sizeof(policy->name));
         else if (strcmp(fn, "strategy_type") == 0)
             policy->strategy_type = (perm_strategy_type_t)atoi(fv);
         else if (strcmp(fn, "effect") == 0)
@@ -1178,7 +1178,7 @@ static sso_error_t redis_policy_from_hash(redisReply *r, policy_t *policy) {
         else if (strcmp(fn, "priority") == 0)
             policy->priority = atoi(fv);
         else if (strcmp(fn, "rules") == 0)
-            strncpy(policy->rules, fv, sizeof(policy->rules) - 1);
+            sso_strlcpy(policy->rules, fv, sizeof(policy->rules));
         else if (strcmp(fn, "status") == 0)
             policy->status = (policy_status_t)atoi(fv);
         else if (strcmp(fn, "created_at") == 0)
@@ -1645,21 +1645,21 @@ static sso_error_t redis_oauth_code_get(storage_backend_t *self, const char *cod
         const char *fv = r->element[i + 1]->str;
         if (!fn || !fv) continue;
         if (strcmp(fn, "code") == 0)
-            strncpy(out->code, fv, sizeof(out->code) - 1);
+            sso_strlcpy(out->code, fv, sizeof(out->code));
         else if (strcmp(fn, "client_id") == 0)
-            strncpy(out->client_id, fv, sizeof(out->client_id) - 1);
+            sso_strlcpy(out->client_id, fv, sizeof(out->client_id));
         else if (strcmp(fn, "user_id") == 0)
             out->user_id = (sso_id_t)atoll(fv);
         else if (strcmp(fn, "redirect_uri") == 0)
-            strncpy(out->redirect_uri, fv, sizeof(out->redirect_uri) - 1);
+            sso_strlcpy(out->redirect_uri, fv, sizeof(out->redirect_uri));
         else if (strcmp(fn, "scope") == 0)
-            strncpy(out->scope, fv, sizeof(out->scope) - 1);
+            sso_strlcpy(out->scope, fv, sizeof(out->scope));
         else if (strcmp(fn, "nonce") == 0)
-            strncpy(out->nonce, fv, sizeof(out->nonce) - 1);
+            sso_strlcpy(out->nonce, fv, sizeof(out->nonce));
         else if (strcmp(fn, "code_challenge") == 0)
-            strncpy(out->code_challenge, fv, sizeof(out->code_challenge) - 1);
+            sso_strlcpy(out->code_challenge, fv, sizeof(out->code_challenge));
         else if (strcmp(fn, "code_challenge_method") == 0)
-            strncpy(out->code_challenge_method, fv, sizeof(out->code_challenge_method) - 1);
+            sso_strlcpy(out->code_challenge_method, fv, sizeof(out->code_challenge_method));
         else if (strcmp(fn, "expires_at") == 0)
             out->expires_at = (sso_timestamp_t)atoll(fv);
         else if (strcmp(fn, "used") == 0)
@@ -1755,21 +1755,21 @@ static sso_error_t redis_oauth_client_get(storage_backend_t *self, const char *c
         if (strcmp(fn, "id") == 0)
             client->id = (sso_id_t)atoll(fv);
         else if (strcmp(fn, "client_id") == 0)
-            strncpy(client->client_id, fv, sizeof(client->client_id) - 1);
+            sso_strlcpy(client->client_id, fv, sizeof(client->client_id));
         else if (strcmp(fn, "client_secret_hash") == 0)
-            strncpy(client->client_secret_hash, fv, sizeof(client->client_secret_hash) - 1);
+            sso_strlcpy(client->client_secret_hash, fv, sizeof(client->client_secret_hash));
         else if (strcmp(fn, "redirect_uris") == 0)
-            strncpy(client->redirect_uris, fv, sizeof(client->redirect_uris) - 1);
+            sso_strlcpy(client->redirect_uris, fv, sizeof(client->redirect_uris));
         else if (strcmp(fn, "app_name") == 0)
-            strncpy(client->app_name, fv, sizeof(client->app_name) - 1);
+            sso_strlcpy(client->app_name, fv, sizeof(client->app_name));
         else if (strcmp(fn, "app_description") == 0)
-            strncpy(client->app_description, fv, sizeof(client->app_description) - 1);
+            sso_strlcpy(client->app_description, fv, sizeof(client->app_description));
         else if (strcmp(fn, "app_logo_url") == 0)
-            strncpy(client->app_logo_url, fv, sizeof(client->app_logo_url) - 1);
+            sso_strlcpy(client->app_logo_url, fv, sizeof(client->app_logo_url));
         else if (strcmp(fn, "allowed_scopes") == 0)
-            strncpy(client->allowed_scopes, fv, sizeof(client->allowed_scopes) - 1);
+            sso_strlcpy(client->allowed_scopes, fv, sizeof(client->allowed_scopes));
         else if (strcmp(fn, "allowed_grant_types") == 0)
-            strncpy(client->allowed_grant_types, fv, sizeof(client->allowed_grant_types) - 1);
+            sso_strlcpy(client->allowed_grant_types, fv, sizeof(client->allowed_grant_types));
         else if (strcmp(fn, "token_ttl_ms") == 0)
             client->token_ttl_ms = atol(fv);
         else if (strcmp(fn, "status") == 0)
@@ -1929,11 +1929,11 @@ static sso_error_t redis_refresh_token_get(storage_backend_t *self, const char *
         const char *fv = r->element[i + 1]->str;
         if (!fn || !fv) continue;
         if (strcmp(fn, "token_hash") == 0)
-            strncpy(out->token_hash, fv, sizeof(out->token_hash) - 1);
+            sso_strlcpy(out->token_hash, fv, sizeof(out->token_hash));
         else if (strcmp(fn, "user_id") == 0)
             out->user_id = (sso_id_t)atoll(fv);
         else if (strcmp(fn, "client_id") == 0)
-            strncpy(out->client_id, fv, sizeof(out->client_id) - 1);
+            sso_strlcpy(out->client_id, fv, sizeof(out->client_id));
         else if (strcmp(fn, "expires_at") == 0)
             out->expires_at = (sso_timestamp_t)atoll(fv);
         else if (strcmp(fn, "issued_at") == 0)
@@ -2006,7 +2006,7 @@ sso_error_t storage_redis_create(storage_backend_t **backend) {
     redis_priv_t *priv = (redis_priv_t *)calloc(1, sizeof(redis_priv_t));
     if (!priv) { free(*backend); *backend = NULL; return SSO_ERR_OUT_OF_MEMORY; }
 
-    strncpy((*backend)->name, "redis", sizeof((*backend)->name) - 1);
+    sso_strlcpy((*backend)->name, "redis", sizeof((*backend)->name));
     (*backend)->name[sizeof((*backend)->name) - 1] = '\0';
 
     /* Lifecycle */

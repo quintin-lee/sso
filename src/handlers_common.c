@@ -35,7 +35,7 @@ void parse_query_params(const http_request_t *req, char *q, int *status, int *pa
             const char *key = param;
             const char *val = eq + 1;
             if (strcmp(key, "q") == 0 && q) {
-                strncpy(q, val, SSO_MAX_QUERY - 1);
+                sso_strlcpy(q, val, SSO_MAX_QUERY);
                 q[SSO_MAX_QUERY - 1] = '\0';
             } else if (strcmp(key, "status") == 0 && status) {
                 *status = atoi(val);

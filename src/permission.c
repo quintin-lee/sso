@@ -486,6 +486,26 @@ sso_error_t perm_engine_evaluate_policy(permission_engine_t *engine,
 
 static pthread_mutex_t audit_log_lock = PTHREAD_MUTEX_INITIALIZER;
 
+/* Persistent audit log file pointer — avoids fopen/fclose per-call overhead. */
+static FILE *s_audit_log_file = NULL;
+
+static void audit_log_close(void) {
+    if (s_audit_log_file) {
+        fclose(s_audit_log_file);
+        s_audit_log_file = NULL;
+    }
+}
+
+/* Open (or re-open after rotation) the audit log file with large buffer. */
+static FILE *audit_log_open(void) {
+    if (s_audit_log_file) return s_audit_log_file;
+    s_audit_log_file = fopen(s_audit_log_path, "a");
+    if (s_audit_log_file) {
+        setvbuf(s_audit_log_file, NULL, _IOFBF, 65536);  /* 64 KB buffer */
+    }
+    return s_audit_log_file;
+}
+
 static void rotate_audit_log(void) {
     /* Throttle: only stat() every N calls to avoid filesystem overhead. */
     static unsigned int stat_count = 0;
@@ -493,6 +513,10 @@ static void rotate_audit_log(void) {
 
     struct stat st;
     if (stat(s_audit_log_path, &st) != 0 || st.st_size <= AUDIT_LOG_MAX_SIZE) return;
+
+    /* Close before rotation so the old file is fully written,
+     * then reopen after renaming to follow the new file. */
+    audit_log_close();
 
     char oldpath[512], newpath[512];
     for (int i = AUDIT_LOG_MAX_BACKUPS - 1; i > 0; i--) {
@@ -503,6 +527,8 @@ static void rotate_audit_log(void) {
     char rotated[512];
     snprintf(rotated, sizeof(rotated), "%s.1", s_audit_log_path);
     rename(s_audit_log_path, rotated);
+
+    /* Reopen will happen lazily on next write via audit_log_open(). */
 }
 
 static void audit_log_decision(sso_context_t *sso_ctx, const eval_context_t *ctx, bool allowed, const char *trace,
@@ -526,7 +552,7 @@ static void audit_log_decision(sso_context_t *sso_ctx, const eval_context_t *ctx
     pthread_mutex_lock(&audit_log_lock);
     rotate_audit_log();
 
-    FILE *f = fopen(s_audit_log_path, "a");
+    FILE *f = audit_log_open();
     if (!f) {
         pthread_mutex_unlock(&audit_log_lock);
         return;
@@ -557,7 +583,6 @@ static void audit_log_decision(sso_context_t *sso_ctx, const eval_context_t *ctx
             (unsigned long long)duration_ms,
             cache_hit ? "true" : "false",
             escaped_trace);
-    fclose(f);
 
     pthread_mutex_unlock(&audit_log_lock);
 }
@@ -596,7 +621,16 @@ void admin_audit_log(sso_context_t *ctx,
     pthread_mutex_lock(&audit_log_lock);
     rotate_audit_log();
 
-    FILE *f = fopen(log_path, "a");
+    /* If the log path differs from the default, fall back to fopen/fclose.
+     * Otherwise use the persistent FILE* for efficiency. */
+    FILE *f;
+    bool use_persistent = (log_path == s_audit_log_path ||
+                           strcmp(log_path, s_audit_log_path) == 0);
+    if (use_persistent) {
+        f = audit_log_open();
+    } else {
+        f = fopen(log_path, "a");
+    }
     if (!f) {
         pthread_mutex_unlock(&audit_log_lock);
         return;
@@ -661,7 +695,7 @@ void admin_audit_log(sso_context_t *ctx,
             (unsigned long long)resource_id,
             esc_st, esc_det);
 
-    fclose(f);
+    if (!use_persistent) fclose(f);
     pthread_mutex_unlock(&audit_log_lock);
 }
 
@@ -877,8 +911,7 @@ sso_error_t perm_check_function(sso_context_t *ctx, sso_id_t user_id,
     /* Set up eval context */
     eval_context_t ectx;
     eval_context_init(&ectx, &user);
-    strncpy(ectx.params.functional.function_code, function_code,
-            sizeof(ectx.params.functional.function_code) - 1);
+    sso_strlcpy(ectx.params.functional.function_code, function_code, sizeof(ectx.params.functional.function_code));
 
     /* Evaluate */
     err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);
@@ -896,8 +929,8 @@ sso_error_t perm_check_api(sso_context_t *ctx, sso_id_t user_id,
 
     eval_context_t ectx;
     eval_context_init(&ectx, &user);
-    strncpy(ectx.params.api.http_method, method, sizeof(ectx.params.api.http_method) - 1);
-    strncpy(ectx.params.api.request_path, path, sizeof(ectx.params.api.request_path) - 1);
+    sso_strlcpy(ectx.params.api.http_method, method, sizeof(ectx.params.api.http_method));
+    sso_strlcpy(ectx.params.api.request_path, path, sizeof(ectx.params.api.request_path));
 
     err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);
     eval_context_destroy(&ectx);
@@ -915,8 +948,7 @@ sso_error_t perm_check_data(sso_context_t *ctx, sso_id_t user_id,
 
     eval_context_t ectx;
     eval_context_init(&ectx, &user);
-    strncpy(ectx.params.data.resource_type, resource_type,
-            sizeof(ectx.params.data.resource_type) - 1);
+    sso_strlcpy(ectx.params.data.resource_type, resource_type, sizeof(ectx.params.data.resource_type));
     if (record_json) {
         ectx.params.data.record = strdup(record_json);
         ectx.params.data.record_len = strlen(record_json);
@@ -951,8 +983,7 @@ sso_error_t perm_check_rbac(sso_context_t *ctx, sso_id_t user_id,
 
     eval_context_t ectx;
     eval_context_init(&ectx, &user);
-    strncpy(ectx.params.rbac.role_name, role_name,
-            sizeof(ectx.params.rbac.role_name) - 1);
+    sso_strlcpy(ectx.params.rbac.role_name, role_name, sizeof(ectx.params.rbac.role_name));
 
     err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);
     eval_context_destroy(&ectx);
@@ -970,11 +1001,9 @@ sso_error_t perm_check_location(sso_context_t *ctx, sso_id_t user_id,
 
     eval_context_t ectx;
     eval_context_init(&ectx, &user);
-    strncpy(ectx.params.location.source_ip, source_ip,
-            sizeof(ectx.params.location.source_ip) - 1);
+    sso_strlcpy(ectx.params.location.source_ip, source_ip, sizeof(ectx.params.location.source_ip));
     if (geo_country) {
-        strncpy(ectx.params.location.geo_country, geo_country,
-                sizeof(ectx.params.location.geo_country) - 1);
+        sso_strlcpy(ectx.params.location.geo_country, geo_country, sizeof(ectx.params.location.geo_country));
     }
 
     err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);
@@ -993,10 +1022,8 @@ sso_error_t perm_check_lbac(sso_context_t *ctx, sso_id_t user_id,
 
     eval_context_t ectx;
     eval_context_init(&ectx, &user);
-    strncpy(ectx.params.lbac.user_labels, user_labels,
-            sizeof(ectx.params.lbac.user_labels) - 1);
-    strncpy(ectx.params.lbac.resource_label, resource_label,
-            sizeof(ectx.params.lbac.resource_label) - 1);
+    sso_strlcpy(ectx.params.lbac.user_labels, user_labels, sizeof(ectx.params.lbac.user_labels));
+    sso_strlcpy(ectx.params.lbac.resource_label, resource_label, sizeof(ectx.params.lbac.resource_label));
 
     err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);
     eval_context_destroy(&ectx);
@@ -1017,16 +1044,13 @@ sso_error_t perm_check_abac(sso_context_t *ctx, sso_id_t user_id,
     eval_context_t ectx;
     eval_context_init(&ectx, &user);
     if (subject_attrs) {
-        strncpy(ectx.params.abac.subject_attrs, subject_attrs,
-                sizeof(ectx.params.abac.subject_attrs) - 1);
+        sso_strlcpy(ectx.params.abac.subject_attrs, subject_attrs, sizeof(ectx.params.abac.subject_attrs));
     }
     if (resource_attrs) {
-        strncpy(ectx.params.abac.resource_attrs, resource_attrs,
-                sizeof(ectx.params.abac.resource_attrs) - 1);
+        sso_strlcpy(ectx.params.abac.resource_attrs, resource_attrs, sizeof(ectx.params.abac.resource_attrs));
     }
     if (action) {
-        strncpy(ectx.params.abac.action, action,
-                sizeof(ectx.params.abac.action) - 1);
+        sso_strlcpy(ectx.params.abac.action, action, sizeof(ectx.params.abac.action));
     }
 
     err = perm_engine_evaluate((permission_engine_t *)ctx->perm_engine, &ectx, allowed, NULL);

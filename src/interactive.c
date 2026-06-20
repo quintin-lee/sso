@@ -146,7 +146,7 @@ static void config_data(policy_manager_t *pmgr) {
     size_t flen = 0;
     field_list[0] = '\0';
     char fields_copy[256];
-    strncpy(fields_copy, fields, sizeof(fields_copy) - 1);
+    sso_strlcpy(fields_copy, fields, sizeof(fields_copy));
     fields_copy[sizeof(fields_copy) - 1] = '\0';
     char *tok = strtok(fields_copy, ",");
     while (tok) {

@@ -79,7 +79,7 @@ void risk_record_login_attempt(sso_id_t user_id, const char *ip, int success) {
     if (success) {
         /* Record successful IP for the user */
         g_user_records[user_idx].user_id = user_id;
-        strncpy(g_user_records[user_idx].last_success_ip, ip, sizeof(g_user_records[0].last_success_ip) - 1);
+        sso_strlcpy(g_user_records[user_idx].last_success_ip, ip, sizeof(g_user_records[0].last_success_ip));
         g_user_records[user_idx].last_success_ip[sizeof(g_user_records[0].last_success_ip) - 1] = '\0';
         
         /* Clear failure history on successful login */
@@ -89,7 +89,7 @@ void risk_record_login_attempt(sso_id_t user_id, const char *ip, int success) {
     } else {
         /* Record failure for the IP */
         if (strncmp(g_ip_records[ip_idx].ip, ip, sizeof(g_ip_records[0].ip)) != 0) {
-            strncpy(g_ip_records[ip_idx].ip, ip, sizeof(g_ip_records[0].ip) - 1);
+            sso_strlcpy(g_ip_records[ip_idx].ip, ip, sizeof(g_ip_records[0].ip));
             g_ip_records[ip_idx].ip[sizeof(g_ip_records[0].ip) - 1] = '\0';
             g_ip_records[ip_idx].failed_count = 1;
         } else {

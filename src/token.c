@@ -256,13 +256,13 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
 
     char temp_jkt[64] = {0};
     if (out->jkt[0]) {
-        strncpy(temp_jkt, out->jkt, sizeof(temp_jkt) - 1);
+        sso_strlcpy(temp_jkt, out->jkt, sizeof(temp_jkt));
     }
 
     memset(out, 0, sizeof(*out));
 
     if (temp_jkt[0]) {
-        strncpy(out->jkt, temp_jkt, sizeof(out->jkt) - 1);
+        sso_strlcpy(out->jkt, temp_jkt, sizeof(out->jkt));
     }
 
     out->user_id = user->id;
@@ -275,7 +275,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     out->nonce = token_get_nonce(mgr, user->id);
 
     if (scope) {
-        strncpy(out->scope, scope, sizeof(out->scope) - 1);
+        sso_strlcpy(out->scope, scope, sizeof(out->scope));
     }
 
     /* Generate cryptographically secure random bytes for JTI uniqueness */
@@ -592,7 +592,7 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
     if (!mgr || !token_str || !out) return SSO_ERR_INVALID_PARAM;
 
     memset(out, 0, sizeof(*out));
-    strncpy(out->token_str, token_str, SSO_MAX_TOKEN_STR - 1);
+    sso_strlcpy(out->token_str, token_str, SSO_MAX_TOKEN_STR);
 
     /* Split raw token string into header, payload, and signature components */
     const char *dot1 = strchr(token_str, '.');
@@ -609,10 +609,10 @@ sso_error_t token_verify(token_manager_t *mgr, const char *token_str, token_t *o
     if (hdr_len >= sizeof(b64_header) || b64_len >= sizeof(b64_payload))
         return SSO_ERR_TOKEN_INVALID;
 
-    strncpy(b64_header, token_str, hdr_len);
+    memcpy(b64_header, token_str, hdr_len);
     b64_header[hdr_len] = '\0';
 
-    strncpy(b64_payload, dot1 + 1, b64_len);
+    memcpy(b64_payload, dot1 + 1, b64_len);
     b64_payload[b64_len] = '\0';
 
     const char *sig_part = dot2 + 1;
@@ -762,7 +762,7 @@ sso_error_t token_revoke(token_manager_t *mgr, const char *jti, sso_timestamp_t 
         mgr->rev_capacity = new_cap;
     }
 
-    strncpy(mgr->jtis[mgr->rev_count], jti, TOKEN_REVOCATION_STR_LEN - 1);
+    sso_strlcpy(mgr->jtis[mgr->rev_count], jti, TOKEN_REVOCATION_STR_LEN);
     mgr->jtis[mgr->rev_count][TOKEN_REVOCATION_STR_LEN - 1] = '\0';
     mgr->rev_count++;
     mgr->rev_sorted = false;
@@ -800,14 +800,14 @@ void token_register_session(token_manager_t *mgr, sso_id_t user_id, const char *
     }
     
     if (track->active_count < SSO_MAX_CONCURRENT_SESSIONS) {
-        strncpy(track->jtis[track->active_count], jti, TOKEN_REVOCATION_STR_LEN - 1);
+        sso_strlcpy(track->jtis[track->active_count], jti, TOKEN_REVOCATION_STR_LEN);
         track->active_count++;
     } else {
         /* Evict oldest */
         char oldest_jti[TOKEN_REVOCATION_STR_LEN];
-        strncpy(oldest_jti, track->jtis[track->oldest_idx], TOKEN_REVOCATION_STR_LEN - 1);
+        sso_strlcpy(oldest_jti, track->jtis[track->oldest_idx], TOKEN_REVOCATION_STR_LEN);
         
-        strncpy(track->jtis[track->oldest_idx], jti, TOKEN_REVOCATION_STR_LEN - 1);
+        sso_strlcpy(track->jtis[track->oldest_idx], jti, TOKEN_REVOCATION_STR_LEN);
         track->oldest_idx = (track->oldest_idx + 1) % SSO_MAX_CONCURRENT_SESSIONS;
         
         pthread_mutex_unlock(&mgr->session_lock);

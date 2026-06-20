@@ -96,8 +96,8 @@ static sso_error_t api_compile(permission_strategy_t *self,
         const cJSON *path = cJSON_GetObjectItem(item, "path");
         const cJSON *effect = cJSON_GetObjectItem(item, "effect");
 
-        if (method && cJSON_IsString(method)) strncpy(compiled->items[i].method, method->valuestring, 15);
-        if (path && cJSON_IsString(path)) strncpy(compiled->items[i].path, path->valuestring, 255);
+        if (method && cJSON_IsString(method)) sso_strlcpy(compiled->items[i].method, method->valuestring, 15);
+        if (path && cJSON_IsString(path)) sso_strlcpy(compiled->items[i].path, path->valuestring, 255);
         compiled->items[i].is_allow = !(effect && cJSON_IsString(effect) && strcmp(effect->valuestring, "deny") == 0);
     }
 

@@ -45,8 +45,8 @@ sso_error_t role_create(role_manager_t *mgr, const char *name,
 
     role_t role;
     memset(&role, 0, sizeof(role));
-    strncpy(role.name, name, SSO_MAX_ROLE_NAME - 1);
-    if (description) strncpy(role.description, description, SSO_MAX_DESCRIPTION - 1);
+    sso_strlcpy(role.name, name, SSO_MAX_ROLE_NAME);
+    if (description) sso_strlcpy(role.description, description, SSO_MAX_DESCRIPTION);
     role.parent_role_id = parent_role_id;
     role.status = ROLE_STATUS_ACTIVE;
     role.created_at = sso_timestamp_now();

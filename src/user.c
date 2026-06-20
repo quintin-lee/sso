@@ -90,9 +90,9 @@ sso_error_t user_create(user_manager_t *mgr, const char *username,
     user_t user;
     memset(&user, 0, sizeof(user));
 
-    strncpy(user.username, username, SSO_MAX_USERNAME - 1);
-    if (email)    strncpy(user.email, email, SSO_MAX_EMAIL - 1);
-    if (display_name) strncpy(user.display_name, display_name, SSO_MAX_DISPLAY_NAME - 1);
+    sso_strlcpy(user.username, username, SSO_MAX_USERNAME);
+    if (email)    sso_strlcpy(user.email, email, SSO_MAX_EMAIL);
+    if (display_name) sso_strlcpy(user.display_name, display_name, SSO_MAX_DISPLAY_NAME);
     user.status = USER_STATUS_ACTIVE;
     user.created_at = sso_timestamp_now();
     user.updated_at = user.created_at;
@@ -117,10 +117,10 @@ sso_error_t user_create_by_phone(user_manager_t *mgr, const char *phone, user_t 
     user_t user;
     memset(&user, 0, sizeof(user));
 
-    strncpy(user.phone, phone, SSO_MAX_PHONE - 1);
+    sso_strlcpy(user.phone, phone, SSO_MAX_PHONE);
     /* For SMS users, we don't have a password. Set username to phone for uniqueness if needed,
      * or leave it blank based on DB schema support. Let's set it to phone. */
-    strncpy(user.username, phone, SSO_MAX_USERNAME - 1);
+    sso_strlcpy(user.username, phone, SSO_MAX_USERNAME);
     user.status = USER_STATUS_ACTIVE;
     user.created_at = sso_timestamp_now();
     user.updated_at = user.created_at;

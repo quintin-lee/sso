@@ -59,7 +59,7 @@ static sso_error_t data_compile(permission_strategy_t *self,
     }
 
     const cJSON *res_type = cJSON_GetObjectItem(root, "resource_type");
-    if (cJSON_IsString(res_type)) strncpy(compiled->resource_type, res_type->valuestring, 63);
+    if (cJSON_IsString(res_type)) sso_strlcpy(compiled->resource_type, res_type->valuestring, 63);
 
     /* Parse record-level conditions */
     const cJSON *conds = cJSON_GetObjectItem(root, "conditions");
@@ -71,10 +71,10 @@ static sso_error_t data_compile(permission_strategy_t *self,
             const cJSON *f = cJSON_GetObjectItem(item, "field");
             const cJSON *o = cJSON_GetObjectItem(item, "op");
             const cJSON *v = cJSON_GetObjectItem(item, "value");
-            if (f) strncpy(compiled->conditions[i].field, f->valuestring, 63);
-            if (o) strncpy(compiled->conditions[i].op, o->valuestring, 15);
+            if (f) sso_strlcpy(compiled->conditions[i].field, f->valuestring, 63);
+            if (o) sso_strlcpy(compiled->conditions[i].op, o->valuestring, 15);
             if (v) {
-                if (cJSON_IsString(v)) strncpy(compiled->conditions[i].expected, v->valuestring, 255);
+                if (cJSON_IsString(v)) sso_strlcpy(compiled->conditions[i].expected, v->valuestring, 255);
                 else if (cJSON_IsNumber(v)) snprintf(compiled->conditions[i].expected, 255, "%g", v->valuedouble);
             }
         }
@@ -145,7 +145,7 @@ static sso_error_t data_evaluate(permission_strategy_t *self,
             if (!val) { cJSON_Delete(record); return SSO_ERR_NOT_FOUND; }
 
             char actual[256];
-            if (cJSON_IsString(val)) strncpy(actual, val->valuestring, 255);
+            if (cJSON_IsString(val)) sso_strlcpy(actual, val->valuestring, 255);
             else if (cJSON_IsNumber(val)) snprintf(actual, 255, "%g", val->valuedouble);
             else { cJSON_Delete(record); return SSO_ERR_NOT_FOUND; }
 

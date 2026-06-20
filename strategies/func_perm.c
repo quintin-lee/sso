@@ -95,7 +95,7 @@ static sso_error_t func_compile(permission_strategy_t *self,
         const cJSON *effect = cJSON_GetObjectItem(item, "effect");
 
         if (cJSON_IsString(code)) {
-            strncpy(compiled->items[i].code, code->valuestring, 127);
+            sso_strlcpy(compiled->items[i].code, code->valuestring, 127);
         }
         if (cJSON_IsString(effect)) {
             compiled->items[i].is_allow = (strcmp(effect->valuestring, "allow") == 0);
