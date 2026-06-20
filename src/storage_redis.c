@@ -32,12 +32,61 @@
 #include <string.h>
 #include <stdio.h>
 #include <hiredis/hiredis.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+/* ========================================================================
+ * Redis Bloom Filter for Zero-Hop JTI Revocation Checks
+ * ======================================================================== */
+#define BLOOM_SIZE (1024 * 1024) /* 1MB bitset */
+static uint8_t g_jti_bloom[BLOOM_SIZE];
+static pthread_mutex_t g_bloom_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static uint32_t djb2_hash(const char *str) {
+    uint32_t hash = 5381;
+    int c;
+    while ((c = *str++)) hash = ((hash << 5) + hash) + c;
+    return hash;
+}
+
+static uint32_t fnv1a_hash(const char *str) {
+    uint32_t hash = 2166136261u;
+    int c;
+    while ((c = *str++)) {
+        hash ^= c;
+        hash *= 16777619;
+    }
+    return hash;
+}
+
+static void bloom_add(const char *jti) {
+    uint32_t h1 = djb2_hash(jti) % (BLOOM_SIZE * 8);
+    uint32_t h2 = fnv1a_hash(jti) % (BLOOM_SIZE * 8);
+    pthread_mutex_lock(&g_bloom_lock);
+    g_jti_bloom[h1 / 8] |= (1 << (h1 % 8));
+    g_jti_bloom[h2 / 8] |= (1 << (h2 % 8));
+    pthread_mutex_unlock(&g_bloom_lock);
+}
+
+static bool bloom_might_contain(const char *jti) {
+    uint32_t h1 = djb2_hash(jti) % (BLOOM_SIZE * 8);
+    uint32_t h2 = fnv1a_hash(jti) % (BLOOM_SIZE * 8);
+    pthread_mutex_lock(&g_bloom_lock);
+    bool b1 = g_jti_bloom[h1 / 8] & (1 << (h1 % 8));
+    bool b2 = g_jti_bloom[h2 / 8] & (1 << (h2 % 8));
+    pthread_mutex_unlock(&g_bloom_lock);
+    return b1 && b2;
+}
 
 /* ========================================================================
  * Backend private data
  * ======================================================================== */
 typedef struct {
     redisContext *ctx;
+    redisContext *sub_ctx;
+    pthread_t sub_thread;
+    int sub_running;
 } redis_priv_t;
 
 /* ========================================================================
@@ -220,6 +269,31 @@ static sso_error_t redis_del(redisContext *ctx, const char *key) {
  * Lifecycle
  * ======================================================================== */
 
+static void *redis_sub_thread(void *arg) {
+    redis_priv_t *priv = arg;
+    if (!priv || !priv->sub_ctx) return NULL;
+
+    redisReply *r = redisCommand(priv->sub_ctx, "SUBSCRIBE sso:revocations");
+    if (r) freeReplyObject(r);
+
+    while (priv->sub_running) {
+        void *reply = NULL;
+        if (redisGetReply(priv->sub_ctx, &reply) != REDIS_OK) {
+            break; /* Connection closed or error */
+        }
+        redisReply *rr = (redisReply *)reply;
+        if (rr && rr->type == REDIS_REPLY_ARRAY && rr->elements == 3) {
+            if (rr->element[0]->type == REDIS_REPLY_STRING && strcmp(rr->element[0]->str, "message") == 0) {
+                if (rr->element[2]->type == REDIS_REPLY_STRING) {
+                    bloom_add(rr->element[2]->str);
+                }
+            }
+        }
+        if (rr) freeReplyObject(rr);
+    }
+    return NULL;
+}
+
 static sso_error_t redis_open(storage_backend_t *self, const char *dsn) {
     redis_priv_t *priv = (redis_priv_t *)self->handle;
     if (!priv) return SSO_ERR_INVALID_PARAM;
@@ -346,12 +420,39 @@ static sso_error_t redis_open(storage_backend_t *self, const char *dsn) {
         freeReplyObject(r);
     }
 
+    /* Start Pub/Sub background thread for JTI broadcasting */
+    priv->sub_ctx = redisConnect(host, port);
+    if (priv->sub_ctx && !priv->sub_ctx->err) {
+        if (db > 0) {
+            redisReply *sr = redisCommand(priv->sub_ctx, "SELECT %d", db);
+            if (sr) freeReplyObject(sr);
+        }
+        priv->sub_running = 1;
+        pthread_create(&priv->sub_thread, NULL, redis_sub_thread, priv);
+        LOG_INFO("[storage_redis] Real-time Pub/Sub revocation broadcast enabled");
+    } else {
+        if (priv->sub_ctx) {
+            redisFree(priv->sub_ctx);
+            priv->sub_ctx = NULL;
+        }
+        LOG_ERROR("[storage_redis] Warning: Failed to connect Pub/Sub. Broadcasting disabled.");
+    }
+
     return SSO_OK;
 }
 
 static void redis_close(storage_backend_t *self) {
     redis_priv_t *priv = (redis_priv_t *)self->handle;
     if (priv) {
+        if (priv->sub_running) {
+            priv->sub_running = 0;
+            pthread_cancel(priv->sub_thread);
+            pthread_join(priv->sub_thread, NULL);
+            if (priv->sub_ctx) {
+                redisFree(priv->sub_ctx);
+                priv->sub_ctx = NULL;
+            }
+        }
         if (priv->ctx) {
             redisFree(priv->ctx);
             priv->ctx = NULL;
@@ -1863,12 +1964,24 @@ static sso_error_t redis_jti_revoke(storage_backend_t *self, const char *jti, ss
     if (ttl_sec <= 0) ttl_sec = 1;
 
     redisReply *r = redis_cmd(priv->ctx, "SETEX revoked_jti:%s %d 1", jti, ttl_sec);
-    return redis_ok(priv->ctx, r);
+    sso_error_t err = redis_ok(priv->ctx, r);
+    if (err == SSO_OK) {
+        /* Broadcast and locally cache the revocation */
+        bloom_add(jti);
+        redisReply *pr = redis_cmd(priv->ctx, "PUBLISH sso:revocations %s", jti);
+        if (pr) freeReplyObject(pr);
+    }
+    return err;
 }
 
 static bool redis_jti_is_revoked(storage_backend_t *self, const char *jti) {
     redis_priv_t *priv = (redis_priv_t *)self->handle;
     if (!priv || !priv->ctx) return false;
+
+    /* Bloom Filter zero-hop short circuit */
+    if (!bloom_might_contain(jti)) {
+        return false;
+    }
 
     redisReply *r = redis_cmd(priv->ctx, "EXISTS revoked_jti:%s", jti);
     if (!r) return false;
