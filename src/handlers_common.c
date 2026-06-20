@@ -224,8 +224,10 @@ int64_t json_int_value(const char* json, const char* key, int64_t def) {
 const char* validate_password(const char* password, const password_policy_t* policy) {
 	if (!password)
 		return "Password required";
+		
+	static const password_policy_t default_policy = PASSWORD_POLICY_DEFAULT;
 	if (!policy)
-		policy = &(password_policy_t)PASSWORD_POLICY_DEFAULT;
+		policy = &default_policy;
 
 	size_t len	   = strlen(password);
 	int	   min_len = policy->min_length > 0 ? policy->min_length : 8;
