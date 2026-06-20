@@ -411,18 +411,20 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
         free(sig);
         free(sig_b64);
         EVP_MD_CTX_free(md_ctx);
+        goto success;
+
+    rs_fail:
+        token_destroy(out);
+        if (md_ctx) EVP_MD_CTX_free(md_ctx);
+        free(b64_payload);
+        free(signing_input);
+        return SSO_ERR_INIT;
     }
 
+success:
     free(b64_payload);
     free(signing_input);
     return SSO_OK;
-
-rs_fail:
-    token_destroy(out);
-    if (md_ctx) EVP_MD_CTX_free(md_ctx);
-    free(b64_payload);
-    free(signing_input);
-    return SSO_ERR_INIT;
 }
 
 /* ─── Lightweight JWT payload scanner ────────────────────────────────────
