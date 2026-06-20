@@ -558,10 +558,14 @@ static void audit_log_decision(sso_context_t *sso_ctx, const eval_context_t *ctx
         return;
     }
 
-    char escaped_trace[8192] = {0};
+    char *escaped_trace = (char *)calloc(1, 8192);
+    if (!escaped_trace) {
+        pthread_mutex_unlock(&audit_log_lock);
+        return;
+    }
     if (trace) {
         size_t j = 0;
-        for (size_t i = 0; trace[i] && j < sizeof(escaped_trace) - 3; i++) {
+        for (size_t i = 0; trace[i] && j < 8192 - 3; i++) {
             if (trace[i] == '"') { escaped_trace[j++] = '\\'; escaped_trace[j++] = '"'; }
             else if (trace[i] == '\n') { escaped_trace[j++] = '\\'; escaped_trace[j++] = 'n'; }
             else if (trace[i] == '\t') { escaped_trace[j++] = '\\'; escaped_trace[j++] = 't'; }
@@ -585,6 +589,7 @@ static void audit_log_decision(sso_context_t *sso_ctx, const eval_context_t *ctx
             escaped_trace);
 
     pthread_mutex_unlock(&audit_log_lock);
+    free(escaped_trace);
 }
 
 void admin_audit_log(sso_context_t *ctx,
@@ -712,7 +717,8 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
     uint64_t now = get_time_monotonic_ms();
 
     sso_error_t err;
-    char full_trace[4096] = "";
+    char *full_trace = (char *)calloc(1, 4096);
+    if (!full_trace) return SSO_ERR_OUT_OF_MEMORY;
     bool any_allowed = false;
 
     /* ---- Phase 1: L2 (result) cache check under rdlock ---- */
@@ -738,6 +744,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
                      (long)ctx->user_id, (long)duration);
         }
         audit_log_decision(engine->ctx, ctx, *result, "Decision from Result Cache (L2)", duration, true);
+        free(full_trace);
         return SSO_OK;
     }
 
@@ -760,6 +767,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         policies_buf = (policy_t *)malloc(sizeof(policy_t) * 64);
         if (!policies_buf) {
             pthread_rwlock_unlock(&engine->lock);
+            free(full_trace);
             return SSO_ERR_OUT_OF_MEMORY;
         }
         policies = policies_buf;
@@ -776,6 +784,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
             audit_log_decision(engine->ctx, ctx, false, "Error: policy manager not found", get_time_monotonic_ms() - now, false);
             LOG_ERROR("policy manager not found in engine context");
             free(policies_buf);
+            free(full_trace);
             return SSO_ERR_INIT;
         }
 
@@ -783,6 +792,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         if (err != SSO_OK && err != SSO_ERR_NOT_FOUND) {
             audit_log_decision(engine->ctx, ctx, false, "Error: policy resolution failed", get_time_monotonic_ms() - now, false);
             free(policies_buf);
+            free(full_trace);
             return err;
         }
     }
@@ -791,6 +801,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         if (decision_trace) *decision_trace = strdup("Default DENY: No policies found");
         audit_log_decision(engine->ctx, ctx, false, "Default DENY: No policies found", get_time_monotonic_ms() - now, false);
         free(policies_buf);
+        free(full_trace);
         return SSO_OK;
     }
 
@@ -823,9 +834,9 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         err = perm_engine_evaluate_policy(engine, &policies[i], ctx, &policy_result, &policy_trace);
 
         if (decision_trace && policy_trace) {
-            trace_off += snprintf(full_trace + trace_off, sizeof(full_trace) - trace_off,
+            trace_off += snprintf(full_trace + trace_off, 4096 - trace_off,
                                   "[Policy %s] %s\n", policies[i].name, policy_trace);
-            if (trace_off >= sizeof(full_trace)) trace_off = sizeof(full_trace) - 1;
+            if (trace_off >= 4096) trace_off = 4096 - 1;
         }
         if (policy_trace) free(policy_trace);
 
@@ -835,9 +846,9 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
         if (!policy_result) {
             *result = false;
             if (decision_trace) {
-                trace_off += snprintf(full_trace + trace_off, sizeof(full_trace) - trace_off,
+                trace_off += snprintf(full_trace + trace_off, 4096 - trace_off,
                                       "Result: DENIED (Override by policy)\n");
-                if (trace_off >= sizeof(full_trace)) trace_off = sizeof(full_trace) - 1;
+                if (trace_off >= 4096) trace_off = 4096 - 1;
                 *decision_trace = strdup(full_trace);
             }
 
@@ -854,6 +865,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
 
             audit_log_decision(engine->ctx, ctx, false, full_trace, get_time_monotonic_ms() - now, false);
             free(policies_buf);
+            free(full_trace);
             return SSO_OK;
         }
 
@@ -862,9 +874,9 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
 
     *result = any_allowed;
     if (decision_trace) {
-        trace_off += snprintf(full_trace + trace_off, sizeof(full_trace) - trace_off,
+        trace_off += snprintf(full_trace + trace_off, 4096 - trace_off,
                               "%s\n", any_allowed ? "Result: ALLOWED" : "Result: DENIED (No matching allow rule)");
-        if (trace_off >= sizeof(full_trace)) trace_off = sizeof(full_trace) - 1;
+        if (trace_off >= 4096) trace_off = 4096 - 1;
         *decision_trace = strdup(full_trace);
     }
 
@@ -892,6 +904,7 @@ sso_error_t perm_engine_evaluate(permission_engine_t *engine,
 
     audit_log_decision(engine->ctx, ctx, any_allowed, full_trace, duration, false);
     free(policies_buf);
+    free(full_trace);
     return SSO_OK;
 }
 

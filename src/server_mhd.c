@@ -260,12 +260,13 @@ mhd_access_handler(void *cls,
         goto send_response;
     }
 
-    /* Route matching */
+    /* Route matching via method index */
     route_t *matched = NULL;
-    for (size_t i = 0; i < server->route_count; i++) {
-        if (server->routes[i].method == req.method &&
-            match_route(server->routes[i].path_pattern, req.path, NULL)) {
-            matched = &server->routes[i];
+    route_t **mr = server->method_routes[req.method];
+    size_t mc = server->method_route_count[req.method];
+    for (size_t i = 0; i < mc; i++) {
+        if (match_route(mr[i]->path_pattern, req.path, NULL)) {
+            matched = mr[i];
             break;
         }
     }

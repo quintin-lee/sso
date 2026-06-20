@@ -590,12 +590,13 @@ static void handle_client(sso_server_t *server, conn_t *conn, const char *client
         return;
     }
 
-    /* Find matching route */
+    /* Find matching route via method index */
     route_t *matched = NULL;
-    for (size_t i = 0; i < server->route_count; i++) {
-        if (server->routes[i].method == req.method &&
-            match_route(server->routes[i].path_pattern, req.path, NULL)) {
-            matched = &server->routes[i];
+    route_t **mr = server->method_routes[req.method];
+    size_t mc = server->method_route_count[req.method];
+    for (size_t i = 0; i < mc; i++) {
+        if (match_route(mr[i]->path_pattern, req.path, NULL)) {
+            matched = mr[i];
             break;
         }
     }
@@ -675,6 +676,32 @@ sso_error_t sso_server_init(sso_server_t *server, sso_context_t *ctx,
     server->server_data = NULL;
     server->ssl_ctx = NULL;
 
+    /* Build per-method route index for O(count_per_method) dispatch */
+    for (size_t i = 0; i < route_count; i++) {
+        http_method_t m = routes[i].method;
+        server->method_route_count[m]++;
+    }
+    for (http_method_t m = HTTP_GET; m <= HTTP_OPTIONS; m++) {
+        if (server->method_route_count[m] > 0) {
+            server->method_routes[m] = (route_t **)malloc(
+                server->method_route_count[m] * sizeof(route_t *));
+            if (!server->method_routes[m]) {
+                /* Clean up already-allocated method arrays */
+                for (http_method_t j = HTTP_GET; j < m; j++) {
+                    free(server->method_routes[j]);
+                    server->method_routes[j] = NULL;
+                }
+                return SSO_ERR_OUT_OF_MEMORY;
+            }
+            size_t idx = 0;
+            for (size_t i = 0; i < route_count; i++) {
+                if (routes[i].method == m) {
+                    server->method_routes[m][idx++] = (route_t *)&routes[i];
+                }
+            }
+        }
+    }
+
     return SSO_OK;
 }
 
@@ -691,6 +718,12 @@ void sso_server_stop(sso_server_t *server) {
     if (server->ssl_ctx) {
         SSL_CTX_free(server->ssl_ctx);
         server->ssl_ctx = NULL;
+    }
+
+    /* Free per-method route index */
+    for (http_method_t m = HTTP_GET; m <= HTTP_OPTIONS; m++) {
+        free(server->method_routes[m]);
+        server->method_routes[m] = NULL;
     }
 }
 

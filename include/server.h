@@ -114,6 +114,8 @@ struct sso_server {
     int              port;
     route_t         *routes;
     size_t           route_count;
+    route_t        **method_routes[6];  /* per-method pointer arrays into routes[] */
+    size_t           method_route_count[6];
     sso_context_t   *sso_ctx;
     void            *server_data;       /* platform-specific (socket, ctx)     */
     SSL_CTX         *ssl_ctx;           /* TLS context, NULL if disabled      */
