@@ -287,6 +287,8 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
         return -1;
     }
 
+    strncpy(req->method_str, method, sizeof(req->method_str) - 1);
+
     if (strcmp(method, "GET") == 0)        req->method = HTTP_GET;
     else if (strcmp(method, "POST") == 0)  req->method = HTTP_POST;
     else if (strcmp(method, "PUT") == 0)   req->method = HTTP_PUT;
@@ -344,6 +346,20 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
             size_t olen = strlen(req->origin);
             while (olen > 0 && (req->origin[olen-1] == ' ' ||
                    req->origin[olen-1] == '\r')) req->origin[--olen] = '\0';
+        } else if (strncasecmp(line, "DPoP:", 5) == 0) {
+            const char *val = line + 5;
+            while (*val == ' ') val++;
+            strncpy(req->dpop_proof, val, sizeof(req->dpop_proof) - 1);
+            req->dpop_proof[sizeof(req->dpop_proof) - 1] = '\0';
+            size_t olen = strlen(req->dpop_proof);
+            while (olen > 0 && (req->dpop_proof[olen-1] == ' ' || req->dpop_proof[olen-1] == '\r')) req->dpop_proof[--olen] = '\0';
+        } else if (strncasecmp(line, "Host:", 5) == 0) {
+            const char *val = line + 5;
+            while (*val == ' ') val++;
+            strncpy(req->host, val, sizeof(req->host) - 1);
+            req->host[sizeof(req->host) - 1] = '\0';
+            size_t olen = strlen(req->host);
+            while (olen > 0 && (req->host[olen-1] == ' ' || req->host[olen-1] == '\r')) req->host[--olen] = '\0';
         }
     }
 

@@ -46,6 +46,7 @@ struct token {
     char              oauth_nonce[128];             /**< Optional OIDC nonce string */
     char              scope[256];                   /**< Optional OAuth scope string */
     char              claims[SSO_MAX_CLAIMS_JSON];  /**< Additional JSON claims string */
+    char              jkt[64];                      /**< DPoP JWK Thumbprint */
     char              raw_refresh_token[128];       /**< Generated opaque refresh token string */
 };
 

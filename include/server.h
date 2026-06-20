@@ -74,6 +74,9 @@ typedef struct {
     char             **query_params;    /* "key=value" strings, NULL-terminated */
     char             auth_token[SSO_MAX_TOKEN_STR];
     char             origin[256];       /* Origin header from request (CORS)   */
+    char             dpop_proof[8192];  /* DPoP Proof JWT Header               */
+    char             host[256];         /* Host header for DPoP URL generation */
+    char             method_str[16];    /* Original HTTP method string         */
     void             *userdata;         /* connection-specific data */
 } http_request_t;
 

@@ -12,6 +12,7 @@
 #include "mfa.h"
 #include "risk.h"
 #include <string.h>
+#include "dpop.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -68,6 +69,17 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
 
     int force_mfa = (risk_score >= RISK_SCORE_MEDIUM);
 
+    /* DPoP Proof Evaluation */
+    char dpop_jkt[64] = {0};
+    if (req->dpop_proof[0]) {
+        char full_url[1024];
+        snprintf(full_url, sizeof(full_url), "http://%s%s", req->host[0] ? req->host : "localhost", req->path);
+        if (dpop_verify_proof(req->dpop_proof, req->method_str, full_url, NULL, dpop_jkt) != SSO_OK) {
+            sso_response_error(resp, 401, "Invalid DPoP Proof");
+            return SSO_OK;
+        }
+    }
+
     /* Success: reset rate limit for this IP */
     if (ctx->rate_limiter) {
         rate_limiter_reset((rate_limiter_t *)ctx->rate_limiter, req->client_ip);
@@ -101,6 +113,12 @@ sso_error_t handle_login(sso_context_t *ctx, const http_request_t *req,
     }
 
     token_t access_token, refresh_token;
+    memset(&access_token, 0, sizeof(access_token));
+    memset(&refresh_token, 0, sizeof(refresh_token));
+    if (dpop_jkt[0]) {
+        strncpy(access_token.jkt, dpop_jkt, sizeof(access_token.jkt) - 1);
+        strncpy(refresh_token.jkt, dpop_jkt, sizeof(refresh_token.jkt) - 1);
+    }
     err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 900000, &access_token);
     if (err != SSO_OK) {
         sso_response_error(resp, 500, "Failed to issue access token");
@@ -548,6 +566,27 @@ sso_error_t handle_verify(sso_context_t *ctx, const http_request_t *req,
         sso_response_error(resp, 401, "Token revoked");
         token_destroy(&tok);
         return SSO_OK;
+    }
+
+    /* DPoP Verification if Token is bound to a JWK Thumbprint */
+    if (tok.jkt[0]) {
+        if (!req->dpop_proof[0]) {
+            LOG_WARN("[verify] Missing required DPoP proof for bound token");
+            sso_response_error(resp, 401, "DPoP Proof Required");
+            token_destroy(&tok);
+            return SSO_OK;
+        }
+        
+        char verified_jkt[64] = {0};
+        char full_url[1024];
+        snprintf(full_url, sizeof(full_url), "http://%s%s", req->host[0] ? req->host : "localhost", req->path);
+        
+        if (dpop_verify_proof(req->dpop_proof, req->method_str, full_url, tok.jkt, verified_jkt) != SSO_OK) {
+            LOG_WARN("[verify] Invalid DPoP proof signature or thumbprint mismatch");
+            sso_response_error(resp, 401, "Invalid DPoP Proof");
+            token_destroy(&tok);
+            return SSO_OK;
+        }
     }
 
     user_manager_t *umgr = (user_manager_t *)ctx->user_mgr;

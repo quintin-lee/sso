@@ -245,7 +245,17 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
     if (!mgr || !user || !out) return SSO_ERR_INVALID_PARAM;
     atomic_fetch_add(&g_metric_jwt_issue, 1);
 
+    char temp_jkt[64] = {0};
+    if (out->jkt[0]) {
+        strncpy(temp_jkt, out->jkt, sizeof(temp_jkt) - 1);
+    }
+
     memset(out, 0, sizeof(*out));
+
+    if (temp_jkt[0]) {
+        strncpy(out->jkt, temp_jkt, sizeof(out->jkt) - 1);
+    }
+
     out->user_id = user->id;
     out->issued_at = sso_timestamp_now();
     /* Handle custom TTL or fallback to manager default TTL */
@@ -323,6 +333,12 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
         cJSON_AddItemToArray(groups_arr, cJSON_CreateNumber((double)group_ids[i]));
     }
     cJSON_AddItemToObject(root, "groups", groups_arr);
+
+    if (out->jkt[0]) {
+        cJSON *cnf = cJSON_CreateObject();
+        cJSON_AddStringToObject(cnf, "jkt", out->jkt);
+        cJSON_AddItemToObject(root, "cnf", cnf);
+    }
 
     char *payload_str = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
@@ -443,6 +459,37 @@ static sso_error_t scan_jwt_payload(const char *json, token_t *out) {
                 found_exp = true;
             } else if (memcmp(key, "tnc", 3) == 0 && *p >= '0' && *p <= '9') {
                 out->nonce = (uint64_t)strtoull(p, (char **)&p, 10);
+            } else if (memcmp(key, "cnf", 3) == 0 && *p == '{') {
+                p++;
+                while (*p && *p != '}') {
+                    while (*p && *p != '"' && *p != '}') p++;
+                    if (*p == '}') break;
+                    p++;
+                    const char *ikey = p;
+                    while (*p && *p != '"') p++;
+                    size_t iklen = (size_t)(p - ikey);
+                    if (*p) p++;
+                    while (*p == ' ' || *p == ':') p++;
+                    if (iklen == 3 && memcmp(ikey, "jkt", 3) == 0 && *p == '"') {
+                        p++;
+                        const char *iv = p;
+                        while (*p && *p != '"') p++;
+                        size_t ivlen = (size_t)(p - iv);
+                        if (ivlen < sizeof(out->jkt)) {
+                            memcpy(out->jkt, iv, ivlen);
+                            out->jkt[ivlen] = '\0';
+                        }
+                        if (*p) p++;
+                    } else {
+                        if (*p == '"') {
+                            p++; while (*p && *p != '"') p++; if (*p) p++;
+                        } else {
+                            while (*p && *p != ',' && *p != '}') p++;
+                        }
+                    }
+                    while (*p == ' ' || *p == ',') p++;
+                }
+                if (*p == '}') p++;
             }
             break;
         case 5:
