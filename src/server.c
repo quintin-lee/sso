@@ -1,13 +1,31 @@
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+
 #include "sso.h"
 #include "server.h"
 #include "logger.h"
 #include "user.h"
 #include "token.h"
 #include "config.h"
+#include "cJSON.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
+static _Thread_local arena_t *t_current_arena = NULL;
+
+static void *cjson_arena_malloc(size_t sz) {
+    if (t_current_arena) {
+        return arena_alloc(t_current_arena, sz);
+    }
+    return malloc(sz);
+}
+
+static void cjson_arena_free(void *ptr) {
+    if (t_current_arena) {
+        (void)ptr;
+    } else {
+        free(ptr);
+    }
+}
 
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -241,6 +259,7 @@ static void pool_shutdown(void) {
  * ======================================================================== */
 
 static void parse_err(http_request_t *req) {
+    t_current_arena = NULL;
     arena_destroy(&req->arena);
     if (t_arena_init) t_arena = req->arena;
 }
@@ -252,6 +271,7 @@ static int parse_request(buf_reader_t *br, http_request_t *req, long max_body_si
     } else {
         arena_init(&req->arena, 4096);
     }
+    t_current_arena = &req->arena;
 
     char line[4096];
     if (br_read_line(br, line, sizeof(line)) <= 0) {
@@ -411,7 +431,9 @@ static void send_response(conn_t *c, const http_response_t *resp) {
 
 static void cleanup_request(conn_t *conn, http_response_t *resp, http_request_t *req) {
     if (resp->body) {
-        free(resp->body);
+        if (!arena_contains(&req->arena, resp->body)) {
+            free(resp->body);
+        }
         resp->body = NULL;
     }
     if (t_arena_init) {
@@ -420,6 +442,7 @@ static void cleanup_request(conn_t *conn, http_response_t *resp, http_request_t 
     } else {
         arena_destroy(&req->arena);
     }
+    t_current_arena = NULL;
     conn_close(conn);
 }
 
@@ -553,6 +576,11 @@ sso_error_t sso_server_init(sso_server_t *server, sso_context_t *ctx,
     server->route_count = route_count;
     server->server_data = NULL;
     server->ssl_ctx = NULL;
+
+    cJSON_Hooks hooks;
+    hooks.malloc_fn = cjson_arena_malloc;
+    hooks.free_fn = cjson_arena_free;
+    cJSON_InitHooks(&hooks);
 
     return SSO_OK;
 }

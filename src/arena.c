@@ -175,3 +175,15 @@ void arena_reset(arena_t *arena) {
     }
     arena->current = arena->first;
 }
+
+bool arena_contains(const arena_t *arena, const void *ptr) {
+    if (!arena || !ptr) return false;
+    const uint8_t *p = (const uint8_t *)ptr;
+    for (arena_block_t *block = arena->first; block; block = block->next) {
+        if (p >= block->data && p < block->data + block->capacity) {
+            return true;
+        }
+    }
+    return false;
+}
+

@@ -8,16 +8,6 @@
  * The public API surface (server.h) is identical.
  */
 
-#include "sso.h"
-#include "storage.h"
-#include "arena.h"
-#include "server.h"
-#include "logger.h"
-#include "token.h"
-#include "config.h"
-
-#include <microhttpd.h>
-
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -25,6 +15,34 @@
 #include <errno.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <microhttpd.h>
+
+#include "sso.h"
+#include "storage.h"
+#include "arena.h"
+#include "server.h"
+#include "logger.h"
+#include "token.h"
+#include "config.h"
+#include "cJSON.h"
+
+static _Thread_local arena_t *t_current_arena = NULL;
+
+static void *cjson_arena_malloc(size_t sz) {
+    if (t_current_arena) {
+        return arena_alloc(t_current_arena, sz);
+    }
+    return malloc(sz);
+}
+
+static void cjson_arena_free(void *ptr) {
+    if (t_current_arena) {
+        (void)ptr;
+    } else {
+        free(ptr);
+    }
+}
+
 
 /* ========================================================================
  * Per-connection state for the MHD access handler callback
@@ -185,18 +203,25 @@ mhd_access_handler(void *cls,
         return MHD_YES;
     }
 
+    t_current_arena = &state->arena;
+
     /* ---- Phase 2: accumulate request body ---- */
     if (*upload_data_size > 0) {
         size_t new_size = state->body_size + *upload_data_size;
         char *new_body = (char *)arena_realloc(&state->arena, state->body, state->body_size + 1, new_size + 1);
-        if (!new_body) return MHD_NO;
+        if (!new_body) {
+            t_current_arena = NULL;
+            return MHD_NO;
+        }
         memcpy(new_body + state->body_size, upload_data, *upload_data_size);
         state->body = new_body;
         state->body_size = new_size;
         state->body[new_size] = '\0';
         *upload_data_size = 0;
+        t_current_arena = NULL;
         return MHD_YES;
     }
+
 
     /* ---- Phase 3: body complete — process the request ---- */
     http_request_t req;
@@ -301,17 +326,26 @@ send_response:
     { /* block isolates local decl after label */
     struct MHD_Response *mhd_resp;
 
-    if (resp.body && resp.body_len > 0) {
-        mhd_resp = MHD_create_response_from_buffer(
-            resp.body_len, resp.body, MHD_RESPMEM_MUST_FREE);
+    if (resp.body) {
+        if (resp.body_len > 0) {
+            mhd_resp = MHD_create_response_from_buffer(
+                resp.body_len, resp.body, MHD_RESPMEM_MUST_COPY);
+        } else {
+            mhd_resp = MHD_create_response_from_buffer(0, (void *)"", MHD_RESPMEM_PERSISTENT);
+        }
+        if (!arena_contains(&state->arena, resp.body)) {
+            free(resp.body);
+        }
     } else {
-        /* Body may be "" (empty string) or NULL */
         mhd_resp = MHD_create_response_from_buffer(0, (void *)"", MHD_RESPMEM_PERSISTENT);
     }
 
     if (!mhd_resp) {
         /* Can't create response — serious failure. Free what we can. */
-        free(resp.body);
+        if (resp.body && !arena_contains(&state->arena, resp.body)) {
+            free(resp.body);
+        }
+        t_current_arena = NULL;
         return MHD_NO;
     }
 
@@ -361,9 +395,7 @@ send_response:
                              (unsigned int)resp.status_code, mhd_resp);
     MHD_destroy_response(mhd_resp);
 
-    /* Note: resp.body is freed by MHD (MHD_RESPMEM_MUST_FREE).
-     * req.body is freed via state->body in mhd_completed_cb. */
-
+    t_current_arena = NULL;
     return ret;
     }
 }
@@ -385,6 +417,8 @@ mhd_completed_cb(void *cls, struct MHD_Connection *connection,
     mhd_conn_state_t *state = (mhd_conn_state_t *)*req_cls;
     if (!state) return;
 
+    t_current_arena = &state->arena;
+
     /* Free token's inner role_ids/group_ids arrays if allocated */
     if (state->userdata) {
         token_destroy(&((auth_context_t *)state->userdata)->token);
@@ -398,6 +432,7 @@ mhd_completed_cb(void *cls, struct MHD_Connection *connection,
         arena_destroy(&state->arena);
     }
 
+    t_current_arena = NULL;
     free(state);
     *req_cls = NULL;
 }
@@ -419,6 +454,11 @@ sso_error_t sso_server_init(sso_server_t *server, sso_context_t *ctx,
     server->route_count = route_count;
     server->server_data = NULL;
     server->ssl_ctx = NULL;
+
+    cJSON_Hooks hooks;
+    hooks.malloc_fn = cjson_arena_malloc;
+    hooks.free_fn = cjson_arena_free;
+    cJSON_InitHooks(&hooks);
 
     return SSO_OK;
 }

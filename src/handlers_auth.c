@@ -761,7 +761,7 @@ sso_error_t handle_certs(sso_context_t *ctx, const http_request_t *req,
     char *json = cJSON_PrintUnformatted(root);
     sso_response_ok(resp, json);
 
-    free(json);
+    cJSON_free(json);
     cJSON_Delete(root);
     free(pem);
     return SSO_OK;

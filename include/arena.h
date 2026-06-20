@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -111,6 +113,7 @@ void  arena_destroy(arena_t *arena);
  * @param arena Pointer to the arena context.
  */
 void  arena_reset(arena_t *arena);
+bool  arena_contains(const arena_t *arena, const void *ptr);
 
 #ifdef __cplusplus
 }

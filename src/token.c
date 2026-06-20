@@ -294,7 +294,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
  
     char b64_header[256];
     base64url_encode((unsigned char *)header_str, strlen(header_str), b64_header, sizeof(b64_header));
-    free(header_str);
+    cJSON_free(header_str);
 
     /* --- Step B: Assemble and encode JWT Payload --- */
     cJSON *root = cJSON_CreateObject();
@@ -332,7 +332,7 @@ sso_error_t token_issue(token_manager_t *mgr, const user_t *user,
 
     char b64_payload[2048];
     base64url_encode((unsigned char *)payload_str, strlen(payload_str), b64_payload, sizeof(b64_payload));
-    free(payload_str);
+    cJSON_free(payload_str);
 
     /* Construct the standard signing input string header.payload */
     char signing_input[2560];
