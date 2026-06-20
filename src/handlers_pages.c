@@ -46,8 +46,17 @@ sso_error_t handle_health(sso_context_t *ctx, const http_request_t *req,
 sso_error_t handle_metrics(sso_context_t *ctx, const http_request_t *req,
                                     http_response_t *resp) {
     (void)req;
-    char perm_buf[2048];
-    if (perm_engine_get_metrics((permission_engine_t *)ctx->perm_engine, perm_buf, sizeof(perm_buf)) != SSO_OK) {
+    char *perm_buf = (char *)malloc(2048);
+    char *buf = (char *)malloc(8192);
+    if (!perm_buf || !buf) {
+        free(perm_buf);
+        free(buf);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    if (perm_engine_get_metrics((permission_engine_t *)ctx->perm_engine, perm_buf, 2048) != SSO_OK) {
+        free(perm_buf);
+        free(buf);
         sso_response_error(resp, 500, "Failed to retrieve metrics");
         return SSO_OK;
     }
@@ -66,8 +75,7 @@ sso_error_t handle_metrics(sso_context_t *ctx, const http_request_t *req,
     double db_read_avg_ms = db_read_count > 0 ? ((double)db_read_duration_us / db_read_count) / 1000.0 : 0.0;
     double db_write_avg_ms = db_write_count > 0 ? ((double)db_write_duration_us / db_write_count) / 1000.0 : 0.0;
 
-    char buf[8192];
-    snprintf(buf, sizeof(buf),
+    snprintf(buf, 8192,
         "%s"
         "# HELP sso_active_connections Active HTTP connections currently being processed\n"
         "# TYPE sso_active_connections gauge\n"
@@ -114,6 +122,8 @@ sso_error_t handle_metrics(sso_context_t *ctx, const http_request_t *req,
     resp->body = strdup(buf);
     resp->body_len = strlen(buf);
     strcpy(resp->content_type, "text/plain; version=0.0.4; charset=utf-8");
+    free(perm_buf);
+    free(buf);
     return SSO_OK;
 }
 
@@ -125,8 +135,12 @@ sso_error_t handle_admin_status(sso_context_t *ctx, const http_request_t *req,
     sso_id_t ids[1];
     user_list(umgr, NULL, -1, 0, 0, ids, &user_count, &user_count);
 
-    char buf[2048];
-    snprintf(buf, sizeof(buf),
+    char *buf = (char *)malloc(2048);
+    if (!buf) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    snprintf(buf, 2048,
         "{"
         "\"service\":\"sso\","
         "\"version\":\"1.0.0\","
@@ -136,6 +150,7 @@ sso_error_t handle_admin_status(sso_context_t *ctx, const http_request_t *req,
         user_count,
         (unsigned long long)get_time_ms());
     sso_response_ok(resp, buf);
+    free(buf);
     return SSO_OK;
 }
 
@@ -189,10 +204,11 @@ sso_error_t handle_list_audit_logs(sso_context_t *ctx, const http_request_t *req
     if (!json) { fclose(f); sso_response_error(resp, 500, "Out of memory"); return SSO_OK; }
     json[0] = '['; total = 1;
     bool first = true;
-    char buffer[10240];
+    char *buffer = (char *)malloc(10240);
+    if (!buffer) { free(json); fclose(f); sso_response_error(resp, 500, "Out of memory"); return SSO_OK; }
     size_t line_num = 0;
 
-    while (fgets(buffer, sizeof(buffer), f)) {
+    while (fgets(buffer, 10240, f)) {
         line_num++;
         if (offset_local > 0 && line_num <= (size_t)offset_local) continue;
         if (filter_uid != SSO_ID_NONE) {
@@ -208,7 +224,7 @@ sso_error_t handle_list_audit_logs(sso_context_t *ctx, const http_request_t *req
         if (needed > cap) {
             cap = needed * 2;
             char *new_json = (char *)realloc(json, cap);
-            if (!new_json) { free(json); fclose(f); sso_response_error(resp, 500, "Out of memory"); return SSO_OK; }
+            if (!new_json) { free(json); free(buffer); fclose(f); sso_response_error(resp, 500, "Out of memory"); return SSO_OK; }
             json = new_json;
         }
 
@@ -225,5 +241,6 @@ sso_error_t handle_list_audit_logs(sso_context_t *ctx, const http_request_t *req
 
     sso_response_ok(resp, json);
     free(json);
+    free(buffer);
     return SSO_OK;
 }
