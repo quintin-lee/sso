@@ -19,6 +19,7 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
     curl-dev \
     libmicrohttpd-dev \
     postgresql-dev \
+    hiredis-dev \
     pkgconfig
 
 WORKDIR /app
@@ -36,6 +37,7 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
     libcurl \
     libmicrohttpd \
     libpq \
+    hiredis \
     supervisor
 
 # Copy Nginx config
