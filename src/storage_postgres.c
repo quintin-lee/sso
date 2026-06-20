@@ -1906,6 +1906,16 @@ static sso_error_t postgres_audit_log_list(storage_backend_t *self, sso_id_t use
     json[len] = '\0';
 
     bool first = true;
+
+    char *esc_det = (char *)malloc(2048);
+    char *esc_trace = (char *)malloc(16384);
+    char *row = (char *)malloc(20480);
+    if (!esc_det || !esc_trace || !row) {
+        free(esc_det); free(esc_trace); free(row);
+        free(json); PQclear(res);
+        return SSO_ERR_OUT_OF_MEMORY;
+    }
+
     for (int i = 0; i < rows; i++) {
         const char *action = PQgetvalue(res, i, 0);
         uint64_t ts = (uint64_t)atoll(PQgetvalue(res, i, 1));
@@ -1922,17 +1932,16 @@ static sso_error_t postgres_audit_log_list(storage_backend_t *self, sso_id_t use
         bool ch = (ch_val[0] == 't' || ch_val[0] == '1');
         const char *trace = PQgetvalue(res, i, 12);
 
-        char esc_det[2048] = "", esc_trace[16384] = "";
-        escape_json_string(details, esc_det, sizeof(esc_det));
-        escape_json_string(trace, esc_trace, sizeof(esc_trace));
+        esc_det[0] = '\0'; esc_trace[0] = '\0';
+        escape_json_string(details, esc_det, 2048);
+        escape_json_string(trace, esc_trace, 16384);
 
-        char row[20480];
         if (strcmp(action, "admin") == 0) {
-            snprintf(row, sizeof(row),
+            snprintf(row, 20480,
                 "{\"action\":\"admin\",\"timestamp_ms\":%llu,\"user_id\":%llu,\"username\":\"%s\",\"ip_address\":\"%s\",\"operation\":\"%s\",\"resource\":\"%s\",\"resource_id\":%llu,\"status\":\"%s\",\"details\":\"%s\"}",
                 (unsigned long long)ts, (unsigned long long)uid, username ? username : "", ip ? ip : "", op ? op : "", resource ? resource : "", (unsigned long long)res_id, status ? status : "", esc_det);
         } else {
-            snprintf(row, sizeof(row),
+            snprintf(row, 20480,
                 "{\"action\":\"eval\",\"timestamp_ms\":%llu,\"user_id\":%llu,\"decision\":\"%s\",\"duration_ms\":%llu,\"cache_hit\":%s,\"trace\":\"%s\"}",
                 (unsigned long long)ts, (unsigned long long)uid, status ? status : "", (unsigned long long)dur, ch ? "true" : "false", esc_trace);
         }
@@ -1941,7 +1950,7 @@ static sso_error_t postgres_audit_log_list(storage_backend_t *self, sso_id_t use
         if (len + row_len + 3 > cap) {
             cap = (len + row_len + 3) * 2;
             char *new_json = realloc(json, cap);
-            if (!new_json) { free(json); PQclear(res); return SSO_ERR_OUT_OF_MEMORY; }
+            if (!new_json) { free(json); free(esc_det); free(esc_trace); free(row); PQclear(res); return SSO_ERR_OUT_OF_MEMORY; }
             json = new_json;
         }
 
@@ -1954,6 +1963,9 @@ static sso_error_t postgres_audit_log_list(storage_backend_t *self, sso_id_t use
         json[len] = '\0';
     }
 
+    free(esc_det);
+    free(esc_trace);
+    free(row);
     json[len++] = ']';
     json[len] = '\0';
     PQclear(res);

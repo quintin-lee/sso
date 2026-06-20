@@ -1685,6 +1685,16 @@ static sso_error_t sqlite_audit_log_list(storage_backend_t *self, sso_id_t user_
     json[len] = '\0';
 
     bool first = true;
+
+    char *esc_det = (char *)malloc(2048);
+    char *esc_trace = (char *)malloc(16384);
+    char *row = (char *)malloc(20480);
+    if (!esc_det || !esc_trace || !row) {
+        free(esc_det); free(esc_trace); free(row);
+        free(json); sqlite3_finalize(stmt);
+        return SSO_ERR_OUT_OF_MEMORY;
+    }
+
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         const char *action = (const char *)sqlite3_column_text(stmt, 0);
         uint64_t ts = (uint64_t)sqlite3_column_int64(stmt, 1);
@@ -1700,17 +1710,16 @@ static sso_error_t sqlite_audit_log_list(storage_backend_t *self, sso_id_t user_
         int ch = sqlite3_column_int(stmt, 11);
         const char *trace = (const char *)sqlite3_column_text(stmt, 12);
 
-        char esc_det[2048] = "", esc_trace[16384] = "";
-        escape_json_string(details, esc_det, sizeof(esc_det));
-        escape_json_string(trace, esc_trace, sizeof(esc_trace));
+        esc_det[0] = '\0'; esc_trace[0] = '\0';
+        escape_json_string(details, esc_det, 2048);
+        escape_json_string(trace, esc_trace, 16384);
 
-        char row[20480];
         if (strcmp(action, "admin") == 0) {
-            snprintf(row, sizeof(row),
+            snprintf(row, 20480,
                 "{\"action\":\"admin\",\"timestamp_ms\":%llu,\"user_id\":%llu,\"username\":\"%s\",\"ip_address\":\"%s\",\"operation\":\"%s\",\"resource\":\"%s\",\"resource_id\":%llu,\"status\":\"%s\",\"details\":\"%s\"}",
                 (unsigned long long)ts, (unsigned long long)uid, username ? username : "", ip ? ip : "", op ? op : "", res ? res : "", (unsigned long long)res_id, status ? status : "", esc_det);
         } else {
-            snprintf(row, sizeof(row),
+            snprintf(row, 20480,
                 "{\"action\":\"eval\",\"timestamp_ms\":%llu,\"user_id\":%llu,\"decision\":\"%s\",\"duration_ms\":%llu,\"cache_hit\":%s,\"trace\":\"%s\"}",
                 (unsigned long long)ts, (unsigned long long)uid, status ? status : "", (unsigned long long)dur, ch ? "true" : "false", esc_trace);
         }
@@ -1719,7 +1728,7 @@ static sso_error_t sqlite_audit_log_list(storage_backend_t *self, sso_id_t user_
         if (len + row_len + 3 > cap) {
             cap = (len + row_len + 3) * 2;
             char *new_json = realloc(json, cap);
-            if (!new_json) { free(json); sqlite3_finalize(stmt); return SSO_ERR_OUT_OF_MEMORY; }
+            if (!new_json) { free(json); free(esc_det); free(esc_trace); free(row); sqlite3_finalize(stmt); return SSO_ERR_OUT_OF_MEMORY; }
             json = new_json;
         }
 
@@ -1732,6 +1741,9 @@ static sso_error_t sqlite_audit_log_list(storage_backend_t *self, sso_id_t user_
         json[len] = '\0';
     }
 
+    free(esc_det);
+    free(esc_trace);
+    free(row);
     json[len++] = ']';
     json[len] = '\0';
     sqlite3_finalize(stmt);
