@@ -205,6 +205,13 @@ sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *req,
 
     snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
 
+    char *buf = (char *)malloc(4096);
+    if (!buf) {
+        free(json);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
     for (size_t i = 0; i < count; i++) {
         user_t u;
         err = user_get_by_id(umgr, ids[i], &u);
@@ -221,11 +228,11 @@ sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *req,
         for (size_t j = 0; j < rc; j++) {
             role_t r;
             if (role_get_by_id(rmgr, role_ids[j], &r) == SSO_OK) {
-                char buf[128];
-                snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
+                char tmp[128];
+                snprintf(tmp, sizeof(tmp), "%s{\"id\":%llu,\"name\":\"%s\"}",
                          j > 0 ? "," : "",
                          (unsigned long long)r.id, r.name);
-                strcat(roles_json, buf);
+                strcat(roles_json, tmp);
             }
         }
         strcat(roles_json, "]");
@@ -242,17 +249,16 @@ sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *req,
         for (size_t j = 0; j < gc; j++) {
             group_t g;
             if (group_get_by_id(gmgr, group_ids[j], &g) == SSO_OK) {
-                char buf[128];
-                snprintf(buf, sizeof(buf), "%s{\"id\":%llu,\"name\":\"%s\"}",
+                char tmp[128];
+                snprintf(tmp, sizeof(tmp), "%s{\"id\":%llu,\"name\":\"%s\"}",
                          j > 0 ? "," : "",
                          (unsigned long long)g.id, g.name);
-                strcat(groups_json, buf);
+                strcat(groups_json, tmp);
             }
         }
         strcat(groups_json, "]");
 
-        char buf[4096];
-        snprintf(buf, sizeof(buf),
+        snprintf(buf, 4096,
             "%s{"
             "\"id\":%llu,"
             "\"username\":\"%s\","
@@ -277,6 +283,7 @@ sso_error_t handle_list_users(sso_context_t *ctx, const http_request_t *req,
         strcat(json, buf);
     }
     strcat(json, "]}");
+    free(buf);
 
     sso_response_ok(resp, json);
     free(json);
@@ -340,8 +347,12 @@ sso_error_t handle_get_user(sso_context_t *ctx, const http_request_t *req,
     }
     strcat(groups_json, "]");
 
-    char json[4096];
-    snprintf(json, sizeof(json),
+    char *json = (char *)malloc(4096);
+    if (!json) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    snprintf(json, 4096,
         "{"
         "\"id\":%llu,"
         "\"username\":\"%s\","
@@ -364,6 +375,7 @@ sso_error_t handle_get_user(sso_context_t *ctx, const http_request_t *req,
         (long long)u.created_at);
 
     sso_response_ok(resp, json);
+    free(json);
     return SSO_OK;
 }
 
@@ -397,6 +409,13 @@ sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *req,
 
     snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
 
+    char *buf = (char *)malloc(4096);
+    if (!buf) {
+        free(json);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
     for (size_t i = 0; i < count; i++) {
         role_t r;
         err = role_get_by_id(rmgr, ids[i], &r);
@@ -411,8 +430,7 @@ sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *req,
             }
         }
 
-        char buf[4096];
-        snprintf(buf, sizeof(buf),
+        snprintf(buf, 4096,
             "%s{"
             "\"id\":%llu,"
             "\"name\":\"%s\","
@@ -433,6 +451,7 @@ sso_error_t handle_list_roles(sso_context_t *ctx, const http_request_t *req,
         strcat(json, buf);
     }
     strcat(json, "]}");
+    free(buf);
 
     sso_response_ok(resp, json);
     free(json);
@@ -469,13 +488,19 @@ sso_error_t handle_list_policies(sso_context_t *ctx, const http_request_t *req,
 
     snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
 
+    char *buf = (char *)malloc(10240);
+    if (!buf) {
+        free(json);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
     for (size_t i = 0; i < count; i++) {
         policy_t p;
         err = policy_get_by_id(pmgr, ids[i], &p);
         if (err != SSO_OK) continue;
 
-        char buf[10240];
-        snprintf(buf, sizeof(buf),
+        snprintf(buf, 10240,
             "%s{"
             "\"id\":%llu,"
             "\"name\":\"%s\","
@@ -500,6 +525,7 @@ sso_error_t handle_list_policies(sso_context_t *ctx, const http_request_t *req,
         strcat(json, buf);
     }
     strcat(json, "]}");
+    free(buf);
 
     sso_response_ok(resp, json);
     free(json);
@@ -536,6 +562,13 @@ sso_error_t handle_list_groups(sso_context_t *ctx, const http_request_t *req,
 
     snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
 
+    char *buf = (char *)malloc(4096);
+    if (!buf) {
+        free(json);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+
     for (size_t i = 0; i < count; i++) {
         group_t g;
         err = group_get_by_id(gmgr, ids[i], &g);
@@ -549,8 +582,7 @@ sso_error_t handle_list_groups(sso_context_t *ctx, const http_request_t *req,
             }
         }
 
-        char buf[4096];
-        snprintf(buf, sizeof(buf),
+        snprintf(buf, 4096,
             "%s{"
             "\"id\":%llu,"
             "\"name\":\"%s\","
@@ -571,6 +603,7 @@ sso_error_t handle_list_groups(sso_context_t *ctx, const http_request_t *req,
         strcat(json, buf);
     }
     strcat(json, "]}");
+    free(buf);
 
     sso_response_ok(resp, json);
     free(json);
@@ -1205,8 +1238,13 @@ sso_error_t handle_get_user_policies(sso_context_t *ctx, const http_request_t *r
         return SSO_OK;
     }
 
-    char json[4096];
-    char arr[3072];
+    char *arr = (char *)malloc(3072);
+    char *json = (char *)malloc(4096);
+    if (!arr || !json) {
+        free(arr); free(json);
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
     arr[0] = '\0';
     strcat(arr, "[");
     for (size_t i = 0; i < count; i++) {
@@ -1218,8 +1256,10 @@ sso_error_t handle_get_user_policies(sso_context_t *ctx, const http_request_t *r
     }
     strcat(arr, "]");
 
-    snprintf(json, sizeof(json), "{\"policies\":%s}", arr);
+    snprintf(json, 4096, "{\"policies\":%s}", arr);
     sso_response_ok(resp, json);
+    free(arr);
+    free(json);
     return SSO_OK;
 }
 
@@ -1289,11 +1329,16 @@ sso_error_t handle_get_policy_targets(sso_context_t *ctx, const http_request_t *
         }
     }
 
-    char json[4096];
-    snprintf(json, sizeof(json),
+    char *json = (char *)malloc(4096);
+    if (!json) {
+        sso_response_error(resp, 500, "Out of memory");
+        return SSO_OK;
+    }
+    snprintf(json, 4096,
         "{\"user_ids\":%s,\"role_ids\":%s,\"group_ids\":%s}",
         users_json, roles_json, groups_json);
     sso_response_ok(resp, json);
+    free(json);
     return SSO_OK;
 }
 
