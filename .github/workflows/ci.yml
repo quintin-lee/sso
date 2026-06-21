@@ -56,8 +56,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install cppcheck
-      run: sudo apt-get update && sudo apt-get install -y cppcheck
+    - name: Install dependencies and tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cppcheck clang-tidy bear \
+          build-essential libsqlite3-dev libsodium-dev libssl-dev \
+          libcurl4-openssl-dev libmicrohttpd-dev libpq-dev libhiredis-dev
 
     - name: Run cppcheck
       run: |
@@ -74,6 +78,14 @@ jobs:
           --std=c11 --language=c \
           -Iinclude \
           src/*.c strategies/*.c
+
+    - name: Generate compile database
+      run: bear -- make
+
+    - name: Run clang-tidy
+      run: |
+        # Filter out 3rd-party code (cJSON.c, toml.c) from analysis to prevent spam
+        find src strategies -name "*.c" ! -name "cJSON.c" ! -name "toml.c" -print0 | xargs -0 clang-tidy -p compile_commands.json
 
   frontend-build:
     runs-on: ubuntu-latest
