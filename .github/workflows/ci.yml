@@ -79,7 +79,7 @@ jobs:
           --suppress=toomanyconfigs --suppress=missingInclude \
           --suppress=staticFunction --error-exitcode=1 \
           --std=c11 --language=c \
-          -Iinclude \
+          -Iinclude -isrc/yyjson.c \
           src/*.c strategies/*.c
 
     - name: Generate compile database
