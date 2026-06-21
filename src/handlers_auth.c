@@ -6,7 +6,7 @@
 #include "token.h"
 #include "ratelimit.h"
 #include "config.h"
-#include "cJSON.h"
+#include "yyjson.h"
 #include "storage.h"
 #include "role.h"
 #include "mfa.h"
@@ -860,15 +860,17 @@ sso_error_t handle_certs(sso_context_t* ctx, const http_request_t* req, http_res
 	}
 
 	/* Wrap in JSON */
-	cJSON* root = cJSON_CreateObject();
-	cJSON_AddStringToObject(root, "public_key", pem);
-	cJSON_AddStringToObject(root, "alg", "RS256");
+	yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+	yyjson_mut_val *root = yyjson_mut_obj(doc);
+	yyjson_mut_doc_set_root(doc, root);
+	yyjson_mut_obj_add_str(doc, root, "public_key", pem);
+	yyjson_mut_obj_add_str(doc, root, "alg", "RS256");
 
-	char* json = cJSON_PrintUnformatted(root);
+	char* json = yyjson_mut_write(doc, 0, NULL);
 	sso_response_ok(resp, json);
 
-	cJSON_free(json);
-	cJSON_Delete(root);
+	free(json);
+	yyjson_mut_doc_free(doc);
 	free(pem);
 	return SSO_OK;
 }

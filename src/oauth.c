@@ -6,7 +6,7 @@
 #include "config.h"
 #include "user.h"
 #include "logger.h"
-#include "cJSON.h"
+
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 #include <openssl/bn.h>

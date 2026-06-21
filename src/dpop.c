@@ -1,5 +1,5 @@
 #include "dpop.h"
-#include "cJSON.h"
+#include "yyjson.h"
 #include "logger.h"
 #include <string.h>
 #include <stdio.h>
@@ -64,8 +64,11 @@ sso_error_t dpop_verify_proof(const char* dpop_proof, const char* method, const 
 	size_t		   pld_bin_len = base64url_decode(pld_b64, pld_bin, pld_len);
 	pld_bin[pld_bin_len]	   = '\0';
 
-	cJSON* hdr_json = cJSON_Parse((const char*)hdr_bin);
-	cJSON* pld_json = cJSON_Parse((const char*)pld_bin);
+	yyjson_doc *hdr_doc = yyjson_read((const char*)hdr_bin, hdr_bin_len, 0);
+	yyjson_val *hdr_json = hdr_doc ? yyjson_doc_get_root(hdr_doc) : NULL;
+
+	yyjson_doc *pld_doc = yyjson_read((const char*)pld_bin, pld_bin_len, 0);
+	yyjson_val *pld_json = pld_doc ? yyjson_doc_get_root(pld_doc) : NULL;
 
 	sso_error_t result	   = SSO_ERR_TOKEN_INVALID;
 	EVP_PKEY*	pkey	   = NULL;
@@ -75,34 +78,34 @@ sso_error_t dpop_verify_proof(const char* dpop_proof, const char* method, const 
 		goto cleanup;
 
 	/* 1. Verify Header */
-	cJSON* typ = cJSON_GetObjectItem(hdr_json, "typ");
-	if (!typ || !cJSON_IsString(typ) || !str_case_equals(typ->valuestring, "dpop+jwt")) {
+	yyjson_val* typ = yyjson_obj_get(hdr_json, "typ");
+	if (!typ || !yyjson_is_str(typ) || !str_case_equals(yyjson_get_str(typ), "dpop+jwt")) {
 		LOG_WARN("[dpop] Invalid typ");
 		goto cleanup;
 	}
 
-	cJSON* alg = cJSON_GetObjectItem(hdr_json, "alg");
-	if (!alg || !cJSON_IsString(alg) || strcmp(alg->valuestring, "RS256") != 0) {
+	yyjson_val* alg = yyjson_obj_get(hdr_json, "alg");
+	if (!alg || !yyjson_is_str(alg) || strcmp(yyjson_get_str(alg), "RS256") != 0) {
 		LOG_WARN("[dpop] Only RS256 is supported currently");
 		goto cleanup;
 	}
 
-	cJSON* jwk = cJSON_GetObjectItem(hdr_json, "jwk");
-	if (!jwk || !cJSON_IsObject(jwk))
+	yyjson_val* jwk = yyjson_obj_get(hdr_json, "jwk");
+	if (!jwk || !yyjson_is_obj(jwk))
 		goto cleanup;
 
-	cJSON* kty	 = cJSON_GetObjectItem(jwk, "kty");
-	cJSON* n_val = cJSON_GetObjectItem(jwk, "n");
-	cJSON* e_val = cJSON_GetObjectItem(jwk, "e");
-	if (!kty || !cJSON_IsString(kty) || strcmp(kty->valuestring, "RSA") != 0 || !n_val || !cJSON_IsString(n_val) ||
-		!e_val || !cJSON_IsString(e_val)) {
+	yyjson_val* kty	 = yyjson_obj_get(jwk, "kty");
+	yyjson_val* n_val = yyjson_obj_get(jwk, "n");
+	yyjson_val* e_val = yyjson_obj_get(jwk, "e");
+	if (!kty || !yyjson_is_str(kty) || strcmp(yyjson_get_str(kty), "RSA") != 0 || !n_val || !yyjson_is_str(n_val) ||
+		!e_val || !yyjson_is_str(e_val)) {
 		goto cleanup;
 	}
 
 	/* 2. Compute JWK Thumbprint (jkt) */
 	char canonical_jwk[2048];
-	snprintf(canonical_jwk, sizeof(canonical_jwk), "{\"e\":\"%s\",\"kty\":\"RSA\",\"n\":\"%s\"}", e_val->valuestring,
-			 n_val->valuestring);
+	snprintf(canonical_jwk, sizeof(canonical_jwk), "{\"e\":\"%s\",\"kty\":\"RSA\",\"n\":\"%s\"}", yyjson_get_str(e_val),
+			 yyjson_get_str(n_val));
 
 	unsigned char hash[SHA256_DIGEST_LENGTH];
 	SHA256((const unsigned char*)canonical_jwk, strlen(canonical_jwk), hash);
@@ -114,40 +117,40 @@ sso_error_t dpop_verify_proof(const char* dpop_proof, const char* method, const 
 	}
 
 	/* 3. Verify Payload */
-	cJSON* htm = cJSON_GetObjectItem(pld_json, "htm");
-	cJSON* htu = cJSON_GetObjectItem(pld_json, "htu");
-	cJSON* iat = cJSON_GetObjectItem(pld_json, "iat");
+	yyjson_val* htm = yyjson_obj_get(pld_json, "htm");
+	yyjson_val* htu = yyjson_obj_get(pld_json, "htu");
+	yyjson_val* iat = yyjson_obj_get(pld_json, "iat");
 
-	if (!htm || !cJSON_IsString(htm) || !str_case_equals(htm->valuestring, method)) {
+	if (!htm || !yyjson_is_str(htm) || !str_case_equals(yyjson_get_str(htm), method)) {
 		LOG_WARN("[dpop] Method mismatch");
 		goto cleanup;
 	}
 
-	if (!htu || !cJSON_IsString(htu))
+	if (!htu || !yyjson_is_str(htu))
 		goto cleanup;
 	/* Basic URL matching (should ideally strip query parameters if needed) */
-	if (strncmp(htu->valuestring, url, strlen(url)) != 0) {
+	if (strncmp(yyjson_get_str(htu), url, strlen(url)) != 0) {
 		LOG_WARN("[dpop] URL mismatch");
 		goto cleanup;
 	}
 
-	if (!iat || !cJSON_IsNumber(iat))
+	if (!iat || !yyjson_is_num(iat))
 		goto cleanup;
 	sso_timestamp_t now	   = sso_timestamp_now();
-	sso_timestamp_t iat_ms = (sso_timestamp_t)(iat->valuedouble * 1000.0);
+	sso_timestamp_t iat_ms = (sso_timestamp_t)(yyjson_get_num(iat) * 1000.0);
 	if (iat_ms > now + 300000 || iat_ms < now - 300000) {
 		LOG_WARN("[dpop] Token expired or generated in the future");
 		goto cleanup;
 	}
 
 	/* 4. Signature Verification */
-	size_t		   n_len	 = strlen(n_val->valuestring);
+	size_t		   n_len	 = strlen(yyjson_get_str(n_val));
 	unsigned char* n_bin	 = malloc(n_len);
-	size_t		   n_bin_len = base64url_decode(n_val->valuestring, n_bin, n_len);
+	size_t		   n_bin_len = base64url_decode(yyjson_get_str(n_val), n_bin, n_len);
 
-	size_t		   e_len	 = strlen(e_val->valuestring);
+	size_t		   e_len	 = strlen(yyjson_get_str(e_val));
 	unsigned char* e_bin	 = malloc(e_len);
-	size_t		   e_bin_len = base64url_decode(e_val->valuestring, e_bin, e_len);
+	size_t		   e_bin_len = base64url_decode(yyjson_get_str(e_val), e_bin, e_len);
 
 	BIGNUM* bn_n = BN_bin2bn(n_bin, n_bin_len, NULL);
 	BIGNUM* bn_e = BN_bin2bn(e_bin, e_bin_len, NULL);
@@ -207,10 +210,10 @@ sso_error_t dpop_verify_proof(const char* dpop_proof, const char* method, const 
 	}
 
 cleanup:
-	if (hdr_json)
-		cJSON_Delete(hdr_json);
-	if (pld_json)
-		cJSON_Delete(pld_json);
+	if (hdr_doc)
+		yyjson_doc_free(hdr_doc);
+	if (pld_doc)
+		yyjson_doc_free(pld_doc);
 	if (pkey)
 		EVP_PKEY_free(pkey);
 	free(hdr_bin);

@@ -24,7 +24,7 @@
 #include "logger.h"
 #include "token.h"
 #include "config.h"
-#include "cJSON.h"
+
 
 /* ========================================================================
  * Per-connection state for the MHD access handler callback

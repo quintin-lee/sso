@@ -2,7 +2,7 @@
 #include "server.h"
 #include "logger.h"
 #include "config.h"
-#include "cJSON.h"
+
 #include "handlers.h"
 #include "dpop.h"
 

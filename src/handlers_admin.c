@@ -8,7 +8,7 @@
 #include "policy.h"
 #include "storage.h"
 #include "permission.h"
-#include "cJSON.h"
+
 #include <sodium.h>
 #include <string.h>
 #include <stdio.h>

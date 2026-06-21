@@ -3,7 +3,7 @@
 #include "handlers.h"
 #include "logger.h"
 #include "permission.h"
-#include "cJSON.h"
+
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
