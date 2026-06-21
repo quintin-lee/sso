@@ -58,6 +58,8 @@ SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/handlers_auth.c \
        $(SRCDIR)/handlers_admin.c \
        $(SRCDIR)/handlers_check.c \
+       $(SRCDIR)/handlers_webauthn.c \
+       $(SRCDIR)/webauthn.c \
        $(SRCDIR)/demo.c          \
        $(SRCDIR)/interactive.c   \
        $(SRCDIR)/main.c

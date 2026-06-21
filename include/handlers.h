@@ -42,6 +42,10 @@ sso_error_t handle_mfa_enable(sso_context_t* ctx, const http_request_t* req, htt
 sso_error_t handle_mfa_verify(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
 sso_error_t handle_send_sms(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
 sso_error_t handle_login_by_sms(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
+sso_error_t handle_webauthn_register_challenge(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
+sso_error_t handle_webauthn_register(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
+sso_error_t handle_webauthn_login_challenge(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
+sso_error_t handle_webauthn_login(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
 sso_error_t handle_register(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
 sso_error_t handle_verify(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
 sso_error_t handle_refresh(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);

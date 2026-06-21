@@ -266,6 +266,10 @@ static int run_server(sso_config_t* cfg, const char* config_path) {
 			{"/api/v1/auth/mfa/setup", HTTP_POST, handle_mfa_setup, true},
 			{"/api/v1/auth/mfa/enable", HTTP_POST, handle_mfa_enable, true},
 			{"/api/v1/auth/mfa/verify", HTTP_POST, handle_mfa_verify, false},
+			{"/api/v1/auth/webauthn/register/challenge", HTTP_POST, handle_webauthn_register_challenge, true},
+			{"/api/v1/auth/webauthn/register", HTTP_POST, handle_webauthn_register, true},
+			{"/api/v1/auth/webauthn/login/challenge", HTTP_POST, handle_webauthn_login_challenge, false},
+			{"/api/v1/auth/webauthn/login", HTTP_POST, handle_webauthn_login, false},
 
 			/* Auth required */
 			{"/api/v1/auth/verify", HTTP_GET, handle_verify, false},
