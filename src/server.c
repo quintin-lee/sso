@@ -204,7 +204,7 @@ static sso_context_t* get_tenant_context(sso_server_t* server, const char* host)
 	memcpy(&new_config, base_config, sizeof(new_config));
 
 	/* Inject tenant isolation to DB URL */
-	char new_db_url[SSO_MAX_PATH];
+	char new_db_url[2048];
 	if (strstr(new_config.database_url, ".db")) {
 		char* ext		 = strstr(new_config.database_url, ".db");
 		int	  prefix_len = ext - new_config.database_url;

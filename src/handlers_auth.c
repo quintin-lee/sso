@@ -72,7 +72,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 	/* DPoP Proof Evaluation */
 	char dpop_jkt[64] = {0};
 	if (req->dpop_proof[0]) {
-		char full_url[1024];
+		char full_url[2048];
 		snprintf(full_url, sizeof(full_url), "http://%s%s", req->host[0] ? req->host : "localhost", req->path);
 		if (dpop_verify_proof(req->dpop_proof, req->method_str, full_url, NULL, dpop_jkt) != SSO_OK) {
 			sso_response_error(resp, 401, "Invalid DPoP Proof");
@@ -605,7 +605,7 @@ sso_error_t handle_verify(sso_context_t* ctx, const http_request_t* req, http_re
 		}
 
 		char verified_jkt[64] = {0};
-		char full_url[1024];
+		char full_url[2048];
 		snprintf(full_url, sizeof(full_url), "http://%s%s", req->host[0] ? req->host : "localhost", req->path);
 
 		if (dpop_verify_proof(req->dpop_proof, req->method_str, full_url, tok.jkt, verified_jkt) != SSO_OK) {

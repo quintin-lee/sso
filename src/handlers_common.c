@@ -345,7 +345,7 @@ sso_error_t authenticate_request(sso_server_t* server, const http_request_t* req
 		}
 
 		char derived_jkt[64] = {0};
-		char full_url[1024];
+		char full_url[2048];
 		snprintf(full_url, sizeof(full_url), "http://%s%s", req->host[0] ? req->host : "localhost", req->path);
 
 		if (dpop_verify_proof(req->dpop_proof, req->method_str, full_url, req->auth_token, derived_jkt) != SSO_OK) {

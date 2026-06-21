@@ -423,7 +423,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 
 	char dpop_jkt[64] = {0};
 	if (req->dpop_proof[0]) {
-		char full_url[1024];
+		char full_url[2048];
 		snprintf(full_url, sizeof(full_url), "http://%s%s", req->host[0] ? req->host : "localhost", req->path);
 		if (dpop_verify_proof(req->dpop_proof, req->method_str, full_url, NULL, dpop_jkt) != SSO_OK) {
 			json_error_response(resp, 400, "invalid_dpop_proof");
