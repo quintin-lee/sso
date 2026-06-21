@@ -28,6 +28,9 @@ static volatile sig_atomic_t g_reload_config = 0;
 static _Thread_local arena_t t_arena;
 static _Thread_local bool	 t_arena_init = false;
 
+/* Global counter for unique request ID generation */
+static atomic_ullong g_request_counter = 0;
+
 /* ========================================================================
  * Connection wrapper (raw fd or TLS)
  * ======================================================================== */
@@ -509,7 +512,7 @@ static ssize_t conn_write_all(conn_t* c, const void* buf, size_t n) {
 	return (ssize_t)n;
 }
 
-static void send_response(conn_t* c, const http_response_t* resp) {
+static void send_response(conn_t* c, const http_response_t* resp, const char* request_id) {
 	char hsts[128] = "";
 	if (g_server && g_server->ssl_ctx) {
 		snprintf(hsts, sizeof(hsts), "Strict-Transport-Security: max-age=31536000; includeSubDomains\r\n");
@@ -535,6 +538,7 @@ static void send_response(conn_t* c, const http_response_t* resp) {
 					 "Access-Control-Expose-Headers: X-SSO-User, X-SSO-Access-Token, X-SSO-Refresh-Token\r\n"
 					 "X-Content-Type-Options: nosniff\r\n"
 					 "X-Frame-Options: SAMEORIGIN\r\n"
+					 "X-Request-Id: %s\r\n"
 					 "Permissions-Policy: geolocation=(), microphone=(), camera=()\r\n"
 					 "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' "
 					 "'unsafe-inline';\r\n"
@@ -554,7 +558,8 @@ static void send_response(conn_t* c, const http_response_t* resp) {
 					 : resp->status_code == 404 ? "Not Found"
 					 : resp->status_code == 500 ? "Internal Server Error"
 												: "Unknown",
-					 resp->content_type, resp->body_len, cors_origin, hsts, vary, resp->extra_headers);
+					 resp->content_type, resp->body_len, cors_origin, request_id ? request_id : "unknown", hsts, vary,
+					 resp->extra_headers);
 
 	conn_write_all(c, header, (size_t)n);
 	if (resp->body && resp->body_len > 0) {
@@ -602,6 +607,11 @@ static void handle_client(sso_server_t* server, conn_t* conn, const char* client
 		conn_close(conn);
 		return;
 	}
+	/* Generate Trace ID */
+	unsigned long long req_num = atomic_fetch_add(&g_request_counter, 1);
+	snprintf(req.request_id, sizeof(req.request_id), "req-%lx-%08llx", (unsigned long)time(NULL), req_num);
+	log_set_request_id(req.request_id);
+
 	sso_strlcpy(req.client_ip, client_ip, sizeof(req.client_ip));
 	req.client_ip[sizeof(req.client_ip) - 1] = '\0';
 
@@ -625,8 +635,9 @@ static void handle_client(sso_server_t* server, conn_t* conn, const char* client
 				 "Access-Control-Max-Age: 86400\r\n");
 		resp.body	  = strdup("");
 		resp.body_len = 0;
-		send_response(conn, &resp);
+		send_response(conn, &resp, req.request_id);
 		cleanup_request(conn, &resp, &req);
+		log_set_request_id(NULL);
 		return;
 	}
 
@@ -643,8 +654,9 @@ static void handle_client(sso_server_t* server, conn_t* conn, const char* client
 
 	if (!matched) {
 		sso_response_error(&resp, 404, "Not found");
-		send_response(conn, &resp);
+		send_response(conn, &resp, req.request_id);
 		cleanup_request(conn, &resp, &req);
+		log_set_request_id(NULL);
 		return;
 	}
 
@@ -653,8 +665,9 @@ static void handle_client(sso_server_t* server, conn_t* conn, const char* client
 		auth_context_t* auth = (auth_context_t*)arena_alloc(&req.arena, sizeof(auth_context_t));
 		if (!auth) {
 			sso_response_error(&resp, 500, "Internal server error");
-			send_response(conn, &resp);
+			send_response(conn, &resp, req.request_id);
 			cleanup_request(conn, &resp, &req);
+			log_set_request_id(NULL);
 			return;
 		}
 		sso_error_t aerr = authenticate_request(server, &req, &auth->user, &auth->token);
@@ -664,8 +677,9 @@ static void handle_client(sso_server_t* server, conn_t* conn, const char* client
 				msg = "Token expired";
 			sso_response_error(&resp, 401, msg);
 			token_destroy(&auth->token);
-			send_response(conn, &resp);
+			send_response(conn, &resp, req.request_id);
 			cleanup_request(conn, &resp, &req);
+			log_set_request_id(NULL);
 			return;
 		}
 		req.userdata = auth;
@@ -681,8 +695,9 @@ static void handle_client(sso_server_t* server, conn_t* conn, const char* client
 		sso_response_error(&resp, 500, sso_strerror(err));
 	}
 
-	send_response(conn, &resp);
+	send_response(conn, &resp, req.request_id);
 	cleanup_request(conn, &resp, &req);
+	log_set_request_id(NULL);
 }
 
 /* ========================================================================

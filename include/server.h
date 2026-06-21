@@ -45,81 +45,80 @@ extern "C" {
  * Auth context — passed to handlers via req->userdata after authentication
  * ======================================================================== */
 typedef struct {
-    user_t        user;          /* authenticated user              */
-    token_t       token;         /* decoded token                   */
+	user_t	user;  /* authenticated user              */
+	token_t token; /* decoded token                   */
 } auth_context_t;
 
 /* ========================================================================
  * HTTP method
  * ======================================================================== */
 typedef enum {
-    HTTP_GET,
-    HTTP_POST,
-    HTTP_PUT,
-    HTTP_DELETE,
-    HTTP_PATCH,
-    HTTP_OPTIONS,
+	HTTP_GET,
+	HTTP_POST,
+	HTTP_PUT,
+	HTTP_DELETE,
+	HTTP_PATCH,
+	HTTP_OPTIONS,
 } http_method_t;
 
 /* ========================================================================
  * HTTP request / response (minimal)
  * ======================================================================== */
 typedef struct {
-    arena_t          arena;             /* Arena memory pool for request-scoped allocations */
-    http_method_t    method;
-    char             path[1024];
-    char             client_ip[64];     /* requester IP address */
-    char             *body;
-    size_t           body_len;
-    char             **query_params;    /* "key=value" strings, NULL-terminated */
-    char             auth_token[SSO_MAX_TOKEN_STR];
-    char             origin[256];       /* Origin header from request (CORS)   */
-    char             dpop_proof[8192];  /* DPoP Proof JWT Header               */
-    char             host[256];         /* Host header for DPoP URL generation */
-    char             method_str[16];    /* Original HTTP method string         */
-    void             *userdata;         /* connection-specific data */
+	arena_t		  arena; /* Arena memory pool for request-scoped allocations */
+	http_method_t method;
+	char		  path[1024];
+	char		  client_ip[64]; /* requester IP address */
+	char*		  body;
+	size_t		  body_len;
+	char**		  query_params; /* "key=value" strings, NULL-terminated */
+	char		  auth_token[SSO_MAX_TOKEN_STR];
+	char		  origin[256];		/* Origin header from request (CORS)   */
+	char		  dpop_proof[8192]; /* DPoP Proof JWT Header               */
+	char		  host[256];		/* Host header for DPoP URL generation */
+	char		  method_str[16];	/* Original HTTP method string         */
+	char		  request_id[64];	/* Unique trace ID for this request    */
+	void*		  userdata;			/* connection-specific data */
 } http_request_t;
 
 typedef struct {
-    int              status_code;       /* 200, 201, 400, 401, 403, 404, 500 … */
-    char             *body;             /* response body (JSON)                 */
-    size_t           body_len;
-    char             content_type[64];  /* e.g. "application/json"              */
-    char             extra_headers[16384]; /* Custom headers: "Key: Value\r\n..." */
-    char             cors_origin[256];  /* Echo-back origin for CORS (per spec) */
+	int	   status_code; /* 200, 201, 400, 401, 403, 404, 500 … */
+	char*  body;		/* response body (JSON)                 */
+	size_t body_len;
+	char   content_type[64];	 /* e.g. "application/json"              */
+	char   extra_headers[16384]; /* Custom headers: "Key: Value\r\n..." */
+	char   cors_origin[256];	 /* Echo-back origin for CORS (per spec) */
 } http_response_t;
 
 /* ========================================================================
  * Request handler — each route registers one of these.
  * ======================================================================== */
-typedef sso_error_t (*route_handler_fn)(sso_context_t *ctx,
-                                        const http_request_t *req,
-                                        http_response_t *resp);
+typedef sso_error_t (*route_handler_fn)(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
 
 /* ========================================================================
  * Route registration
  * ======================================================================== */
 typedef struct {
-    const char      *path_pattern;      /* e.g. "/api/v1/users/:id"            */
-    http_method_t    method;
-    route_handler_fn handler;
-    bool             require_auth;      /* if true, middleware checks token    */
+	const char*		 path_pattern; /* e.g. "/api/v1/users/:id"            */
+	http_method_t	 method;
+	route_handler_fn handler;
+	bool			 require_auth; /* if true, middleware checks token    */
 } route_t;
 
 /* ========================================================================
  * Server
  * ======================================================================== */
 struct sso_server {
-    char             host[64];
-    int              port;
-    route_t         *routes;
-    size_t           route_count;
-    route_t        **method_routes[6];  /* per-method pointer arrays into routes[] */
-    size_t           method_route_count[6];
-    sso_context_t   *sso_ctx;
-    void            *server_data;       /* platform-specific (socket, ctx)     */
-    SSL_CTX         *ssl_ctx;           /* TLS context, NULL if disabled      */
-    char             config_path[SSO_MAX_PATH]; /* config file path for SIGHUP reload */
+	char		   host[64];
+	int			   port;
+	route_t*	   routes;
+	size_t		   route_count;
+	route_t**	   method_routes[6]; /* per-method pointer arrays into routes[] */
+	size_t		   method_route_count[6];
+	sso_context_t* sso_ctx;
+	void*		   server_data;				  /* platform-specific (socket, ctx)     */
+	SSL_CTX*	   ssl_ctx;					  /* TLS context, NULL if disabled      */
+	char		   config_path[SSO_MAX_PATH]; /* config file path for SIGHUP reload */
 };
 
 /* -----------------------------------------------------------------------
@@ -128,38 +127,36 @@ struct sso_server {
 
 /* Create and configure the server.  routes must remain valid for the
  * server's lifetime. */
-sso_error_t sso_server_init(sso_server_t *server, sso_context_t *ctx,
-                            const char *host, int port,
-                            const route_t *routes, size_t route_count);
+sso_error_t sso_server_init(sso_server_t* server, sso_context_t* ctx, const char* host, int port, const route_t* routes,
+							size_t route_count);
 
 /* Start the server (blocking).  Returns on SIGINT / error. */
-sso_error_t sso_server_start(sso_server_t *server);
+sso_error_t sso_server_start(sso_server_t* server);
 
 /* Signal the server to stop (called from signal handler). */
-void        sso_server_stop(sso_server_t *server);
+void sso_server_stop(sso_server_t* server);
 
 /* -----------------------------------------------------------------------
  * Route matching (exposed for testing)
  * ----------------------------------------------------------------------- */
-bool match_route(const char *pattern, const char *path, char **params);
+bool match_route(const char* pattern, const char* path, char** params);
 
 /* -----------------------------------------------------------------------
  * Response helpers
  * ----------------------------------------------------------------------- */
 
 /* Fill a JSON 200 response.  body_json must be a valid JSON string. */
-void sso_response_ok(http_response_t *resp, const char *body_json);
+void sso_response_ok(http_response_t* resp, const char* body_json);
 
 /* Fill a JSON error response with the given status code and message. */
-void sso_response_error(http_response_t *resp, int status_code, const char *message);
+void sso_response_error(http_response_t* resp, int status_code, const char* message);
 
 /* -----------------------------------------------------------------------
  * Auth middleware
  * ----------------------------------------------------------------------- */
 
 /* Authenticate a request: verify token, look up user, check nonce. */
-sso_error_t authenticate_request(sso_server_t *server, const http_request_t *req,
-                                 user_t *user, token_t *tok);
+sso_error_t authenticate_request(sso_server_t* server, const http_request_t* req, user_t* user, token_t* tok);
 
 #ifdef __cplusplus
 }

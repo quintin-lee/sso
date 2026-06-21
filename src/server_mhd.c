@@ -40,8 +40,9 @@ typedef struct {
 	char*	body;
 	size_t	body_size;
 	size_t	body_capacity;
-	char**	query_params; /* owned, freed in completion callback */
-	void*	userdata;	  /* auth_context_t, freed in completion   */
+	char**	query_params;	/* owned, freed in completion callback */
+	void*	userdata;		/* auth_context_t, freed in completion   */
+	char	request_id[64]; /* Unique trace ID */
 } mhd_conn_state_t;
 
 /* ========================================================================
@@ -52,6 +53,9 @@ static volatile sig_atomic_t g_shutdown = 0;
 static _Thread_local arena_t t_arena;
 static _Thread_local bool	 t_arena_init	 = false;
 static volatile sig_atomic_t g_reload_config = 0;
+
+/* Global counter for unique request ID generation */
+static atomic_ullong g_request_counter = 0;
 
 static void sigint_handler(int sig) {
 	(void)sig;
@@ -294,7 +298,11 @@ static enum MHD_Result mhd_access_handler(void* cls, struct MHD_Connection* conn
 			t_arena_init = true;
 		}
 		state->arena = t_arena;
-		*req_cls	 = state;
+
+		unsigned long long req_num = atomic_fetch_add(&g_request_counter, 1);
+		snprintf(state->request_id, sizeof(state->request_id), "req-%lx-%08llx", (unsigned long)time(NULL), req_num);
+
+		*req_cls = state;
 		atomic_fetch_add(&g_metric_active_connections, 1);
 		return MHD_YES;
 	}
@@ -320,6 +328,9 @@ static enum MHD_Result mhd_access_handler(void* cls, struct MHD_Connection* conn
 	enum MHD_Result ret;
 
 	memset(&req, 0, sizeof(req));
+	sso_strlcpy(req.request_id, state->request_id, sizeof(req.request_id));
+	log_set_request_id(req.request_id);
+
 	const char* host_hdr = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Host");
 	if (host_hdr)
 		sso_strlcpy(req.host, host_hdr, sizeof(req.host));
@@ -449,6 +460,7 @@ send_response:
 			if (resp.body && !arena_contains(&state->arena, resp.body)) {
 				free(resp.body);
 			}
+			log_set_request_id(NULL);
 			return MHD_NO;
 		}
 
@@ -466,6 +478,7 @@ send_response:
 		/* Security headers */
 		MHD_add_response_header(mhd_resp, "X-Content-Type-Options", "nosniff");
 		MHD_add_response_header(mhd_resp, "X-Frame-Options", "SAMEORIGIN");
+		MHD_add_response_header(mhd_resp, "X-Request-Id", req.request_id);
 		MHD_add_response_header(mhd_resp, "Permissions-Policy", "geolocation=(), microphone=(), camera=()");
 		MHD_add_response_header(mhd_resp, "Content-Security-Policy",
 								"default-src 'self'; style-src 'self' 'unsafe-inline'; "
@@ -493,6 +506,7 @@ send_response:
 		ret = MHD_queue_response(connection, (unsigned int)resp.status_code, mhd_resp);
 		MHD_destroy_response(mhd_resp);
 
+		log_set_request_id(NULL);
 		return ret;
 	}
 }
