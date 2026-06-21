@@ -60,6 +60,7 @@ All strategies follow a **vtable pattern** with `compile_rules`, `evaluate`, `va
 ### Performance
 
 - **35K+ QPS on Single Core**: The core permission engine evaluates over 35,000 multi-strategy permission checks per second (RBAC + API Path + Location IP checking) with a sub-30μs latency.
+- **Zero-copy JSON Engine**: JSON parsing and AST construction powered by `yyjson`, eliminating heap allocations during evaluation.
 - **Lock-Free Concurrency**: Leverages C11 `<stdatomic.h>` (`atomic_fetch_add`) for non-blocking counters and ultra-fast trace ID generation.
 - **Pre-compiled Rule Engine**: 100% of rules compiled to in-memory ASTs at policy creation time
 - **L1 Resolution Cache**: Caches user-to-policy mappings (60s TTL)
@@ -89,7 +90,7 @@ All strategies follow a **vtable pattern** with `compile_rules`, `evaluate`, `va
 sso/
 ├── include/                    # Header files
 │   ├── sso.h                  # Core types, error codes, strategy vtable, eval_context
-│   ├── cJSON.h                # Third-party JSON parser
+│   ├── yyjson.h               # High-performance zero-copy JSON parser
 │   ├── config.h               # Configuration (TOML load + env overrides)
 │   ├── group.h                # Group management API
 │   ├── oauth.h                # OAuth 2.0 / OIDC handler declarations
@@ -117,7 +118,7 @@ sso/
 │   ├── permission.c           # Permission engine (L1/L2 caches, strategy router, audit)
 │   ├── ratelimit.c            # Sliding-window rate limiter (DJB2 hash table)
 │   ├── storage_sqlite.c       # SQLite storage backend (WAL mode, recursive CTE)
-│   ├── cJSON.c                # Third-party JSON parser
+│   ├── yyjson.c               # High-performance zero-copy JSON parser
 │   ├── logger.c               # Logger with level-based filtering
 │   ├── login_page.h           # Embedded login HTML page
 │   ├── admin_page.h           # Embedded admin HTML page
@@ -223,7 +224,7 @@ export SSO_TOKEN_SECRET=your_long_secure_secret
 | **libcurl** | SMS gateway HTTP calls |
 | **libmicrohttpd** | Embedded HTTP server (optional; falls back to POSIX sockets) |
 | **pthread** | Thread pool, mutex/rwlock synchronization |
-| **cJSON** | Vendored JSON parser (included in source) |
+| **yyjson** | Vendored ultra-fast zero-copy JSON parser (included in source) |
 | **toml.c** | Vendored TOML parser (included in source) |
 
 ---
