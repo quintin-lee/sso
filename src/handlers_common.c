@@ -4,6 +4,7 @@
 #include "config.h"
 #include "cJSON.h"
 #include "handlers.h"
+#include "dpop.h"
 
 #include <curl/curl.h>
 #include <stdint.h>
@@ -224,7 +225,7 @@ int64_t json_int_value(const char* json, const char* key, int64_t def) {
 const char* validate_password(const char* password, const password_policy_t* policy) {
 	if (!password)
 		return "Password required";
-		
+
 	static const password_policy_t default_policy = PASSWORD_POLICY_DEFAULT;
 	if (!policy)
 		policy = &default_policy;
@@ -337,6 +338,24 @@ sso_error_t authenticate_request(sso_server_t* server, const http_request_t* req
 
 	if (token_is_revoked(tmgr, tok->jti))
 		return SSO_ERR_TOKEN_INVALID;
+
+	if (tok->jkt[0] != '\0') {
+		if (req->dpop_proof[0] == '\0') {
+			return SSO_ERR_AUTH_FAILED;
+		}
+
+		char derived_jkt[64] = {0};
+		char full_url[1024];
+		snprintf(full_url, sizeof(full_url), "http://%s%s", req->host[0] ? req->host : "localhost", req->path);
+
+		if (dpop_verify_proof(req->dpop_proof, req->method_str, full_url, req->auth_token, derived_jkt) != SSO_OK) {
+			return SSO_ERR_AUTH_FAILED;
+		}
+
+		if (strcmp(derived_jkt, tok->jkt) != 0) {
+			return SSO_ERR_AUTH_FAILED;
+		}
+	}
 
 	user_manager_t* umgr = (user_manager_t*)server->sso_ctx->user_mgr;
 	sso_error_t		uerr = user_get_by_id(umgr, tok->user_id, user);
