@@ -436,7 +436,7 @@ static enum MHD_Result mhd_access_handler(void* cls, struct MHD_Connection* conn
 			sso_response_error(&resp, 500, "Internal server error");
 			goto send_response;
 		}
-		sso_error_t aerr = authenticate_request(server, &req, &auth->user, &auth->token);
+		sso_error_t aerr = authenticate_request(active_ctx, &req, &auth->user, &auth->token);
 		if (aerr != SSO_OK) {
 			const char* msg = "Authentication failed";
 			if (aerr == SSO_ERR_TOKEN_EXPIRED)

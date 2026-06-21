@@ -324,14 +324,14 @@ bool match_route(const char* pattern, const char* path, char** params) {
 /* ========================================================================
  * Auth middleware (shared by server.c / server_mhd.c)
  * ======================================================================== */
-sso_error_t authenticate_request(sso_server_t* server, const http_request_t* req, user_t* user, token_t* tok) {
-	if (!server || !req || !user || !tok)
+sso_error_t authenticate_request(sso_context_t* ctx, const http_request_t* req, user_t* user, token_t* tok) {
+	if (!ctx || !req || !user || !tok)
 		return SSO_ERR_INVALID_PARAM;
 
 	if (req->auth_token[0] == '\0')
 		return SSO_ERR_AUTH_FAILED;
 
-	token_manager_t* tmgr = (token_manager_t*)server->sso_ctx->token_mgr;
+	token_manager_t* tmgr = (token_manager_t*)ctx->token_mgr;
 	sso_error_t		 err  = token_verify(tmgr, req->auth_token, tok);
 	if (err != SSO_OK)
 		return err;
@@ -357,7 +357,7 @@ sso_error_t authenticate_request(sso_server_t* server, const http_request_t* req
 		}
 	}
 
-	user_manager_t* umgr = (user_manager_t*)server->sso_ctx->user_mgr;
+	user_manager_t* umgr = (user_manager_t*)ctx->user_mgr;
 	sso_error_t		uerr = user_get_by_id(umgr, tok->user_id, user);
 	if (uerr != SSO_OK)
 		return uerr;

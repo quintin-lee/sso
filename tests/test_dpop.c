@@ -75,13 +75,13 @@ static const char* test_dpop_enforcement() {
 	token_t resolved_token;
 
 	/* The gateway should REJECT it because it's bound to a JKT but no proof is present */
-	err = authenticate_request(&fake_server, &req, &resolved_user, &resolved_token);
+	err = authenticate_request(fake_server.sso_ctx, &req, &resolved_user, &resolved_token);
 	ASSERT_INT_EQUAL(err, SSO_ERR_AUTH_FAILED);
 
 	/* 3. Setup an incoming HTTP request WITH an invalid/forged DPoP proof */
 	sso_strlcpy(req.dpop_proof, "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkhTMjU2In0.e30.signature", sizeof(req.dpop_proof));
 
-	err = authenticate_request(&fake_server, &req, &resolved_user, &resolved_token);
+	err = authenticate_request(fake_server.sso_ctx, &req, &resolved_user, &resolved_token);
 	ASSERT_INT_EQUAL(err, SSO_ERR_AUTH_FAILED);
 
 	token_destroy(&bound_token);

@@ -684,7 +684,7 @@ static void handle_client(sso_server_t* server, conn_t* conn, const char* client
 			log_set_request_id(NULL);
 			return;
 		}
-		sso_error_t aerr = authenticate_request(server, &req, &auth->user, &auth->token);
+		sso_error_t aerr = authenticate_request(active_ctx, &req, &auth->user, &auth->token);
 		if (aerr != SSO_OK) {
 			const char* msg = "Authentication failed";
 			if (aerr == SSO_ERR_TOKEN_EXPIRED)

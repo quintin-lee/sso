@@ -117,6 +117,12 @@ struct sso_server {
 	route_t**	   method_routes[6]; /* per-method pointer arrays into routes[] */
 	size_t		   method_route_count[6];
 	sso_context_t* sso_ctx;
+	
+	/* Multi-Tenant contexts (optional) */
+	sso_context_t** tenant_ctxs;
+	char**          tenant_hosts;
+	size_t          tenant_count;
+
 	void*		   server_data;				  /* platform-specific (socket, ctx)     */
 	SSL_CTX*	   ssl_ctx;					  /* TLS context, NULL if disabled      */
 	char		   config_path[SSO_MAX_PATH]; /* config file path for SIGHUP reload */
@@ -130,6 +136,9 @@ struct sso_server {
  * server's lifetime. */
 sso_error_t sso_server_init(sso_server_t* server, sso_context_t* ctx, const char* host, int port, const route_t* routes,
 							size_t route_count);
+
+/* Register an additional tenant context matched by host header */
+sso_error_t sso_server_add_tenant(sso_server_t* server, sso_context_t* ctx, const char* host);
 
 /* Start the server (blocking).  Returns on SIGINT / error. */
 sso_error_t sso_server_start(sso_server_t* server);
@@ -157,7 +166,7 @@ void sso_response_error(http_response_t* resp, int status_code, const char* mess
  * ----------------------------------------------------------------------- */
 
 /* Authenticate a request: verify token, look up user, check nonce. */
-sso_error_t authenticate_request(sso_server_t* server, const http_request_t* req, user_t* user, token_t* tok);
+sso_error_t authenticate_request(sso_context_t* ctx, const http_request_t* req, user_t* user, token_t* tok);
 
 #ifdef __cplusplus
 }
