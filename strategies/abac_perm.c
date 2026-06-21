@@ -6,7 +6,7 @@
 
 #include "sso.h"
 #include "policy.h"
-#include "cJSON.h"
+#include "yyjson.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -102,72 +102,76 @@ static sso_error_t abac_compile(permission_strategy_t *self,
     (void)self;
     if (!rules_json || !compiled_rule) return SSO_ERR_INVALID_PARAM;
 
-    cJSON *root = cJSON_Parse(rules_json);
-    if (!root) return SSO_ERR_RULE_INVALID;
+    yyjson_doc *doc = yyjson_read(rules_json, strlen(rules_json), 0);
+    if (!doc) return SSO_ERR_RULE_INVALID;
 
-    const cJSON *conditions = cJSON_GetObjectItem(root, "conditions");
-    if (!cJSON_IsArray(conditions)) {
-        cJSON_Delete(root);
+    yyjson_val *root = yyjson_doc_get_root(doc);
+
+    yyjson_val *conditions = yyjson_obj_get(root, "conditions");
+    if (!yyjson_is_arr(conditions)) {
+        yyjson_doc_free(doc);
         return SSO_ERR_RULE_INVALID;
     }
 
     abac_compiled_rule_t *compiled = (abac_compiled_rule_t *)calloc(1, sizeof(abac_compiled_rule_t));
     if (!compiled) {
-        cJSON_Delete(root);
+        yyjson_doc_free(doc);
         return SSO_ERR_OUT_OF_MEMORY;
     }
 
-    compiled->count = (size_t)cJSON_GetArraySize(conditions);
+    compiled->count = yyjson_arr_size(conditions);
     compiled->conditions = (abac_condition_t *)calloc(compiled->count, sizeof(abac_condition_t));
     if (!compiled->conditions) {
         free(compiled);
-        cJSON_Delete(root);
+        yyjson_doc_free(doc);
         return SSO_ERR_OUT_OF_MEMORY;
     }
 
     /* Parse logic and effect */
-    const cJSON *logic = cJSON_GetObjectItem(root, "logic");
-    compiled->is_or_logic = (logic && cJSON_IsString(logic) && strcmp(logic->valuestring, "or") == 0);
+    yyjson_val *logic = yyjson_obj_get(root, "logic");
+    compiled->is_or_logic = (yyjson_is_str(logic) && strcmp(yyjson_get_str(logic), "or") == 0);
 
-    const cJSON *effect = cJSON_GetObjectItem(root, "effect");
-    compiled->is_allow_effect = !(effect && cJSON_IsString(effect) && strcmp(effect->valuestring, "deny") == 0);
+    yyjson_val *effect = yyjson_obj_get(root, "effect");
+    compiled->is_allow_effect = !(yyjson_is_str(effect) && strcmp(yyjson_get_str(effect), "deny") == 0);
 
     /* Parse conditions */
-    for (size_t i = 0; i < compiled->count; i++) {
-        const cJSON *item = cJSON_GetArrayItem(conditions, (int)i);
-        const cJSON *src = cJSON_GetObjectItem(item, "source");
-        const cJSON *attr = cJSON_GetObjectItem(item, "attr");
-        const cJSON *op = cJSON_GetObjectItem(item, "op");
-        const cJSON *val = cJSON_GetObjectItem(item, "value");
+    size_t idx, max;
+    yyjson_val *item;
+    yyjson_arr_foreach(conditions, idx, max, item) {
+        yyjson_val *src = yyjson_obj_get(item, "source");
+        yyjson_val *attr = yyjson_obj_get(item, "attr");
+        yyjson_val *op = yyjson_obj_get(item, "op");
+        yyjson_val *val = yyjson_obj_get(item, "value");
 
-        if (attr && cJSON_IsString(attr)) {
-            sso_strlcpy(compiled->conditions[i].attr_name, attr->valuestring, 63);
+        if (yyjson_is_str(attr)) {
+            sso_strlcpy(compiled->conditions[idx].attr_name, yyjson_get_str(attr), 63);
         }
 
-        if (src && cJSON_IsString(src)) {
-            if (strcmp(src->valuestring, "resource") == 0) compiled->conditions[i].source = ABAC_SRC_RESOURCE;
-            else if (strcmp(src->valuestring, "environment") == 0) compiled->conditions[i].source = ABAC_SRC_ENVIRONMENT;
-            else compiled->conditions[i].source = ABAC_SRC_SUBJECT;
+        if (yyjson_is_str(src)) {
+            const char *src_str = yyjson_get_str(src);
+            if (strcmp(src_str, "resource") == 0) compiled->conditions[idx].source = ABAC_SRC_RESOURCE;
+            else if (strcmp(src_str, "environment") == 0) compiled->conditions[idx].source = ABAC_SRC_ENVIRONMENT;
+            else compiled->conditions[idx].source = ABAC_SRC_SUBJECT;
         } else {
-            compiled->conditions[i].source = ABAC_SRC_SUBJECT;
+            compiled->conditions[idx].source = ABAC_SRC_SUBJECT;
         }
 
-        if (op && cJSON_IsString(op)) {
-            sso_strlcpy(compiled->conditions[i].op, op->valuestring, 15);
+        if (yyjson_is_str(op)) {
+            sso_strlcpy(compiled->conditions[idx].op, yyjson_get_str(op), 15);
         } else {
-            strcpy(compiled->conditions[i].op, "eq");
+            strcpy(compiled->conditions[idx].op, "eq");
         }
 
         if (val) {
-            if (cJSON_IsString(val)) {
-                sso_strlcpy(compiled->conditions[i].expected_value, val->valuestring, 255);
-            } else if (cJSON_IsNumber(val)) {
-                snprintf(compiled->conditions[i].expected_value, 255, "%g", val->valuedouble);
+            if (yyjson_is_str(val)) {
+                sso_strlcpy(compiled->conditions[idx].expected_value, yyjson_get_str(val), 255);
+            } else if (yyjson_is_num(val)) {
+                snprintf(compiled->conditions[idx].expected_value, 255, "%g", yyjson_get_num(val));
             }
         }
     }
 
-    cJSON_Delete(root);
+    yyjson_doc_free(doc);
     *compiled_rule = compiled;
     return SSO_OK;
 }
@@ -181,15 +185,15 @@ static void abac_free_compiled(permission_strategy_t *self,
     free(compiled);
 }
 
-static const char *get_attr_from_cjson(cJSON *root, const char *attr_name, char *buffer, size_t buf_size) {
+static const char *get_attr_from_yyjson(yyjson_val *root, const char *attr_name, char *buffer, size_t buf_size) {
     if (!root || !attr_name) return NULL;
-    const cJSON *item = cJSON_GetObjectItem(root, attr_name);
+    yyjson_val *item = yyjson_obj_get(root, attr_name);
     if (!item) return NULL;
     
-    if (cJSON_IsString(item)) {
-        sso_strlcpy(buffer, item->valuestring, buf_size);
-    } else if (cJSON_IsNumber(item)) {
-        snprintf(buffer, buf_size, "%g", item->valuedouble);
+    if (yyjson_is_str(item)) {
+        sso_strlcpy(buffer, yyjson_get_str(item), buf_size);
+    } else if (yyjson_is_num(item)) {
+        snprintf(buffer, buf_size, "%g", yyjson_get_num(item));
     } else {
         return NULL;
     }
@@ -209,17 +213,25 @@ static sso_error_t abac_evaluate(permission_strategy_t *self,
     bool any_matched = false;
     bool all_matched = true;
 
-    cJSON *subject_root = NULL;
-    cJSON *resource_root = NULL;
-    cJSON *env_root = NULL;
+    yyjson_doc *subject_doc = NULL, *resource_doc = NULL, *env_doc = NULL;
+    yyjson_val *subject_root = NULL, *resource_root = NULL, *env_root = NULL;
 
-    if (ctx->params.abac.subject_attrs[0] != '\0') subject_root = cJSON_Parse(ctx->params.abac.subject_attrs);
-    if (ctx->params.abac.resource_attrs[0] != '\0') resource_root = cJSON_Parse(ctx->params.abac.resource_attrs);
-    if (ctx->environment[0] != '\0') env_root = cJSON_Parse(ctx->environment);
+    if (ctx->params.abac.subject_attrs[0] != '\0') {
+        subject_doc = yyjson_read(ctx->params.abac.subject_attrs, strlen(ctx->params.abac.subject_attrs), 0);
+        if (subject_doc) subject_root = yyjson_doc_get_root(subject_doc);
+    }
+    if (ctx->params.abac.resource_attrs[0] != '\0') {
+        resource_doc = yyjson_read(ctx->params.abac.resource_attrs, strlen(ctx->params.abac.resource_attrs), 0);
+        if (resource_doc) resource_root = yyjson_doc_get_root(resource_doc);
+    }
+    if (ctx->environment[0] != '\0') {
+        env_doc = yyjson_read(ctx->environment, strlen(ctx->environment), 0);
+        if (env_doc) env_root = yyjson_doc_get_root(env_doc);
+    }
 
     for (size_t i = 0; i < compiled->count; i++) {
         const abac_condition_t *cond = &compiled->conditions[i];
-        cJSON *source_root = NULL;
+        yyjson_val *source_root = NULL;
 
         switch (cond->source) {
             case ABAC_SRC_RESOURCE: source_root = resource_root; break;
@@ -228,7 +240,7 @@ static sso_error_t abac_evaluate(permission_strategy_t *self,
         }
 
         char actual_buf[512];
-        const char *actual = get_attr_from_cjson(source_root, cond->attr_name, actual_buf, sizeof(actual_buf));
+        const char *actual = get_attr_from_yyjson(source_root, cond->attr_name, actual_buf, sizeof(actual_buf));
         bool matched = actual ? apply_operator(cond->op, actual, cond->expected_value) : false;
 
         if (compiled->is_or_logic) {
@@ -238,9 +250,9 @@ static sso_error_t abac_evaluate(permission_strategy_t *self,
         }
     }
 
-    if (subject_root) cJSON_Delete(subject_root);
-    if (resource_root) cJSON_Delete(resource_root);
-    if (env_root) cJSON_Delete(env_root);
+    if (subject_doc) yyjson_doc_free(subject_doc);
+    if (resource_doc) yyjson_doc_free(resource_doc);
+    if (env_doc) yyjson_doc_free(env_doc);
 
     bool conditions_met = compiled->is_or_logic ? any_matched : all_matched;
     if (conditions_met) {
@@ -255,9 +267,9 @@ static sso_error_t abac_validate(permission_strategy_t *self,
                                  const char *rules_json) {
     (void)self;
     if (!rules_json) return SSO_ERR_INVALID_PARAM;
-    cJSON *root = cJSON_Parse(rules_json);
-    if (!root) return SSO_ERR_RULE_INVALID;
-    cJSON_Delete(root);
+    yyjson_doc *doc = yyjson_read(rules_json, strlen(rules_json), 0);
+    if (!doc) return SSO_ERR_RULE_INVALID;
+    yyjson_doc_free(doc);
     return SSO_OK;
 }
 

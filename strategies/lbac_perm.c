@@ -16,7 +16,7 @@
 
 #include "sso.h"
 #include "policy.h"
-#include "cJSON.h"
+#include "yyjson.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -54,57 +54,59 @@ static sso_error_t lbac_compile(permission_strategy_t *self,
     (void)self;
     if (!rules_json || !compiled_rule) return SSO_ERR_INVALID_PARAM;
 
-    cJSON *root = cJSON_Parse(rules_json);
-    if (!root) return SSO_ERR_RULE_INVALID;
+    yyjson_doc *doc = yyjson_read(rules_json, strlen(rules_json), 0);
+    if (!doc) return SSO_ERR_RULE_INVALID;
+
+    yyjson_val *root = yyjson_doc_get_root(doc);
 
     /* Support both "labels" (new) and "clearance_levels" (old) format */
-    const cJSON *levels = cJSON_GetObjectItem(root, "labels");
-    if (!cJSON_IsArray(levels)) {
-        levels = cJSON_GetObjectItem(root, "clearance_levels");
+    yyjson_val *levels = yyjson_obj_get(root, "labels");
+    if (!yyjson_is_arr(levels)) {
+        levels = yyjson_obj_get(root, "clearance_levels");
     }
-    if (!cJSON_IsArray(levels)) {
-        cJSON_Delete(root);
+    if (!yyjson_is_arr(levels)) {
+        yyjson_doc_free(doc);
         return SSO_ERR_RULE_INVALID;
     }
 
-    size_t count = (size_t)cJSON_GetArraySize(levels);
+    size_t count = yyjson_arr_size(levels);
     lbac_compiled_rule_t *compiled =
         (lbac_compiled_rule_t *)malloc(sizeof(lbac_compiled_rule_t));
-    if (!compiled) { cJSON_Delete(root); return SSO_ERR_OUT_OF_MEMORY; }
+    if (!compiled) { yyjson_doc_free(doc); return SSO_ERR_OUT_OF_MEMORY; }
 
     compiled->count = count;
     compiled->items = (lbac_rule_item_t *)
         calloc(count, sizeof(lbac_rule_item_t));
     if (!compiled->items) {
-        free(compiled); cJSON_Delete(root);
+        free(compiled); yyjson_doc_free(doc);
         return SSO_ERR_OUT_OF_MEMORY;
     }
 
-    for (size_t i = 0; i < count; i++) {
-        const cJSON *item = cJSON_GetArrayItem(levels, (int)i);
-
-        if (cJSON_IsString(item)) {
+    size_t idx, max;
+    yyjson_val *item;
+    yyjson_arr_foreach(levels, idx, max, item) {
+        if (yyjson_is_str(item)) {
             /* Simple string: {array of strings} */
-            sso_strlcpy(compiled->items[i].label_name,
-                    item->valuestring, 63);
-            compiled->items[i].is_allow = true;
-        } else if (cJSON_IsObject(item)) {
+            sso_strlcpy(compiled->items[idx].label_name,
+                    yyjson_get_str(item), 63);
+            compiled->items[idx].is_allow = true;
+        } else if (yyjson_is_obj(item)) {
             /* Object: {name: "...", effect: "..."} */
-            const cJSON *name = cJSON_GetObjectItem(item, "name");
-            const cJSON *effect = cJSON_GetObjectItem(item, "effect");
+            yyjson_val *name = yyjson_obj_get(item, "name");
+            yyjson_val *effect = yyjson_obj_get(item, "effect");
 
-            if (name && cJSON_IsString(name)) {
-                sso_strlcpy(compiled->items[i].label_name,
-                        name->valuestring, 63);
+            if (yyjson_is_str(name)) {
+                sso_strlcpy(compiled->items[idx].label_name,
+                        yyjson_get_str(name), 63);
             }
 
-            compiled->items[i].is_allow =
-                !(effect && cJSON_IsString(effect) &&
-                  strcmp(effect->valuestring, "deny") == 0);
+            compiled->items[idx].is_allow =
+                !(yyjson_is_str(effect) &&
+                  strcmp(yyjson_get_str(effect), "deny") == 0);
         }
     }
 
-    cJSON_Delete(root);
+    yyjson_doc_free(doc);
     *compiled_rule = compiled;
     return SSO_OK;
 }
@@ -175,9 +177,9 @@ static sso_error_t lbac_validate(permission_strategy_t *self,
                                   const char *rules_json) {
     (void)self;
     if (!rules_json) return SSO_ERR_INVALID_PARAM;
-    cJSON *root = cJSON_Parse(rules_json);
-    if (!root) return SSO_ERR_RULE_INVALID;
-    cJSON_Delete(root);
+    yyjson_doc *doc = yyjson_read(rules_json, strlen(rules_json), 0);
+    if (!doc) return SSO_ERR_RULE_INVALID;
+    yyjson_doc_free(doc);
     return SSO_OK;
 }
 
