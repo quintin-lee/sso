@@ -628,8 +628,8 @@ static sso_error_t postgres_user_update(storage_backend_t* self, const user_t* u
 							  u->attributes,
 							  mfa_enabled_str,
 							  u->mfa_secret,
-							  id_str,
-							  password_set_at_str};
+							  password_set_at_str,
+							  id_str};
 
 	PGresult* res = PQexecParams(priv->conn, query, 11, NULL, params, NULL, NULL, 0);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK) {

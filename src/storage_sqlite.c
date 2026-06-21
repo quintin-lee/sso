@@ -699,8 +699,8 @@ static sso_error_t sqlite_user_update(storage_backend_t* self, const user_t* use
 
 	sqlite3_stmt* stmt = NULL;
 	const char*	  sql  = "UPDATE users SET phone=?1, password_hash=?2, email=?3, display_name=?4, "
-						 "status=?5, updated_at=?6, attributes=?7, mfa_enabled=?8, mfa_secret=?9 "
-						 "WHERE id=?10";
+						 "status=?5, updated_at=?6, attributes=?7, mfa_enabled=?8, mfa_secret=?9, password_set_at=?10 "
+						 "WHERE id=?11";
 	if (sqlite3_prepare_v2(priv->db, sql, -1, &stmt, NULL) != SQLITE_OK)
 		return SSO_ERR_STORAGE;
 
@@ -713,7 +713,8 @@ static sso_error_t sqlite_user_update(storage_backend_t* self, const user_t* use
 	sqlite3_bind_text(stmt, 7, user->attributes, -1, SQLITE_STATIC);
 	sqlite3_bind_int(stmt, 8, user->mfa_enabled);
 	sqlite3_bind_text(stmt, 9, user->mfa_secret, -1, SQLITE_STATIC);
-	sqlite3_bind_int64(stmt, 10, (sqlite3_int64)user->id);
+	sqlite3_bind_int64(stmt, 10, user->password_set_at);
+	sqlite3_bind_int64(stmt, 11, (sqlite3_int64)user->id);
 
 	int rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
