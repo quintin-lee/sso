@@ -6,7 +6,7 @@
 
 #include "sso.h"
 #include "policy.h"
-#include "cJSON.h"
+#include "yyjson.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -65,19 +65,20 @@ static sso_error_t func_compile(permission_strategy_t *self,
     (void)self;
     if (!rules_json || !compiled_rule) return SSO_ERR_INVALID_PARAM;
 
-    cJSON *root = cJSON_Parse(rules_json);
-    if (!root) return SSO_ERR_RULE_INVALID;
+    yyjson_doc *doc = yyjson_read(rules_json, strlen(rules_json), 0);
+    if (!doc) return SSO_ERR_RULE_INVALID;
 
-    const cJSON *funcs = cJSON_GetObjectItem(root, "functions");
-    if (!cJSON_IsArray(funcs)) {
-        cJSON_Delete(root);
+    yyjson_val *root = yyjson_doc_get_root(doc);
+    yyjson_val *funcs = yyjson_obj_get(root, "functions");
+    if (!yyjson_is_arr(funcs)) {
+        yyjson_doc_free(doc);
         return SSO_ERR_RULE_INVALID;
     }
 
-    size_t count = (size_t)cJSON_GetArraySize(funcs);
+    size_t count = yyjson_arr_size(funcs);
     func_compiled_rule_t *compiled = (func_compiled_rule_t *)malloc(sizeof(func_compiled_rule_t));
     if (!compiled) {
-        cJSON_Delete(root);
+        yyjson_doc_free(doc);
         return SSO_ERR_OUT_OF_MEMORY;
     }
 
@@ -85,26 +86,27 @@ static sso_error_t func_compile(permission_strategy_t *self,
     compiled->items = (func_rule_item_t *)calloc(count, sizeof(func_rule_item_t));
     if (!compiled->items) {
         free(compiled);
-        cJSON_Delete(root);
+        yyjson_doc_free(doc);
         return SSO_ERR_OUT_OF_MEMORY;
     }
 
-    for (size_t i = 0; i < count; i++) {
-        const cJSON *item = cJSON_GetArrayItem(funcs, (int)i);
-        const cJSON *code = cJSON_GetObjectItem(item, "code");
-        const cJSON *effect = cJSON_GetObjectItem(item, "effect");
+    yyjson_val *item;
+    size_t idx, max;
+    yyjson_arr_foreach(funcs, idx, max, item) {
+        yyjson_val *code = yyjson_obj_get(item, "code");
+        yyjson_val *effect = yyjson_obj_get(item, "effect");
 
-        if (cJSON_IsString(code)) {
-            sso_strlcpy(compiled->items[i].code, code->valuestring, 127);
+        if (yyjson_is_str(code)) {
+            sso_strlcpy(compiled->items[idx].code, yyjson_get_str(code), 127);
         }
-        if (cJSON_IsString(effect)) {
-            compiled->items[i].is_allow = (strcmp(effect->valuestring, "allow") == 0);
+        if (yyjson_is_str(effect)) {
+            compiled->items[idx].is_allow = (strcmp(yyjson_get_str(effect), "allow") == 0);
         } else {
-            compiled->items[i].is_allow = true; /* default to allow if not specified */
+            compiled->items[idx].is_allow = true; /* default to allow if not specified */
         }
     }
 
-    cJSON_Delete(root);
+    yyjson_doc_free(doc);
     *compiled_rule = compiled;
     return SSO_OK;
 }
@@ -147,9 +149,9 @@ static sso_error_t func_validate(permission_strategy_t *self,
                                  const char *rules_json) {
     (void)self;
     if (!rules_json) return SSO_ERR_INVALID_PARAM;
-    cJSON *root = cJSON_Parse(rules_json);
-    if (!root) return SSO_ERR_RULE_INVALID;
-    cJSON_Delete(root);
+    yyjson_doc *doc = yyjson_read(rules_json, strlen(rules_json), 0);
+    if (!doc) return SSO_ERR_RULE_INVALID;
+    yyjson_doc_free(doc);
     return SSO_OK;
 }
 

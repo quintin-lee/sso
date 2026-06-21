@@ -49,6 +49,7 @@ SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/dpop.c          \
        $(SRCDIR)/intern.c        \
        $(SRCDIR)/cJSON.c         \
+       $(SRCDIR)/yyjson.c        \
        $(SRCDIR)/toml.c          \
        $(SRCDIR)/config.c        \
        $(SRCDIR)/oauth.c         \
