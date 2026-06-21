@@ -62,8 +62,9 @@ EOF
     export SSO_OAUTH_CLIENT_ID="test-client"
     export SSO_OAUTH_CLIENT_SECRET="test-secret"
 
-    # Use a temp directory for working dir so the binary finds sso.toml
+    # Use a temp directory for working dir so the binary finds sso.toml and sql/
     cp sso_system "${test_dir}/"
+    cp -r sql "${test_dir}/"
     cd "${test_dir}"
     ./sso_system --server &
     SERVER_PID=$!
