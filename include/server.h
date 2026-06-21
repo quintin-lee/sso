@@ -78,6 +78,7 @@ typedef struct {
 	char		  host[256];		/* Host header for DPoP URL generation */
 	char		  method_str[16];	/* Original HTTP method string         */
 	char		  request_id[64];	/* Unique trace ID for this request    */
+	char		  user_agent[512];	/* User-Agent header                   */
 	void*		  userdata;			/* connection-specific data */
 } http_request_t;
 

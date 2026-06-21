@@ -483,6 +483,15 @@ static int parse_request(buf_reader_t* br, http_request_t* req, long max_body_si
 			size_t olen						 = strlen(req->host);
 			while (olen > 0 && (req->host[olen - 1] == ' ' || req->host[olen - 1] == '\r'))
 				req->host[--olen] = '\0';
+		} else if (strncasecmp(line, "User-Agent:", 11) == 0) {
+			const char* val = line + 11;
+			while (*val == ' ')
+				val++;
+			sso_strlcpy(req->user_agent, val, sizeof(req->user_agent));
+			req->user_agent[sizeof(req->user_agent) - 1] = '\0';
+			size_t olen = strlen(req->user_agent);
+			while (olen > 0 && (req->user_agent[olen - 1] == ' ' || req->user_agent[olen - 1] == '\r'))
+				req->user_agent[--olen] = '\0';
 		}
 	}
 

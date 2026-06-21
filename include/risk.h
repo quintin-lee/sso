@@ -20,4 +20,10 @@ int risk_evaluate_login(sso_id_t user_id, const char *ip, const char *user_agent
  */
 void risk_record_login_attempt(sso_id_t user_id, const char *ip, int success);
 
+/* 
+ * Records a successful login attempt along with the User-Agent 
+ * to build the user's device fingerprint history.
+ */
+void risk_record_login_success_with_ua(sso_id_t user_id, const char *ip, const char *user_agent);
+
 #endif /* SSO_RISK_H */

@@ -54,7 +54,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 	}
 
 	/* Risk Assessment */
-	int risk_score = risk_evaluate_login(user.id, req->client_ip, NULL);
+	int risk_score = risk_evaluate_login(user.id, req->client_ip, req->user_agent);
 	if (risk_score >= RISK_SCORE_HIGH) {
 		risk_record_login_attempt(user.id, req->client_ip, 0);
 		sso_response_error(resp, 401, "High risk login blocked");
@@ -85,7 +85,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		rate_limiter_reset((rate_limiter_t*)ctx->rate_limiter, req->client_ip);
 	}
 
-	risk_record_login_attempt(user.id, req->client_ip, 1);
+	risk_record_login_success_with_ua(user.id, req->client_ip, req->user_agent);
 
 	sso_id_t roles[16], groups[16];
 	size_t	 rc = 0, gc = 0;

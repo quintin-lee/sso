@@ -386,6 +386,12 @@ static enum MHD_Result mhd_access_handler(void* cls, struct MHD_Connection* conn
 		sso_strlcpy(req.origin, origin, sizeof(req.origin));
 	}
 
+	const char* ua = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "User-Agent");
+	if (ua) {
+		sso_strlcpy(req.user_agent, ua, sizeof(req.user_agent));
+	}
+
+
 	/* ---- Build response ---- */
 	memset(&resp, 0, sizeof(resp));
 	resp.body	  = NULL;
