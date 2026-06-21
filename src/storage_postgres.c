@@ -115,6 +115,59 @@ static void postgres_thread_cleanup(storage_backend_t* self) {
 }
 
 /* ========================================================================
+ * File I/O helper — read entire file into heap-allocated buffer
+ * ======================================================================== */
+static char* read_file(const char* path, size_t* out_len) {
+	FILE* f = fopen(path, "rb");
+	if (!f)
+		return NULL;
+	fseek(f, 0, SEEK_END);
+	long len = ftell(f);
+	rewind(f);
+	if (len <= 0) {
+		fclose(f);
+		return NULL;
+	}
+	char* buf = (char*)malloc((size_t)len + 1);
+	if (!buf) {
+		fclose(f);
+		return NULL;
+	}
+	size_t n = fread(buf, 1, (size_t)len, f);
+	fclose(f);
+	buf[n] = '\0';
+	if (out_len)
+		*out_len = n;
+	return buf;
+}
+
+/* Execute the contents of a SQL file against the PostgreSQL connection. */
+static sso_error_t postgres_exec_file(PGconn* conn, const char* path) {
+	char* sql = read_file(path, NULL);
+	if (!sql) {
+		LOG_ERROR("[postgres] Failed to read SQL file: %s", path);
+		return SSO_ERR_STORAGE;
+	}
+	PGresult* res = PQexec(conn, sql);
+	free(sql);
+	if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+		LOG_ERROR("[postgres] SQL exec %s: %s", path, PQerrorMessage(conn));
+		PQclear(res);
+		return SSO_ERR_STORAGE;
+	}
+	PQclear(res);
+	return SSO_OK;
+}
+
+/* Public wrapper exposed via the storage vtable. */
+static sso_error_t postgres_exec_sql_file(storage_backend_t* self, const char* path) {
+	postgres_priv_t* priv = postgres_get_priv(self);
+	if (!priv || !priv->conn)
+		return SSO_ERR_STORAGE;
+	return postgres_exec_file(priv->conn, path);
+}
+
+/* ========================================================================
  * Lifecycle
  * ======================================================================== */
 
@@ -148,140 +201,10 @@ static sso_error_t postgres_open(storage_backend_t* self, const char* dsn) {
 	priv->pool_in_use[0] = 0;
 	priv->pool_size		 = 1;
 
-	/* Initialize schema */
-	const char* schema = "CREATE TABLE IF NOT EXISTS users ("
-						 "  id BIGSERIAL PRIMARY KEY,"
-						 "  username TEXT UNIQUE NOT NULL,"
-						 "  phone TEXT UNIQUE,"
-						 "  password_hash TEXT NOT NULL,"
-						 "  email TEXT DEFAULT '',"
-						 "  display_name TEXT DEFAULT '',"
-						 "  status INTEGER DEFAULT 1,"
-						 "  created_at BIGINT DEFAULT 0,"
-						 "  updated_at BIGINT DEFAULT 0,"
-						 "  password_set_at BIGINT DEFAULT 0,"
-						 "  attributes TEXT DEFAULT '{}',"
-						 "  mfa_enabled INTEGER DEFAULT 0,"
-						 "  mfa_secret TEXT DEFAULT ''"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS sms_codes ("
-						 "  phone TEXT PRIMARY KEY,"
-						 "  code TEXT NOT NULL,"
-						 "  expires_at BIGINT NOT NULL,"
-						 "  attempts INTEGER DEFAULT 0"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS roles ("
-						 "  id BIGSERIAL PRIMARY KEY,"
-						 "  name TEXT UNIQUE NOT NULL,"
-						 "  description TEXT DEFAULT '',"
-						 "  parent_role_id BIGINT DEFAULT 0,"
-						 "  status INTEGER DEFAULT 1,"
-						 "  created_at BIGINT DEFAULT 0,"
-						 "  updated_at BIGINT DEFAULT 0"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS groups ("
-						 "  id BIGSERIAL PRIMARY KEY,"
-						 "  name TEXT UNIQUE NOT NULL,"
-						 "  description TEXT DEFAULT '',"
-						 "  parent_group_id BIGINT DEFAULT 0,"
-						 "  status INTEGER DEFAULT 1,"
-						 "  created_at BIGINT DEFAULT 0,"
-						 "  updated_at BIGINT DEFAULT 0"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS policies ("
-						 "  id BIGSERIAL PRIMARY KEY,"
-						 "  name TEXT UNIQUE NOT NULL,"
-						 "  strategy_type INTEGER NOT NULL,"
-						 "  effect INTEGER NOT NULL DEFAULT 1,"
-						 "  priority INTEGER NOT NULL DEFAULT 0,"
-						 "  rules TEXT NOT NULL DEFAULT '{}',"
-						 "  status INTEGER NOT NULL DEFAULT 1,"
-						 "  created_at BIGINT DEFAULT 0,"
-						 "  updated_at BIGINT DEFAULT 0"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS user_roles ("
-						 "  user_id BIGINT NOT NULL,"
-						 "  role_id BIGINT NOT NULL,"
-						 "  PRIMARY KEY (user_id, role_id)"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS user_groups ("
-						 "  user_id BIGINT NOT NULL,"
-						 "  group_id BIGINT NOT NULL,"
-						 "  PRIMARY KEY (user_id, group_id)"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS role_groups ("
-						 "  role_id BIGINT NOT NULL,"
-						 "  group_id BIGINT NOT NULL,"
-						 "  PRIMARY KEY (role_id, group_id)"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS policy_assignments ("
-						 "  policy_id BIGINT,"
-						 "  target_type INTEGER,"
-						 "  target_id BIGINT,"
-						 "  PRIMARY KEY(policy_id, target_type, target_id)"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS oauth_auth_codes ("
-						 "  code TEXT PRIMARY KEY,"
-						 "  client_id TEXT NOT NULL,"
-						 "  user_id BIGINT NOT NULL,"
-						 "  redirect_uri TEXT NOT NULL,"
-						 "  scope TEXT DEFAULT '',"
-						 "  nonce TEXT DEFAULT '',"
-						 "  code_challenge TEXT DEFAULT '',"
-						 "  code_challenge_method TEXT DEFAULT '',"
-						 "  expires_at BIGINT NOT NULL,"
-						 "  used INTEGER DEFAULT 0"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS oauth_clients ("
-						 "  id BIGSERIAL PRIMARY KEY,"
-						 "  client_id TEXT UNIQUE NOT NULL,"
-						 "  client_secret_hash TEXT NOT NULL,"
-						 "  redirect_uris TEXT NOT NULL,"
-						 "  app_name TEXT DEFAULT '',"
-						 "  app_description TEXT DEFAULT '',"
-						 "  app_logo_url TEXT DEFAULT '',"
-						 "  allowed_scopes TEXT DEFAULT '',"
-						 "  allowed_grant_types TEXT DEFAULT '',"
-						 "  token_ttl_ms BIGINT DEFAULT 0,"
-						 "  status INTEGER DEFAULT 1,"
-						 "  created_at BIGINT DEFAULT 0,"
-						 "  updated_at BIGINT DEFAULT 0"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS refresh_tokens ("
-						 "  token_hash TEXT PRIMARY KEY,"
-						 "  user_id BIGINT NOT NULL,"
-						 "  client_id TEXT,"
-						 "  expires_at BIGINT NOT NULL,"
-						 "  issued_at BIGINT NOT NULL,"
-						 "  revoked INTEGER DEFAULT 0"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS revoked_jtis ("
-						 "  jti TEXT PRIMARY KEY,"
-						 "  expires_at BIGINT NOT NULL"
-						 ");"
-						 "CREATE TABLE IF NOT EXISTS audit_logs ("
-						 "  id BIGSERIAL PRIMARY KEY,"
-						 "  action TEXT,"
-						 "  timestamp_ms BIGINT,"
-						 "  user_id BIGINT,"
-						 "  username TEXT,"
-						 "  ip_address TEXT,"
-						 "  operation TEXT,"
-						 "  resource TEXT,"
-						 "  resource_id BIGINT,"
-						 "  status TEXT,"
-						 "  details TEXT,"
-						 "  duration_ms BIGINT,"
-						 "  cache_hit BOOLEAN,"
-						 "  trace TEXT"
-						 ");";
-
-	PGresult* res = PQexec(priv->conn, schema);
-	if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-		PQclear(res);
-		return SSO_ERR_STORAGE;
-	}
-	PQclear(res);
+	/* Initialize schema from sql/postgres/schema.sql */
+	sso_error_t serr = postgres_exec_file(priv->conn, "sql/postgres/schema.sql");
+	if (serr != SSO_OK)
+		return serr;
 
 	return SSO_OK;
 }
@@ -2328,6 +2251,9 @@ sso_error_t storage_postgres_create(storage_backend_t** backend) {
 	(*backend)->jti_is_revoked		 = postgres_jti_is_revoked;
 	(*backend)->audit_log_write		 = postgres_audit_log_write;
 	(*backend)->audit_log_list		 = postgres_audit_log_list;
+
+	/* File-based SQL execution (schema / seed) */
+	(*backend)->exec_sql_file = postgres_exec_sql_file;
 
 	return SSO_OK;
 }

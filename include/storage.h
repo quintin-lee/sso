@@ -182,6 +182,10 @@ typedef sso_error_t (*storage_oauth_client_list_fn)(storage_backend_t *self, int
 
 typedef storage_refresh_token_create_fn refresh_token_create_fn; /* dummy to keep diff clean */
 
+/* Execute raw SQL from a file (schema / seed data initialization).
+ * Implemented by the SQLite backend; other backends may return SSO_ERR_NOT_IMPLEMENTED. */
+typedef sso_error_t (*storage_exec_sql_file_fn)(storage_backend_t *self, const char *path);
+
 /* ========================================================================
  * Storage backend struct — concrete implementations fill these pointers.
  * ======================================================================== */
@@ -281,6 +285,9 @@ struct storage_backend {
 
     storage_audit_log_write_fn      audit_log_write;
     storage_audit_log_list_fn       audit_log_list;
+
+    /* Execute SQL from a file (schema / seed data) */
+    storage_exec_sql_file_fn        exec_sql_file;
 
     /* Opaque backend-private data (e.g. sqlite3*, FILE*, hashtable*) */
     void *handle;

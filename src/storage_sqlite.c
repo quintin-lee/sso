@@ -122,147 +122,61 @@ static inline int wrapped_sqlite3_exec(sqlite3* db, const char* sql, int (*callb
 #define sqlite3_exec wrapped_sqlite3_exec
 
 /* ========================================================================
- * Schema DDL
+ * File I/O helper — read entire file into heap-allocated buffer
  * ======================================================================== */
-static const char* SCHEMA_SQL = "CREATE TABLE IF NOT EXISTS users ("
-								"  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-								"  username TEXT UNIQUE,"
-								"  phone TEXT UNIQUE,"
-								"  password_hash TEXT,"
-								"  email TEXT DEFAULT '',"
-								"  display_name TEXT DEFAULT '',"
-								"  status INTEGER DEFAULT 1,"
-								"  created_at INTEGER DEFAULT 0,"
-								"  updated_at INTEGER DEFAULT 0,"
-								"  password_set_at INTEGER DEFAULT 0,"
-								"  attributes TEXT DEFAULT '{}',"
-								"  mfa_enabled INTEGER DEFAULT 0,"
-								"  mfa_secret TEXT DEFAULT ''"
-								");"
+static char* read_file(const char* path, size_t* out_len) {
+	FILE* f = fopen(path, "rb");
+	if (!f)
+		return NULL;
+	fseek(f, 0, SEEK_END);
+	long len = ftell(f);
+	rewind(f);
+	if (len <= 0) {
+		fclose(f);
+		return NULL;
+	}
+	char* buf = (char*)malloc((size_t)len + 1);
+	if (!buf) {
+		fclose(f);
+		return NULL;
+	}
+	size_t n = fread(buf, 1, (size_t)len, f);
+	fclose(f);
+	buf[n] = '\0';
+	if (out_len)
+		*out_len = n;
+	return buf;
+}
 
-								"CREATE TABLE IF NOT EXISTS sms_codes ("
-								"  phone TEXT PRIMARY KEY,"
-								"  code TEXT NOT NULL,"
-								"  expires_at INTEGER NOT NULL,"
-								"  attempts INTEGER DEFAULT 0"
-								");"
+/* ========================================================================
+ * Schema DDL — loaded from sql/sqlite/schema.sql at runtime
+ * ======================================================================== */
 
-								"CREATE TABLE IF NOT EXISTS roles ("
-								"  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-								"  name TEXT UNIQUE NOT NULL,"
-								"  description TEXT DEFAULT '',"
-								"  parent_role_id INTEGER DEFAULT 0,"
-								"  status INTEGER DEFAULT 1,"
-								"  created_at INTEGER DEFAULT 0,"
-								"  updated_at INTEGER DEFAULT 0"
-								");"
+/* Execute the contents of a SQL file against the database. */
+static sso_error_t sqlite_exec_file(sqlite3* db, const char* path) {
+	char* sql = read_file(path, NULL);
+	if (!sql) {
+		LOG_ERROR("Failed to read SQL file: %s", path);
+		return SSO_ERR_STORAGE;
+	}
+	char* errmsg = NULL;
+	int	  rc	   = sqlite3_exec(db, sql, NULL, NULL, &errmsg);
+	free(sql);
+	if (rc != SQLITE_OK) {
+		LOG_ERROR("SQL exec %s: %s", path, errmsg ? errmsg : "unknown");
+		sqlite3_free(errmsg);
+		return SSO_ERR_STORAGE;
+	}
+	return SSO_OK;
+}
 
-								"CREATE TABLE IF NOT EXISTS groups_t ("
-								"  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-								"  name TEXT UNIQUE NOT NULL,"
-								"  description TEXT DEFAULT '',"
-								"  parent_group_id INTEGER DEFAULT 0,"
-								"  status INTEGER DEFAULT 1,"
-								"  created_at INTEGER DEFAULT 0,"
-								"  updated_at INTEGER DEFAULT 0"
-								");"
-
-								"CREATE TABLE IF NOT EXISTS policies ("
-								"  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-								"  name TEXT UNIQUE NOT NULL,"
-								"  strategy_type INTEGER NOT NULL,"
-								"  effect INTEGER NOT NULL DEFAULT 1,"
-								"  priority INTEGER NOT NULL DEFAULT 0,"
-								"  rules TEXT NOT NULL DEFAULT '{}',"
-								"  status INTEGER NOT NULL DEFAULT 1,"
-								"  created_at INTEGER DEFAULT 0,"
-								"  updated_at INTEGER DEFAULT 0"
-								");"
-
-								"CREATE TABLE IF NOT EXISTS user_roles ("
-								"  user_id INTEGER NOT NULL,"
-								"  role_id INTEGER NOT NULL,"
-								"  PRIMARY KEY (user_id, role_id)"
-								");"
-
-								"CREATE TABLE IF NOT EXISTS user_groups ("
-								"  user_id INTEGER NOT NULL,"
-								"  group_id INTEGER NOT NULL,"
-								"  PRIMARY KEY (user_id, group_id)"
-								");"
-
-								"CREATE TABLE IF NOT EXISTS role_groups ("
-								"  role_id INTEGER NOT NULL,"
-								"  group_id INTEGER NOT NULL,"
-								"  PRIMARY KEY (role_id, group_id)"
-								");"
-
-								"CREATE TABLE IF NOT EXISTS policy_assignments ("
-								"  policy_id INTEGER,"
-								"  target_type INTEGER,"
-								"  target_id INTEGER,"
-								"  PRIMARY KEY(policy_id, target_type, target_id)"
-								");"
-
-								"CREATE TABLE IF NOT EXISTS oauth_auth_codes ("
-								"  code TEXT PRIMARY KEY,"
-								"  client_id TEXT NOT NULL,"
-								"  user_id INTEGER NOT NULL,"
-								"  redirect_uri TEXT NOT NULL,"
-								"  scope TEXT DEFAULT '',"
-								"  nonce TEXT DEFAULT '',"
-								"  code_challenge TEXT DEFAULT '',"
-								"  code_challenge_method TEXT DEFAULT '',"
-								"  expires_at INTEGER NOT NULL,"
-								"  used INTEGER DEFAULT 0"
-								");"
-
-								"CREATE TABLE IF NOT EXISTS oauth_clients ("
-								"  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-								"  client_id TEXT UNIQUE NOT NULL,"
-								"  client_secret_hash TEXT NOT NULL,"
-								"  redirect_uris TEXT NOT NULL,"
-								"  app_name TEXT DEFAULT '',"
-								"  app_description TEXT DEFAULT '',"
-								"  app_logo_url TEXT DEFAULT '',"
-								"  allowed_scopes TEXT DEFAULT '',"
-								"  allowed_grant_types TEXT DEFAULT '',"
-								"  token_ttl_ms INTEGER DEFAULT 0,"
-								"  status INTEGER DEFAULT 1,"
-								"  created_at INTEGER DEFAULT 0,"
-								"  updated_at INTEGER DEFAULT 0"
-								");"
-
-								"CREATE TABLE IF NOT EXISTS refresh_tokens ("
-								"  token_hash TEXT PRIMARY KEY,"
-								"  user_id INTEGER NOT NULL,"
-								"  client_id TEXT,"
-								"  expires_at INTEGER NOT NULL,"
-								"  issued_at INTEGER NOT NULL,"
-								"  revoked INTEGER DEFAULT 0"
-								");"
-
-								"CREATE TABLE IF NOT EXISTS revoked_jtis ("
-								"  jti TEXT PRIMARY KEY,"
-								"  expires_at INTEGER NOT NULL"
-								");"
-
-								"CREATE TABLE IF NOT EXISTS audit_logs ("
-								"  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-								"  action TEXT,"
-								"  timestamp_ms INTEGER,"
-								"  user_id INTEGER,"
-								"  username TEXT,"
-								"  ip_address TEXT,"
-								"  operation TEXT,"
-								"  resource TEXT,"
-								"  resource_id INTEGER,"
-								"  status TEXT,"
-								"  details TEXT,"
-								"  duration_ms INTEGER,"
-								"  cache_hit INTEGER,"
-								"  trace TEXT"
-								");";
+/* Public wrapper exposed via the storage vtable. */
+static sso_error_t sqlite_exec_sql_file(storage_backend_t* self, const char* path) {
+	sqlite_priv_t* priv = (sqlite_priv_t*)self->handle;
+	if (!priv || !priv->db)
+		return SSO_ERR_STORAGE;
+	return sqlite_exec_file(priv->db, path);
+}
 
 /* ========================================================================
  * Generic binding helpers
@@ -426,22 +340,13 @@ static sso_error_t sqlite_open(storage_backend_t* self, const char* dsn) {
 	sqlite3_exec(priv->db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL);
 	sqlite3_exec(priv->db, "PRAGMA synchronous=NORMAL;", NULL, NULL, NULL);
 
-	/* Create tables */
-	char* errmsg = NULL;
-	rc			 = sqlite3_exec(priv->db, SCHEMA_SQL, NULL, NULL, &errmsg);
-	if (rc != SQLITE_OK) {
+	/* Load schema from sql/sqlite/schema.sql */
+	sso_error_t serr = sqlite_exec_file(priv->db, "sql/sqlite/schema.sql");
+	if (serr != SSO_OK) {
 		sqlite3_close(priv->db);
 		priv->db = NULL;
-		return SSO_ERR_STORAGE;
+		return serr;
 	}
-
-	/* Schema migration metadata */
-	sqlite3_exec(priv->db,
-				 "CREATE TABLE IF NOT EXISTS _migrations ("
-				 "  version INTEGER PRIMARY KEY,"
-				 "  applied_at INTEGER NOT NULL"
-				 ")",
-				 NULL, NULL, NULL);
 
 	/* Determine if we just created the tables.
 	 * If the database was just created (Schema SQL just ran and _migrations is empty),
@@ -2064,6 +1969,9 @@ sso_error_t storage_sqlite_create(storage_backend_t** backend) {
 	(*backend)->jti_is_revoked		 = sqlite_jti_is_revoked;
 	(*backend)->audit_log_write		 = sqlite_audit_log_write;
 	(*backend)->audit_log_list		 = sqlite_audit_log_list;
+
+	/* SQL file execution (schema / seed) */
+	(*backend)->exec_sql_file = sqlite_exec_sql_file;
 
 	(*backend)->handle = priv;
 	return SSO_OK;

@@ -51,9 +51,10 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Copy frontend assets
 COPY --from=frontend-builder /app/frontend/dist /usr/share/nginx/html
 
-# Copy backend binary and config
+# Copy backend binary, config, and SQL files
 COPY --from=backend-builder /app/sso_system /usr/local/bin/sso_system
 COPY --from=backend-builder /app/sso.toml /app/sso.toml
+COPY --from=backend-builder /app/sql /app/sql
 
 # Copy supervisor configs
 RUN mkdir -p /etc/supervisor.d/ /var/log/supervisor
