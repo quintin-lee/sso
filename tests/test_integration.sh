@@ -250,6 +250,91 @@ test_management_crud() {
     local group_created
     group_created=$(extract_json "created" "$group_resp")
     if [ "$group_created" = "True" ] || [ "$group_created" = "true" ]; then pass "create group"; else fail "create group - unexpected: $group_resp"; fi
+
+    # Create user
+    local user_resp
+    user_resp=$(curl -sf -X POST "${BASE}/api/v1/users" \
+        -H "Content-Type: application/json" \
+        -H "$AUTH" \
+        -d '{"username":"test_api_user","password":"Test1@password","email":"test@example.com"}' 2>&1) || { fail "create user"; }
+    local user_created
+    user_created=$(extract_json "created" "$user_resp")
+    if [ "$user_created" = "True" ] || [ "$user_created" = "true" ]; then pass "create user"; else fail "create user - unexpected: $user_resp"; fi
+
+    # We need IDs to test updates/deletes. Let's fetch them.
+    local users_json
+    users_json=$(curl -sf "${BASE}/api/v1/users" -H "$AUTH" 2>&1)
+    local test_user_id
+    test_user_id=$(echo "$users_json" | grep -o '"id":[^,]*' | tail -n 1 | cut -d':' -f2 | tr -d ' }')
+
+    local roles_json
+    roles_json=$(curl -sf "${BASE}/api/v1/roles" -H "$AUTH" 2>&1)
+    local test_role_id
+    test_role_id=$(echo "$roles_json" | grep -o '"id":[^,]*' | tail -n 1 | cut -d':' -f2 | tr -d ' }')
+
+    local groups_json
+    groups_json=$(curl -sf "${BASE}/api/v1/groups" -H "$AUTH" 2>&1)
+    local test_group_id
+    test_group_id=$(echo "$groups_json" | grep -o '"id":[^,]*' | tail -n 1 | cut -d':' -f2 | tr -d ' }')
+
+    if [ -n "$test_user_id" ] && [ -n "$test_role_id" ]; then
+        # Update user
+        local update_user_resp
+        update_user_resp=$(curl -sf -X PUT "${BASE}/api/v1/users/${test_user_id}" \
+            -H "Content-Type: application/json" -H "$AUTH" \
+            -d '{"display_name":"Updated Name","status":0}' 2>&1) || { fail "update user"; }
+        local user_updated
+        user_updated=$(extract_json "updated" "$update_user_resp")
+        if [ "$user_updated" = "True" ] || [ "$user_updated" = "true" ]; then pass "update user"; else fail "update user - unexpected: $update_user_resp"; fi
+
+        # Assign role
+        local assign_resp
+        assign_resp=$(curl -sf -X POST "${BASE}/api/v1/roles/${test_role_id}/assign" \
+            -H "Content-Type: application/json" -H "$AUTH" \
+            -d "{\"user_id\":${test_user_id}}" 2>&1) || { fail "assign role"; }
+        local role_assigned
+        role_assigned=$(extract_json "assigned" "$assign_resp")
+        if [ "$role_assigned" = "True" ] || [ "$role_assigned" = "true" ]; then pass "assign role"; else fail "assign role - unexpected: $assign_resp"; fi
+
+        # Add group member
+        local add_member_resp
+        add_member_resp=$(curl -sf -X POST "${BASE}/api/v1/groups/${test_group_id}/members" \
+            -H "Content-Type: application/json" -H "$AUTH" \
+            -d "{\"user_id\":${test_user_id}}" 2>&1) || { fail "add group member"; }
+        local member_added
+        member_added=$(extract_json "added" "$add_member_resp")
+        if [ "$member_added" = "True" ] || [ "$member_added" = "true" ]; then pass "add group member"; else fail "add group member - unexpected: $add_member_resp"; fi
+
+        # Create policy
+        local policy_resp
+        policy_resp=$(curl -sf -X POST "${BASE}/api/v1/policies" \
+            -H "Content-Type: application/json" -H "$AUTH" \
+            -d '{"name":"api_test_policy","strategy":"API","rule_payload":"{\"method\":\"GET\",\"path\":\"/test\"}","effect":"allow"}' 2>&1) || { fail "create policy"; }
+        local policy_created
+        policy_created=$(extract_json "created" "$policy_resp")
+        if [ "$policy_created" = "True" ] || [ "$policy_created" = "true" ]; then pass "create policy"; else fail "create policy - unexpected: $policy_resp"; fi
+
+        # List policies to get ID
+        local policies_json
+        policies_json=$(curl -sf "${BASE}/api/v1/policies" -H "$AUTH" 2>&1)
+        local test_policy_id
+        test_policy_id=$(echo "$policies_json" | grep -o '"id":[^,]*' | tail -n 1 | cut -d':' -f2 | tr -d ' }')
+
+        # Assign policy
+        local assign_pol_resp
+        assign_pol_resp=$(curl -sf -X POST "${BASE}/api/v1/policies/${test_policy_id}/assign" \
+            -H "Content-Type: application/json" -H "$AUTH" \
+            -d "{\"target_type\":\"USER\",\"target_id\":${test_user_id}}" 2>&1) || { fail "assign policy"; }
+        local pol_assigned
+        pol_assigned=$(extract_json "assigned" "$assign_pol_resp")
+        if [ "$pol_assigned" = "True" ] || [ "$pol_assigned" = "true" ]; then pass "assign policy"; else fail "assign policy - unexpected: $assign_pol_resp"; fi
+
+        # Cleanup: Delete the created resources
+        curl -sf -X DELETE "${BASE}/api/v1/policies/${test_policy_id}" -H "$AUTH" >/dev/null 2>&1 || true
+        curl -sf -X DELETE "${BASE}/api/v1/groups/${test_group_id}" -H "$AUTH" >/dev/null 2>&1 || true
+        curl -sf -X DELETE "${BASE}/api/v1/roles/${test_role_id}" -H "$AUTH" >/dev/null 2>&1 || true
+        curl -sf -X DELETE "${BASE}/api/v1/users/${test_user_id}" -H "$AUTH" >/dev/null 2>&1 || true
+    fi
 }
 
 test_oauth_endpoints() {
@@ -327,7 +412,7 @@ test_oauth_endpoints() {
     token_resp=$(curl -sf -X POST "${BASE}/api/v1/oauth/token" \
         -H "Content-Type: application/json" \
         -d "{\"grant_type\":\"authorization_code\",\"code\":\"${authz_code}\",\"redirect_uri\":\"http://localhost:3000/callback\",\"client_id\":\"test-client\",\"client_secret\":\"test-secret\"}" 2>&1) || { fail "OAuth token exchange"; }
-    
+
     local access_token
     access_token=$(extract_json "access_token" "$token_resp")
     local id_token
@@ -451,7 +536,7 @@ test_oauth_endpoints() {
         slo_redirect_body=$(mktemp)
         slo_http_code=$(curl -s -o "$slo_redirect_body" -w "%{http_code}" -D "$slo_headers" \
             "${BASE}/api/v1/oauth/end-session?id_token_hint=${id_token}&post_logout_redirect_uri=http://localhost:3000/callback&state=mystate" 2>&1) || true
-        
+
         local slo_location
         slo_location=$(grep -i '^Location:' "$slo_headers" || echo "")
         rm -f "$slo_headers" "$slo_redirect_body"
