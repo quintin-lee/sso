@@ -12,7 +12,7 @@
 #include "token.h"
 #include "storage.h"
 #include "user.h"
-#include "cJSON.h"
+#include "yyjson.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -29,12 +29,7 @@
 #include <sodium.h>
 #include <pthread.h>
 
-/* --- Zero-Copy cJSON Helper Macros --- */
-#define ADD_STR_CS(obj, key, val) cJSON_AddItemToObjectCS(obj, key, cJSON_CreateString(val))
-
-#define ADD_STR_REF_CS(obj, key, val) cJSON_AddItemToObjectCS(obj, key, cJSON_CreateStringReference(val))
-
-#define ADD_NUM_CS(obj, key, val) cJSON_AddItemToObjectCS(obj, key, cJSON_CreateNumber(val))
+/* --- yyjson replaces cJSON for faster serialization --- */
 
 /*           ==
  * Internal helpers
@@ -321,59 +316,63 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 	}
 
 	/* --- Step A: Assemble and encode JWT Header --- */
-	cJSON* header = cJSON_CreateObject();
-	ADD_STR_REF_CS(header, "alg", mgr->mode == SSO_TOKEN_MODE_RS256 ? "RS256" : "HS256");
-	ADD_STR_REF_CS(header, "typ", "JWT");
+	yyjson_mut_doc *header_doc = yyjson_mut_doc_new(NULL);
+	yyjson_mut_val *header = yyjson_mut_obj(header_doc);
+	yyjson_mut_doc_set_root(header_doc, header);
+	yyjson_mut_obj_add_str(header_doc, header, "alg", mgr->mode == SSO_TOKEN_MODE_RS256 ? "RS256" : "HS256");
+	yyjson_mut_obj_add_str(header_doc, header, "typ", "JWT");
 	if (mgr->mode == SSO_TOKEN_MODE_RS256) {
-		ADD_STR_REF_CS(header, "kid", "sso-key-1");
+		yyjson_mut_obj_add_str(header_doc, header, "kid", "sso-key-1");
 	}
-	char* header_str = cJSON_PrintUnformatted(header);
-	cJSON_Delete(header);
+	char* header_str = yyjson_mut_write(header_doc, 0, NULL);
+	yyjson_mut_doc_free(header_doc);
 
 	char b64_header[256];
 	base64url_encode((unsigned char*)header_str, strlen(header_str), b64_header, sizeof(b64_header));
-	cJSON_free(header_str);
+	free(header_str);
 
 	/* --- Step B: Assemble and encode JWT Payload --- */
-	cJSON* root = cJSON_CreateObject();
-	ADD_STR_CS(root, "jti", out->jti);
-	ADD_NUM_CS(root, "sub", (double)out->user_id);
-	ADD_NUM_CS(root, "iat", (double)out->issued_at);
-	ADD_NUM_CS(root, "exp", (double)out->expires_at);
-	ADD_NUM_CS(root, "tnc", (double)out->nonce);
-	ADD_STR_REF_CS(root, "iss", "sso-server");
-	ADD_STR_REF_CS(root, "aud", "sso-api");
+	yyjson_mut_doc *payload_doc = yyjson_mut_doc_new(NULL);
+	yyjson_mut_val *root = yyjson_mut_obj(payload_doc);
+	yyjson_mut_doc_set_root(payload_doc, root);
+	yyjson_mut_obj_add_str(payload_doc, root, "jti", out->jti);
+	yyjson_mut_obj_add_uint(payload_doc, root, "sub", (uint64_t)out->user_id);
+	yyjson_mut_obj_add_uint(payload_doc, root, "iat", (uint64_t)out->issued_at);
+	yyjson_mut_obj_add_uint(payload_doc, root, "exp", (uint64_t)out->expires_at);
+	yyjson_mut_obj_add_uint(payload_doc, root, "tnc", (uint64_t)out->nonce);
+	yyjson_mut_obj_add_str(payload_doc, root, "iss", "sso-server");
+	yyjson_mut_obj_add_str(payload_doc, root, "aud", "sso-api");
 
 	if (out->scope[0] != '\0') {
 		/* Scope can be interned because it's usually from a small finite set (e.g. "read write") */
-		ADD_STR_REF_CS(root, "scope", intern_string(out->scope));
+		yyjson_mut_obj_add_str(payload_doc, root, "scope", intern_string(out->scope));
 	}
 	if (out->oauth_nonce[0] != '\0') {
-		ADD_STR_CS(root, "nonce", out->oauth_nonce);
+		yyjson_mut_obj_add_str(payload_doc, root, "nonce", out->oauth_nonce);
 	}
 
-	cJSON* roles_arr = cJSON_CreateArray();
+	yyjson_mut_val *roles_arr = yyjson_mut_arr(payload_doc);
 	for (size_t i = 0; i < role_count; i++) {
-		cJSON_AddItemToArray(roles_arr, cJSON_CreateNumber((double)role_ids[i]));
+		yyjson_mut_arr_add_uint(payload_doc, roles_arr, (uint64_t)role_ids[i]);
 	}
-	cJSON_AddItemToObjectCS(root, "roles", roles_arr);
+	yyjson_mut_obj_add_val(payload_doc, root, "roles", roles_arr);
 
 	if (group_count > 0) {
-		cJSON* groups_arr = cJSON_CreateArray();
+		yyjson_mut_val *groups_arr = yyjson_mut_arr(payload_doc);
 		for (size_t i = 0; i < group_count; i++) {
-			cJSON_AddItemToArray(groups_arr, cJSON_CreateNumber((double)group_ids[i]));
+			yyjson_mut_arr_add_uint(payload_doc, groups_arr, (uint64_t)group_ids[i]);
 		}
-		cJSON_AddItemToObjectCS(root, "groups", groups_arr);
+		yyjson_mut_obj_add_val(payload_doc, root, "groups", groups_arr);
 	}
 
 	if (out->jkt[0] != '\0') {
-		cJSON* cnf = cJSON_CreateObject();
-		ADD_STR_CS(cnf, "jkt", out->jkt);
-		cJSON_AddItemToObjectCS(root, "cnf", cnf);
+		yyjson_mut_val *cnf = yyjson_mut_obj(payload_doc);
+		yyjson_mut_obj_add_str(payload_doc, cnf, "jkt", out->jkt);
+		yyjson_mut_obj_add_val(payload_doc, root, "cnf", cnf);
 	}
 
-	char* payload_str = cJSON_PrintUnformatted(root);
-	cJSON_Delete(root);
+	char* payload_str = yyjson_mut_write(payload_doc, 0, NULL);
+	yyjson_mut_doc_free(payload_doc);
 	if (!payload_str) {
 		token_destroy(out);
 		return SSO_ERR_OUT_OF_MEMORY;
@@ -384,12 +383,12 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 	if (!b64_payload || !signing_input) {
 		free(b64_payload);
 		free(signing_input);
-		cJSON_free(payload_str);
+		free(payload_str);
 		token_destroy(out);
 		return SSO_ERR_OUT_OF_MEMORY;
 	}
 	base64url_encode((unsigned char*)payload_str, strlen(payload_str), b64_payload, 2048);
-	cJSON_free(payload_str);
+	free(payload_str);
 
 	/* Construct the standard signing input string header.payload */
 	snprintf(signing_input, 2560, "%s.%s", b64_header, b64_payload);
@@ -464,7 +463,7 @@ success:
 /* ─── Lightweight JWT payload scanner ────────────────────────────────────
  *
  * The JWT payload is a fixed-format JSON object generated by token_issue().
- * Instead of a full cJSON parse (malloc-heavy, slow), we scan for known keys
+ * Instead of a full yyjson parse (malloc-heavy, slow), we scan for known keys
  * with a single pass over the decoded string.  Required fields: sub, exp.
  */
 static sso_error_t scan_jwt_payload(const char* json, token_t* out) {
