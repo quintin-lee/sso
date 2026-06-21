@@ -511,7 +511,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 		store_refresh_token(sb, user.id, ac.client_id, access_token.raw_refresh_token);
 
 		/* Build JSON response */
-		buf = (char*)malloc(8192);
+		buf = (char*)malloc(16384);
 		if (!buf) {
 			json_error_response(resp, 500, "Out of memory");
 			result = SSO_OK;
@@ -519,7 +519,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 		}
 		bool is_openid = (strstr(ac.scope, "openid") != NULL);
 		if (is_openid) {
-			snprintf(buf, 8192,
+			snprintf(buf, 16384,
 					 "{"
 					 "\"access_token\":\"%s\","
 					 "\"token_type\":\"Bearer\","
@@ -531,7 +531,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 					 access_token.token_str, (long long)(access_token.expires_at - access_token.issued_at) / 1000,
 					 access_token.raw_refresh_token, access_token.token_str, (unsigned long long)user.id);
 		} else {
-			snprintf(buf, 8192,
+			snprintf(buf, 16384,
 					 "{"
 					 "\"access_token\":\"%s\","
 					 "\"token_type\":\"Bearer\","

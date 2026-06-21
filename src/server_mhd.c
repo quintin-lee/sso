@@ -25,7 +25,6 @@
 #include "token.h"
 #include "config.h"
 
-
 /* ========================================================================
  * Per-connection state for the MHD access handler callback
  *
@@ -250,7 +249,7 @@ static sso_context_t* get_tenant_context(sso_server_t* server, const char* host)
 	sso_config_t   new_config;
 	memcpy(&new_config, base_config, sizeof(new_config));
 
-	char new_db_url[SSO_MAX_PATH];
+	char new_db_url[SSO_MAX_PATH * 2];
 	if (strstr(new_config.database_url, ".db")) {
 		char* ext		 = strstr(new_config.database_url, ".db");
 		int	  prefix_len = ext - new_config.database_url;
