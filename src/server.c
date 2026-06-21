@@ -28,7 +28,12 @@ static volatile sig_atomic_t g_reload_config = 0;
 static _Thread_local arena_t t_arena;
 static _Thread_local bool	 t_arena_init = false;
 
-/* Global counter for unique request ID generation */
+/*
+ * Global lock-free counter for unique request ID generation.
+ * Combined with a high-resolution timestamp, this atomic_fetch_add() approach
+ * guarantees collision-free Trace IDs across thousands of concurrent threads
+ * without the context-switch overhead of traditional mutexes.
+ */
 static atomic_ullong g_request_counter = 0;
 
 /* ========================================================================

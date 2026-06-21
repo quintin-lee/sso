@@ -40,9 +40,16 @@ typedef struct {
 	char*	body;
 	size_t	body_size;
 	size_t	body_capacity;
-	char**	query_params;	/* owned, freed in completion callback */
-	void*	userdata;		/* auth_context_t, freed in completion   */
-	char	request_id[64]; /* Unique trace ID */
+	char**	query_params; /* owned, freed in completion callback */
+	void*	userdata;	  /* auth_context_t, freed in completion   */
+
+	/*
+	 * Unique Trace ID for this request.
+	 * CRITICAL: This ID is temporarily bound to the thread-local storage (`_Thread_local` in logger.c)
+	 * during phase 3 (final call) to ensure all deep nested functions (like permission checks)
+	 * automatically include this ID in their JSON logs without altering function signatures.
+	 */
+	char request_id[64];
 } mhd_conn_state_t;
 
 /* ========================================================================
@@ -54,7 +61,12 @@ static _Thread_local arena_t t_arena;
 static _Thread_local bool	 t_arena_init	 = false;
 static volatile sig_atomic_t g_reload_config = 0;
 
-/* Global counter for unique request ID generation */
+/*
+ * Global lock-free counter for unique request ID generation.
+ * Combined with a high-resolution timestamp, this atomic_fetch_add() approach
+ * guarantees collision-free Trace IDs across thousands of concurrent threads
+ * without the context-switch overhead of traditional mutexes.
+ */
 static atomic_ullong g_request_counter = 0;
 
 static void sigint_handler(int sig) {
