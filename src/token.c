@@ -18,6 +18,8 @@
 #include <string.h>
 #include <time.h>
 #include "logger.h"
+#include "intern.h"
+
 #include <stdio.h>
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
@@ -26,6 +28,13 @@
 #include <openssl/err.h>
 #include <sodium.h>
 #include <pthread.h>
+
+/* --- Zero-Copy cJSON Helper Macros --- */
+#define ADD_STR_CS(obj, key, val) cJSON_AddItemToObjectCS(obj, key, cJSON_CreateString(val))
+
+#define ADD_STR_REF_CS(obj, key, val) cJSON_AddItemToObjectCS(obj, key, cJSON_CreateStringReference(val))
+
+#define ADD_NUM_CS(obj, key, val) cJSON_AddItemToObjectCS(obj, key, cJSON_CreateNumber(val))
 
 /*           ==
  * Internal helpers
@@ -313,10 +322,10 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 
 	/* --- Step A: Assemble and encode JWT Header --- */
 	cJSON* header = cJSON_CreateObject();
-	cJSON_AddStringToObject(header, "alg", mgr->mode == SSO_TOKEN_MODE_RS256 ? "RS256" : "HS256");
-	cJSON_AddStringToObject(header, "typ", "JWT");
+	ADD_STR_REF_CS(header, "alg", mgr->mode == SSO_TOKEN_MODE_RS256 ? "RS256" : "HS256");
+	ADD_STR_REF_CS(header, "typ", "JWT");
 	if (mgr->mode == SSO_TOKEN_MODE_RS256) {
-		cJSON_AddStringToObject(header, "kid", "sso-key-1");
+		ADD_STR_REF_CS(header, "kid", "sso-key-1");
 	}
 	char* header_str = cJSON_PrintUnformatted(header);
 	cJSON_Delete(header);
@@ -327,35 +336,40 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 
 	/* --- Step B: Assemble and encode JWT Payload --- */
 	cJSON* root = cJSON_CreateObject();
-	cJSON_AddStringToObject(root, "jti", out->jti);
-	cJSON_AddNumberToObject(root, "sub", (double)out->user_id);
-	cJSON_AddNumberToObject(root, "iat", (double)out->issued_at);
-	cJSON_AddNumberToObject(root, "exp", (double)out->expires_at);
-	cJSON_AddNumberToObject(root, "tnc", (double)out->nonce);
-	cJSON_AddStringToObject(root, "iss", "sso-server");
-	cJSON_AddStringToObject(root, "aud", "sso-api");
+	ADD_STR_CS(root, "jti", out->jti);
+	ADD_NUM_CS(root, "sub", (double)out->user_id);
+	ADD_NUM_CS(root, "iat", (double)out->issued_at);
+	ADD_NUM_CS(root, "exp", (double)out->expires_at);
+	ADD_NUM_CS(root, "tnc", (double)out->nonce);
+	ADD_STR_REF_CS(root, "iss", "sso-server");
+	ADD_STR_REF_CS(root, "aud", "sso-api");
 
-	if (out->scope[0])
-		cJSON_AddStringToObject(root, "scope", out->scope);
-	if (out->oauth_nonce[0])
-		cJSON_AddStringToObject(root, "nonce", out->oauth_nonce);
+	if (out->scope[0] != '\0') {
+		/* Scope can be interned because it's usually from a small finite set (e.g. "read write") */
+		ADD_STR_REF_CS(root, "scope", intern_string(out->scope));
+	}
+	if (out->oauth_nonce[0] != '\0') {
+		ADD_STR_CS(root, "nonce", out->oauth_nonce);
+	}
 
 	cJSON* roles_arr = cJSON_CreateArray();
 	for (size_t i = 0; i < role_count; i++) {
 		cJSON_AddItemToArray(roles_arr, cJSON_CreateNumber((double)role_ids[i]));
 	}
-	cJSON_AddItemToObject(root, "roles", roles_arr);
+	cJSON_AddItemToObjectCS(root, "roles", roles_arr);
 
-	cJSON* groups_arr = cJSON_CreateArray();
-	for (size_t i = 0; i < group_count; i++) {
-		cJSON_AddItemToArray(groups_arr, cJSON_CreateNumber((double)group_ids[i]));
+	if (group_count > 0) {
+		cJSON* groups_arr = cJSON_CreateArray();
+		for (size_t i = 0; i < group_count; i++) {
+			cJSON_AddItemToArray(groups_arr, cJSON_CreateNumber((double)group_ids[i]));
+		}
+		cJSON_AddItemToObjectCS(root, "groups", groups_arr);
 	}
-	cJSON_AddItemToObject(root, "groups", groups_arr);
 
-	if (out->jkt[0]) {
+	if (out->jkt[0] != '\0') {
 		cJSON* cnf = cJSON_CreateObject();
-		cJSON_AddStringToObject(cnf, "jkt", out->jkt);
-		cJSON_AddItemToObject(root, "cnf", cnf);
+		ADD_STR_CS(cnf, "jkt", out->jkt);
+		cJSON_AddItemToObjectCS(root, "cnf", cnf);
 	}
 
 	char* payload_str = cJSON_PrintUnformatted(root);

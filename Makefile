@@ -47,6 +47,7 @@ SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/ratelimit.c     \
        $(SRCDIR)/risk.c          \
        $(SRCDIR)/dpop.c          \
+       $(SRCDIR)/intern.c        \
        $(SRCDIR)/cJSON.c         \
        $(SRCDIR)/toml.c          \
        $(SRCDIR)/config.c        \
