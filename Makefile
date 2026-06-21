@@ -141,6 +141,14 @@ test: dirs $(TEST_BINS)
 	@echo "Running minimal unit tests..."
 	@for bin in $(TEST_BINS); do ./$$bin || exit 1; done
 
+# Benchmark compilation rule
+$(BUILDDIR)/$(TESTDIR)/bench_%: $(TESTDIR)/bench_%.c $(filter-out $(BUILDDIR)/$(SRCDIR)/main.c.o, $(OBJS))
+	$(CC) $(CFLAGS) $(INCLUDES) $< $(filter-out $(BUILDDIR)/$(SRCDIR)/main.c.o, $(OBJS)) $(LDFLAGS) -o $@
+
+bench: dirs $(BUILDDIR)/$(TESTDIR)/bench_permission
+	@echo "Running performance benchmarks..."
+	@./$(BUILDDIR)/$(TESTDIR)/bench_permission
+
 debug: CFLAGS = $(DEBUG_CFLAGS)
 debug: all
 
