@@ -2,6 +2,7 @@
 #include "oauth.h"
 #include "token.h"
 #include "storage.h"
+#include "dpop.h"
 #include "config.h"
 #include "user.h"
 #include "logger.h"
@@ -420,6 +421,16 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 	memset(&access_token, 0, sizeof(access_token));
 	char* buf = NULL;
 
+	char dpop_jkt[64] = {0};
+	if (req->dpop_proof[0]) {
+		char full_url[1024];
+		snprintf(full_url, sizeof(full_url), "http://%s%s", req->host[0] ? req->host : "localhost", req->path);
+		if (dpop_verify_proof(req->dpop_proof, req->method_str, full_url, NULL, dpop_jkt) != SSO_OK) {
+			json_error_response(resp, 400, "invalid_dpop_proof");
+			goto cleanup;
+		}
+	}
+
 	if (!grant_type) {
 		json_error_response(resp, 400, "invalid_request");
 		goto cleanup;
@@ -488,7 +499,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 		/* Set OAuth fields on token */
 		long ttl = get_client_token_ttl(cfg, sb, ac.client_id);
 
-		sso_error_t terr = token_issue(tmgr, &user, roles, rc, groups, gc, ac.scope, ttl, NULL, &access_token);
+		sso_error_t terr = token_issue(tmgr, &user, roles, rc, groups, gc, ac.scope, ttl, dpop_jkt, &access_token);
 		if (terr != SSO_OK) {
 			json_error_response(resp, 500, "server_error");
 			goto cleanup;
@@ -580,7 +591,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 
 		long ttl = get_client_token_ttl(cfg, sb, client_id);
 
-		sso_error_t terr = token_issue(tmgr, &client_user, NULL, 0, NULL, 0, scope, ttl, NULL, &access_token);
+		sso_error_t terr = token_issue(tmgr, &client_user, NULL, 0, NULL, 0, scope, ttl, dpop_jkt, &access_token);
 		if (terr != SSO_OK) {
 			json_error_response(resp, 500, "server_error");
 			goto cleanup;
@@ -639,7 +650,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 		user_get_groups(umgr, user.id, groups, &gc, 16);
 
 		long		ttl	 = get_client_token_ttl(cfg, sb, rt_record.client_id);
-		sso_error_t terr = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, ttl, NULL, &access_token);
+		sso_error_t terr = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, ttl, dpop_jkt, &access_token);
 		if (terr != SSO_OK) {
 			json_error_response(resp, 500, "server_error");
 			goto cleanup;
