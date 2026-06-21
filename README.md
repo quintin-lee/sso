@@ -10,6 +10,7 @@ A lightweight, enterprise-ready Single Sign-On (SSO) service written in C11, pro
 
 - [Project Status](#project-status)
 - [Key Features](#key-features)
+- [Documentation](#documentation)
 - [Project Structure](#project-structure)
 - [Quick Start](#quick-start)
 - [Dependencies](#dependencies)
@@ -32,14 +33,27 @@ The core authentication and authorization engine is stable and feature-complete 
 
 ---
 
+## Documentation
+
+Comprehensive documentation is available under the [`docs/`](docs/) directory:
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/architecture.md) | System architecture overview, module layers, core data flows, caching, multi-tenancy, deployment |
+| [Design](docs/design.md) | Design patterns, data structures, token design, permission model, cache design, security, trade-off decisions |
+| [User Manual](docs/user-manual.md) | Installation, configuration, API usage guide, policy management, OAuth/OIDC setup, troubleshooting |
+| [API Reference](docs/api-documentation.md) | Complete API endpoint reference with request/response examples |
+
+---
+
 ## Key Features
 
 ### Authentication
 
 - **Password Authentication**: Argon2id hashing via libsodium
 - **SMS OTP Login**: Mobile verification code with auto-registration, served via libcurl to SMS gateway
-- **JWT-style Tokens**: HMAC-SHA256 signed tokens with roles, groups embdded in claims
-- **Token Revocation**: O(log N) binary search on revocaton lists for instant invalidation
+- **JWT-style Tokens**: HMAC-SHA256 signed tokens with roles, groups embedded in claims
+- **Token Revocation**: O(log N) binary search on revocation lists for instant invalidation
 - **Token Refresh and Rotation**: Long-lived sessions with refresh token rotation
 - **OAuth 2.0 / OpenID Connect**: Authorization code flow, token introspection (RFC 7662), token revocation (RFC 7009), OIDC discovery, JWKS (RFC 7517), `/userinfo` endpoint
 
@@ -143,6 +157,11 @@ sso/
 │   ├── test_storage.c         # Storage backend tests
 │   ├── test_token.c           # Token manager tests
 │   └── test_user.c            # User manager tests
+├── docs/                       # Documentation
+│   ├── architecture.md        # System architecture overview
+│   ├── design.md              # Detailed design document
+│   ├── user-manual.md         # End-user manual
+│   └── api-documentation.md   # Comprehensive API reference
 ├── Makefile                   # Build system
 ├── Dockerfile                 # Multi-stage Docker build
 ├── docker-compose.yml         # Docker Compose configuration
@@ -185,7 +204,7 @@ make debug    # Debug build (O0, -g, -DDEBUG)
 ./sso_system
 
 # Server mode: starts HTTP API server on 0.0.0.0:8080
-export SSO_TOKEN_SECRET=your_long_secure_secret
+export SSO_TOKEN_SECRET=$(openssl rand -hex 32)
 ./sso_system --server
 
 # Interactive mode: text-based policy creation console
@@ -482,7 +501,7 @@ docker build -t sso-system .
 # Run container
 docker run -d \
   -p 8080:8080 \
-  -e SSO_TOKEN_SECRET=your_super_secret_key \
+  -e SSO_TOKEN_SECRET=$(openssl rand -hex 32) \
   -v $(pwd)/audit.log:/app/audit.log \
   sso-system
 ```
