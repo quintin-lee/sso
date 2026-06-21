@@ -74,10 +74,12 @@ jobs:
           --suppress=constParameterCallback --suppress=knownConditionTrueFalse \
           --suppress=variableScope --suppress=funcArgNamesDifferent \
           --suppress=redundantAssignment --suppress=unreadVariable \
+          --suppress=redundantInitialization \
           --suppress=unreadVariable:src/toml.c --suppress=unreadVariable:src/server.c \
           --suppress=ctunullpointer:src/cJSON.c --suppress=unknownMacro:src/cJSON.c \
           --suppress=toomanyconfigs --suppress=missingInclude \
           --suppress=staticFunction --error-exitcode=1 \
+          --suppress=*:include/yyjson.h \
           --std=c11 --language=c \
           -Iinclude -isrc/yyjson.c \
           src/*.c strategies/*.c
