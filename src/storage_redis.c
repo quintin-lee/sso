@@ -82,12 +82,89 @@ static bool bloom_might_contain(const char *jti) {
 /* ========================================================================
  * Backend private data
  * ======================================================================== */
+#define REDIS_POOL_MAX 16
+
 typedef struct {
-    redisContext *ctx;
+    redisContext *ctx; /* fallback/default connection or current thread local */
+    char host[256];
+    int port;
+    int db;
+    redisContext *pool[REDIS_POOL_MAX];
+    int pool_in_use[REDIS_POOL_MAX];
+    int pool_size;
+    pthread_mutex_t pool_mutex;
+    pthread_cond_t pool_cond;
+
     redisContext *sub_ctx;
     pthread_t sub_thread;
     int sub_running;
 } redis_priv_t;
+
+static _Thread_local redisContext* tls_redis_conn = NULL;
+
+static redisContext* redis_pool_acquire(redis_priv_t* priv) {
+    pthread_mutex_lock(&priv->pool_mutex);
+    while (1) {
+        for (int i = 0; i < priv->pool_size; i++) {
+            if (!priv->pool_in_use[i]) {
+                if (priv->pool[i]->err) {
+                    redisFree(priv->pool[i]);
+                    priv->pool[i] = redisConnect(priv->host, priv->port);
+                    if (priv->db > 0 && !priv->pool[i]->err) {
+                        redisReply *r = (redisReply *)redisCommand(priv->pool[i], "SELECT %d", priv->db);
+                        if (r) freeReplyObject(r);
+                    }
+                }
+                priv->pool_in_use[i] = 1;
+                pthread_mutex_unlock(&priv->pool_mutex);
+                return priv->pool[i];
+            }
+        }
+        if (priv->pool_size < REDIS_POOL_MAX) {
+            redisContext *conn = redisConnect(priv->host, priv->port);
+            if (conn && !conn->err) {
+                if (priv->db > 0) {
+                    redisReply *r = (redisReply *)redisCommand(conn, "SELECT %d", priv->db);
+                    if (r) freeReplyObject(r);
+                }
+                int idx = priv->pool_size++;
+                priv->pool[idx] = conn;
+                priv->pool_in_use[idx] = 1;
+                pthread_mutex_unlock(&priv->pool_mutex);
+                return conn;
+            } else {
+                if (conn) redisFree(conn);
+                pthread_mutex_unlock(&priv->pool_mutex);
+                return NULL;
+            }
+        }
+        pthread_cond_wait(&priv->pool_cond, &priv->pool_mutex);
+    }
+}
+
+static void redis_pool_release(redis_priv_t* priv, redisContext* conn) {
+    if (!conn) return;
+    pthread_mutex_lock(&priv->pool_mutex);
+    for (int i = 0; i < priv->pool_size; i++) {
+        if (priv->pool[i] == conn) {
+            priv->pool_in_use[i] = 0;
+            pthread_cond_signal(&priv->pool_cond);
+            break;
+        }
+    }
+    pthread_mutex_unlock(&priv->pool_mutex);
+}
+
+static redis_priv_t* redis_get_priv(storage_backend_t* self) {
+    redis_priv_t* global_priv = (redis_priv_t*)(self->handle);
+    if (tls_redis_conn) {
+        static _Thread_local redis_priv_t tls_priv;
+        tls_priv = *global_priv;
+        tls_priv.ctx = tls_redis_conn;
+        return &tls_priv;
+    }
+    return global_priv;
+}
 
 /* ========================================================================
  * Helper: prefix format buffers / max key lengths
@@ -295,7 +372,7 @@ static void *redis_sub_thread(void *arg) {
 }
 
 static sso_error_t redis_open(storage_backend_t *self, const char *dsn) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv) return SSO_ERR_INVALID_PARAM;
 
     /* Parse DSN */
@@ -396,6 +473,7 @@ static sso_error_t redis_open(storage_backend_t *self, const char *dsn) {
         LOG_INFO("[storage_redis] Resolved master '%s' to %s:%d via Sentinel", master_name, host, port);
     }
 
+    /* Connect default connection */
     priv->ctx = redisConnect(host, port);
     if (!priv->ctx) {
         LOG_ERROR("[storage_redis] Failed to create redis context");
@@ -409,7 +487,7 @@ static sso_error_t redis_open(storage_backend_t *self, const char *dsn) {
     }
 
     if (db > 0) {
-        redisReply *r = redis_cmd(priv->ctx, "SELECT %d", db);
+        redisReply *r = (redisReply *)redisCommand(priv->ctx, "SELECT %d", db);
         if (!r || r->type == REDIS_REPLY_ERROR) {
             if (r) freeReplyObject(r);
             LOG_ERROR("[storage_redis] SELECT %d failed", db);
@@ -419,6 +497,10 @@ static sso_error_t redis_open(storage_backend_t *self, const char *dsn) {
         }
         freeReplyObject(r);
     }
+    
+    pthread_mutex_init(&priv->pool_mutex, NULL);
+    pthread_cond_init(&priv->pool_cond, NULL);
+    priv->pool_size = 0;
 
     /* Start Pub/Sub background thread for JTI broadcasting */
     priv->sub_ctx = redisConnect(host, port);
@@ -442,7 +524,7 @@ static sso_error_t redis_open(storage_backend_t *self, const char *dsn) {
 }
 
 static void redis_close(storage_backend_t *self) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (priv) {
         if (priv->sub_running) {
             priv->sub_running = 0;
@@ -480,11 +562,22 @@ static sso_error_t redis_rollback(storage_backend_t *self) {
 }
 
 static void redis_thread_init(storage_backend_t *self) {
-    (void)self;
+    if (!self) return;
+    redis_priv_t *priv = (redis_priv_t *)(self->handle);
+    if (!priv) return;
+    if (!tls_redis_conn) {
+        tls_redis_conn = redis_pool_acquire(priv);
+    }
 }
 
 static void redis_thread_cleanup(storage_backend_t *self) {
-    (void)self;
+    if (!self) return;
+    redis_priv_t *priv = (redis_priv_t *)(self->handle);
+    if (!priv) return;
+    if (tls_redis_conn) {
+        redis_pool_release(priv, tls_redis_conn);
+        tls_redis_conn = NULL;
+    }
 }
 
 /* ========================================================================
@@ -492,7 +585,7 @@ static void redis_thread_cleanup(storage_backend_t *self) {
  * ======================================================================== */
 
 static sso_error_t redis_user_create(storage_backend_t *self, user_t *user) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     /* Check unique constraints */
@@ -550,7 +643,7 @@ static sso_error_t redis_user_create(storage_backend_t *self, user_t *user) {
 }
 
 static sso_error_t redis_user_get_by_id(storage_backend_t *self, sso_id_t id, user_t *user) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
     memset(user, 0, sizeof(*user));
 
@@ -593,7 +686,7 @@ static sso_error_t redis_user_get_by_id(storage_backend_t *self, sso_id_t id, us
 }
 
 static sso_error_t redis_user_get_by_name(storage_backend_t *self, const char *name, user_t *user) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
     char nk[KEYBUF]; key_name(nk, sizeof(nk), "user", name);
     sso_id_t id = 0;
@@ -603,7 +696,7 @@ static sso_error_t redis_user_get_by_name(storage_backend_t *self, const char *n
 }
 
 static sso_error_t redis_user_get_by_phone(storage_backend_t *self, const char *phone, user_t *user) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
     char pk[KEYBUF]; key_phone(pk, sizeof(pk), phone);
     sso_id_t id = 0;
@@ -613,7 +706,7 @@ static sso_error_t redis_user_get_by_phone(storage_backend_t *self, const char *
 }
 
 static sso_error_t redis_user_update(storage_backend_t *self, const user_t *user) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char idk[KEYBUF]; key_id(idk, sizeof(idk), "user", user->id);
@@ -637,7 +730,7 @@ static sso_error_t redis_user_update(storage_backend_t *self, const user_t *user
 }
 
 static sso_error_t redis_user_delete(storage_backend_t *self, sso_id_t id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     /* Fetch user to get indexes for cleanup */
@@ -711,7 +804,7 @@ static sso_error_t redis_user_delete(storage_backend_t *self, sso_id_t id) {
 static sso_error_t redis_user_list(storage_backend_t *self, const char *q, int status,
                                     int offset, int limit, sso_id_t *ids,
                                     size_t *count, size_t *total_count) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     /* Get all user IDs from the list */
@@ -759,7 +852,7 @@ static sso_error_t redis_user_list(storage_backend_t *self, const char *q, int s
 
 static sso_error_t redis_save_sms_code(storage_backend_t *self, const char *phone,
                                         const char *code, sso_timestamp_t expires_at) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char key[KEYBUF]; snprintf(key, sizeof(key), "sms:%s", phone);
@@ -771,7 +864,7 @@ static sso_error_t redis_save_sms_code(storage_backend_t *self, const char *phon
 }
 
 static sso_error_t redis_get_sms_code(storage_backend_t *self, const char *phone, char *code_out) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char key[KEYBUF]; snprintf(key, sizeof(key), "sms:%s", phone);
@@ -779,7 +872,7 @@ static sso_error_t redis_get_sms_code(storage_backend_t *self, const char *phone
 }
 
 static sso_error_t redis_delete_sms_code(storage_backend_t *self, const char *phone) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char key[KEYBUF]; snprintf(key, sizeof(key), "sms:%s", phone);
@@ -825,7 +918,7 @@ static sso_error_t redis_role_from_hash(redisReply *r, role_t *role) {
 }
 
 static sso_error_t redis_role_get_by_id(storage_backend_t *self, sso_id_t id, role_t *role) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char idk[KEYBUF]; key_id(idk, sizeof(idk), "role", id);
@@ -838,7 +931,7 @@ static sso_error_t redis_role_get_by_id(storage_backend_t *self, sso_id_t id, ro
 
 #define REDIS_GET_BY_NAME(name_type, prefix) \
 static sso_error_t redis_##name_type##_get_by_name(storage_backend_t *self, const char *name, name_type##_t *out) { \
-    redis_priv_t *priv = (redis_priv_t *)self->handle; \
+    redis_priv_t *priv = redis_get_priv(self); \
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE; \
     char nk[KEYBUF]; key_name(nk, sizeof(nk), prefix, name); \
     sso_id_t id = 0; \
@@ -855,7 +948,7 @@ REDIS_GET_BY_NAME(group, "group")
 REDIS_GET_BY_NAME(policy, "policy")
 
 static sso_error_t redis_role_create(storage_backend_t *self, role_t *role) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char nk[KEYBUF]; key_name(nk, sizeof(nk), "role", role->name);
@@ -885,7 +978,7 @@ static sso_error_t redis_role_create(storage_backend_t *self, role_t *role) {
 }
 
 static sso_error_t redis_role_update(storage_backend_t *self, const role_t *role) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char idk[KEYBUF]; key_id(idk, sizeof(idk), "role", role->id);
@@ -901,7 +994,7 @@ static sso_error_t redis_role_update(storage_backend_t *self, const role_t *role
 }
 
 static sso_error_t redis_role_delete(storage_backend_t *self, sso_id_t id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     role_t r;
@@ -967,7 +1060,7 @@ static sso_error_t redis_role_delete(storage_backend_t *self, sso_id_t id) {
 static sso_error_t redis_##name_type##_list(storage_backend_t *self, const char *q, int status, \
                                              int offset, int limit, sso_id_t *ids, \
                                              size_t *count, size_t *total_count) { \
-    redis_priv_t *priv = (redis_priv_t *)self->handle; \
+    redis_priv_t *priv = redis_get_priv(self); \
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE; \
     redisReply *r = redis_cmd(priv->ctx, "LRANGE %s 0 -1", list_key); \
     if (!r || r->type != REDIS_REPLY_ARRAY) { \
@@ -1035,7 +1128,7 @@ static sso_error_t redis_group_from_hash(redisReply *r, group_t *group) {
 }
 
 static sso_error_t redis_group_get_by_id(storage_backend_t *self, sso_id_t id, group_t *group) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char idk[KEYBUF]; key_id(idk, sizeof(idk), "group", id);
@@ -1047,7 +1140,7 @@ static sso_error_t redis_group_get_by_id(storage_backend_t *self, sso_id_t id, g
 }
 
 static sso_error_t redis_group_create(storage_backend_t *self, group_t *group) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char nk[KEYBUF]; key_name(nk, sizeof(nk), "group", group->name);
@@ -1077,7 +1170,7 @@ static sso_error_t redis_group_create(storage_backend_t *self, group_t *group) {
 }
 
 static sso_error_t redis_group_update(storage_backend_t *self, const group_t *group) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char idk[KEYBUF]; key_id(idk, sizeof(idk), "group", group->id);
@@ -1093,7 +1186,7 @@ static sso_error_t redis_group_update(storage_backend_t *self, const group_t *gr
 }
 
 static sso_error_t redis_group_delete(storage_backend_t *self, sso_id_t id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     group_t g;
@@ -1190,7 +1283,7 @@ static sso_error_t redis_policy_from_hash(redisReply *r, policy_t *policy) {
 }
 
 static sso_error_t redis_policy_get_by_id(storage_backend_t *self, sso_id_t id, policy_t *policy) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char idk[KEYBUF]; key_id(idk, sizeof(idk), "policy", id);
@@ -1202,7 +1295,7 @@ static sso_error_t redis_policy_get_by_id(storage_backend_t *self, sso_id_t id, 
 }
 
 static sso_error_t redis_policy_create(storage_backend_t *self, policy_t *policy) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char nk[KEYBUF]; key_name(nk, sizeof(nk), "policy", policy->name);
@@ -1236,7 +1329,7 @@ static sso_error_t redis_policy_create(storage_backend_t *self, policy_t *policy
 }
 
 static sso_error_t redis_policy_update(storage_backend_t *self, const policy_t *policy) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char idk[KEYBUF]; key_id(idk, sizeof(idk), "policy", policy->id);
@@ -1256,7 +1349,7 @@ static sso_error_t redis_policy_update(storage_backend_t *self, const policy_t *
 }
 
 static sso_error_t redis_policy_delete(storage_backend_t *self, sso_id_t id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     policy_t p;
@@ -1295,7 +1388,7 @@ static sso_error_t redis_policy_delete(storage_backend_t *self, sso_id_t id) {
 
 /* User-Role bidirectional sets */
 static sso_error_t redis_assign_role_to_user(storage_backend_t *self, sso_id_t role_id, sso_id_t user_id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
     redisReply *r = redis_cmd(priv->ctx, "SADD user:%lld:roles %lld", (long long)user_id, (long long)role_id);
     if (!r) return SSO_ERR_STORAGE;
@@ -1307,7 +1400,7 @@ static sso_error_t redis_assign_role_to_user(storage_backend_t *self, sso_id_t r
 }
 
 static sso_error_t redis_unassign_role_from_user(storage_backend_t *self, sso_id_t role_id, sso_id_t user_id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
     redisReply *r = redis_cmd(priv->ctx, "SREM user:%lld:roles %lld", (long long)user_id, (long long)role_id);
     if (!r) return SSO_ERR_STORAGE;
@@ -1320,7 +1413,7 @@ static sso_error_t redis_unassign_role_from_user(storage_backend_t *self, sso_id
 
 static sso_error_t redis_get_user_roles(storage_backend_t *self, sso_id_t user_id,
                                          sso_id_t *role_ids, size_t *count, size_t max) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     redisReply *r = redis_cmd(priv->ctx, "SMEMBERS user:%lld:roles", (long long)user_id);
@@ -1339,7 +1432,7 @@ static sso_error_t redis_get_user_roles(storage_backend_t *self, sso_id_t user_i
 
 static sso_error_t redis_get_role_users(storage_backend_t *self, sso_id_t role_id,
                                          sso_id_t *user_ids, size_t *count, size_t max) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     redisReply *r = redis_cmd(priv->ctx, "SMEMBERS role:%lld:users", (long long)role_id);
@@ -1358,7 +1451,7 @@ static sso_error_t redis_get_role_users(storage_backend_t *self, sso_id_t role_i
 
 /* Role-Group bidirectional sets */
 static sso_error_t redis_assign_role_to_group(storage_backend_t *self, sso_id_t role_id, sso_id_t group_id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
     redisReply *r = redis_cmd(priv->ctx, "SADD role:%lld:groups %lld", (long long)role_id, (long long)group_id);
     if (!r) return SSO_ERR_STORAGE;
@@ -1370,7 +1463,7 @@ static sso_error_t redis_assign_role_to_group(storage_backend_t *self, sso_id_t 
 }
 
 static sso_error_t redis_unassign_role_from_group(storage_backend_t *self, sso_id_t role_id, sso_id_t group_id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
     redisReply *r = redis_cmd(priv->ctx, "SREM role:%lld:groups %lld", (long long)role_id, (long long)group_id);
     if (!r) return SSO_ERR_STORAGE;
@@ -1383,7 +1476,7 @@ static sso_error_t redis_unassign_role_from_group(storage_backend_t *self, sso_i
 
 /* User-Group bidirectional sets */
 static sso_error_t redis_add_user_to_group(storage_backend_t *self, sso_id_t group_id, sso_id_t user_id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
     redisReply *r = redis_cmd(priv->ctx, "SADD group:%lld:users %lld", (long long)group_id, (long long)user_id);
     if (!r) return SSO_ERR_STORAGE;
@@ -1395,7 +1488,7 @@ static sso_error_t redis_add_user_to_group(storage_backend_t *self, sso_id_t gro
 }
 
 static sso_error_t redis_remove_user_from_group(storage_backend_t *self, sso_id_t group_id, sso_id_t user_id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
     redisReply *r = redis_cmd(priv->ctx, "SREM group:%lld:users %lld", (long long)group_id, (long long)user_id);
     if (!r) return SSO_ERR_STORAGE;
@@ -1408,7 +1501,7 @@ static sso_error_t redis_remove_user_from_group(storage_backend_t *self, sso_id_
 
 static sso_error_t redis_get_user_groups(storage_backend_t *self, sso_id_t user_id,
                                           sso_id_t *group_ids, size_t *count, size_t max) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     redisReply *r = redis_cmd(priv->ctx, "SMEMBERS user:%lld:groups", (long long)user_id);
@@ -1427,7 +1520,7 @@ static sso_error_t redis_get_user_groups(storage_backend_t *self, sso_id_t user_
 
 static sso_error_t redis_get_group_users(storage_backend_t *self, sso_id_t group_id,
                                           sso_id_t *user_ids, size_t *count, size_t max) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     redisReply *r = redis_cmd(priv->ctx, "SMEMBERS group:%lld:users", (long long)group_id);
@@ -1447,7 +1540,7 @@ static sso_error_t redis_get_group_users(storage_backend_t *self, sso_id_t group
 /* Policy assignments */
 static sso_error_t redis_assign_policy(storage_backend_t *self, sso_id_t policy_id,
                                         policy_target_type_t target_type, sso_id_t target_id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char ptk[KEYBUF]; key_policy_target(ptk, sizeof(ptk), policy_id, (int)target_type);
@@ -1464,7 +1557,7 @@ static sso_error_t redis_assign_policy(storage_backend_t *self, sso_id_t policy_
 
 static sso_error_t redis_unassign_policy(storage_backend_t *self, sso_id_t policy_id,
                                           policy_target_type_t target_type, sso_id_t target_id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char ptk[KEYBUF]; key_policy_target(ptk, sizeof(ptk), policy_id, (int)target_type);
@@ -1482,7 +1575,7 @@ static sso_error_t redis_unassign_policy(storage_backend_t *self, sso_id_t polic
 static sso_error_t redis_get_policy_targets(storage_backend_t *self, sso_id_t policy_id,
                                               policy_target_type_t target_type,
                                               sso_id_t *target_ids, size_t *count, size_t max) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char ptk[KEYBUF]; key_policy_target(ptk, sizeof(ptk), policy_id, (int)target_type);
@@ -1503,7 +1596,7 @@ static sso_error_t redis_get_policy_targets(storage_backend_t *self, sso_id_t po
 static sso_error_t redis_get_target_policies(storage_backend_t *self,
                                               policy_target_type_t target_type, sso_id_t target_id,
                                               sso_id_t *policy_ids, size_t *count, size_t max) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char tpk[KEYBUF]; key_target_policies(tpk, sizeof(tpk), (int)target_type, target_id);
@@ -1526,7 +1619,7 @@ static sso_error_t redis_get_target_policies(storage_backend_t *self,
  * ======================================================================== */
 
 static sso_error_t redis_role_get_parent(storage_backend_t *self, sso_id_t role_id, sso_id_t *parent_id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char idk[KEYBUF]; key_id(idk, sizeof(idk), "role", role_id);
@@ -1534,7 +1627,7 @@ static sso_error_t redis_role_get_parent(storage_backend_t *self, sso_id_t role_
 }
 
 static sso_error_t redis_group_get_parent(storage_backend_t *self, sso_id_t group_id, sso_id_t *parent_id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char idk[KEYBUF]; key_id(idk, sizeof(idk), "group", group_id);
@@ -1543,7 +1636,7 @@ static sso_error_t redis_group_get_parent(storage_backend_t *self, sso_id_t grou
 
 static sso_error_t redis_get_user_roles_with_ancestors(storage_backend_t *self, sso_id_t user_id,
                                                         sso_id_t *role_ids, size_t *count, size_t max) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     /* Get directly assigned roles */
@@ -1598,7 +1691,7 @@ static sso_error_t redis_get_user_roles_with_ancestors(storage_backend_t *self, 
  * ======================================================================== */
 
 static sso_error_t redis_oauth_code_create(storage_backend_t *self, const oauth_auth_code_t *code) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char key[KEYBUF]; snprintf(key, sizeof(key), "oauth:code:%s", code->code);
@@ -1630,7 +1723,7 @@ static sso_error_t redis_oauth_code_create(storage_backend_t *self, const oauth_
 }
 
 static sso_error_t redis_oauth_code_get(storage_backend_t *self, const char *code, oauth_auth_code_t *out) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
     memset(out, 0, sizeof(*out));
 
@@ -1670,7 +1763,7 @@ static sso_error_t redis_oauth_code_get(storage_backend_t *self, const char *cod
 }
 
 static sso_error_t redis_oauth_code_mark_used(storage_backend_t *self, const char *code) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char key[KEYBUF]; snprintf(key, sizeof(key), "oauth:code:%s", code);
@@ -1690,7 +1783,7 @@ static sso_error_t redis_oauth_code_cleanup(storage_backend_t *self) {
  * ======================================================================== */
 
 static sso_error_t redis_oauth_client_create(storage_backend_t *self, oauth_client_t *client) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     /* Check unique client_id */
@@ -1738,7 +1831,7 @@ static sso_error_t redis_oauth_client_create(storage_backend_t *self, oauth_clie
 }
 
 static sso_error_t redis_oauth_client_get(storage_backend_t *self, const char *client_id, oauth_client_t *client) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
     memset(client, 0, sizeof(*client));
 
@@ -1784,7 +1877,7 @@ static sso_error_t redis_oauth_client_get(storage_backend_t *self, const char *c
 }
 
 static sso_error_t redis_oauth_client_update(storage_backend_t *self, const oauth_client_t *client) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char ck[KEYBUF]; snprintf(ck, sizeof(ck), "oauth:client:%s", client->client_id);
@@ -1808,7 +1901,7 @@ static sso_error_t redis_oauth_client_update(storage_backend_t *self, const oaut
 }
 
 static sso_error_t redis_oauth_client_delete(storage_backend_t *self, const char *client_id) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     /* Need the client to find its internal ID for list removal */
@@ -1824,7 +1917,7 @@ static sso_error_t redis_oauth_client_delete(storage_backend_t *self, const char
 
 static sso_error_t redis_oauth_client_list(storage_backend_t *self, int offset, int limit,
                                             oauth_client_t *clients, size_t *count, size_t max) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     redisReply *r = redis_cmd(priv->ctx, "LRANGE oauth:clients:list %d %d",
@@ -1893,7 +1986,7 @@ static sso_error_t redis_oauth_client_list(storage_backend_t *self, int offset, 
  * ======================================================================== */
 
 static sso_error_t redis_refresh_token_create(storage_backend_t *self, const refresh_token_t *rt) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char key[KEYBUF]; snprintf(key, sizeof(key), "refresh_token:%s", rt->token_hash);
@@ -1914,7 +2007,7 @@ static sso_error_t redis_refresh_token_create(storage_backend_t *self, const ref
 }
 
 static sso_error_t redis_refresh_token_get(storage_backend_t *self, const char *token_hash, refresh_token_t *out) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
     memset(out, 0, sizeof(*out));
 
@@ -1946,7 +2039,7 @@ static sso_error_t redis_refresh_token_get(storage_backend_t *self, const char *
 }
 
 static sso_error_t redis_refresh_token_revoke(storage_backend_t *self, const char *token_hash) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     char key[KEYBUF]; snprintf(key, sizeof(key), "refresh_token:%s", token_hash);
@@ -1955,7 +2048,7 @@ static sso_error_t redis_refresh_token_revoke(storage_backend_t *self, const cha
 }
 
 static sso_error_t redis_jti_revoke(storage_backend_t *self, const char *jti, sso_timestamp_t expires_at) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
 
     sso_timestamp_t now = sso_timestamp_now();
@@ -1975,7 +2068,7 @@ static sso_error_t redis_jti_revoke(storage_backend_t *self, const char *jti, ss
 }
 
 static bool redis_jti_is_revoked(storage_backend_t *self, const char *jti) {
-    redis_priv_t *priv = (redis_priv_t *)self->handle;
+    redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return false;
 
     /* Bloom Filter zero-hop short circuit */
