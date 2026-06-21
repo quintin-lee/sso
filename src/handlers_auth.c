@@ -97,7 +97,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 	if (user.mfa_enabled || force_mfa) {
 		token_t mfa_token;
 		/* Issue a short-lived token with "mfa" scope */
-		token_issue(tmgr, &user, NULL, 0, NULL, 0, "mfa", 300000, &mfa_token);
+		token_issue(tmgr, &user, NULL, 0, NULL, 0, "mfa", 300000, NULL, &mfa_token);
 
 		/* Success: return MFA requirement */
 		char* buf = (char*)malloc(8192);
@@ -125,12 +125,12 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		sso_strlcpy(access_token.jkt, dpop_jkt, sizeof(access_token.jkt));
 		sso_strlcpy(refresh_token.jkt, dpop_jkt, sizeof(refresh_token.jkt));
 	}
-	err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 900000, &access_token);
+	err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 900000, dpop_jkt, &access_token);
 	if (err != SSO_OK) {
 		sso_response_error(resp, 500, "Failed to issue access token");
 		return SSO_OK;
 	}
-	err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 604800000, &refresh_token);
+	err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 604800000, dpop_jkt, &refresh_token);
 	if (err != SSO_OK) {
 		token_destroy(&access_token);
 		sso_response_error(resp, 500, "Failed to issue refresh token");
@@ -287,9 +287,9 @@ sso_error_t handle_mfa_verify(sso_context_t* ctx, const http_request_t* req, htt
 	user_get_groups(umgr, user.id, groups, &gc, 16);
 
 	token_t access_token, refresh_token;
-	err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 900000, &access_token);
+	err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 900000, NULL, &access_token);
 	if (err == SSO_OK) {
-		err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 604800000, &refresh_token);
+		err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 604800000, NULL, &refresh_token);
 	}
 
 	if (err != SSO_OK) {
@@ -463,7 +463,7 @@ sso_error_t handle_login_by_sms(sso_context_t* ctx, const http_request_t* req, h
 
 	token_manager_t* tmgr = (token_manager_t*)ctx->token_mgr;
 	token_t			 token;
-	err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 3600000, &token);
+	err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 3600000, NULL, &token);
 
 	if (err != SSO_OK) {
 		sso_response_error(resp, 500, "Failed to issue token");
@@ -639,7 +639,7 @@ sso_error_t handle_verify(sso_context_t* ctx, const http_request_t* req, http_re
 		if (tok.jkt[0])
 			sso_strlcpy(new_tok.jkt, tok.jkt, sizeof(new_tok.jkt));
 
-		if (token_issue(tmgr, &user, tok.role_ids, tok.role_count, tok.group_ids, tok.group_count, tok.scope, ttl,
+		if (token_issue(tmgr, &user, tok.role_ids, tok.role_count, tok.group_ids, tok.group_count, tok.scope, ttl, NULL,
 						&new_tok) == SSO_OK) {
 			snprintf(rotation_header, sizeof(rotation_header), "X-SSO-Access-Token: %s\r\n", new_tok.token_str);
 			LOG_INFO("[verify] Silent rotation triggered. Issued new token for user %llu", (unsigned long long)user.id);
@@ -714,10 +714,10 @@ sso_error_t handle_refresh(sso_context_t* ctx, const http_request_t* req, http_r
 
 	token_t access_token, refresh_token;
 	err = token_issue(tmgr, &user, old_token.role_ids, old_token.role_count, old_token.group_ids, old_token.group_count,
-					  NULL, 900000, &access_token);
+					  NULL, 900000, NULL, &access_token);
 	if (err == SSO_OK) {
 		err = token_issue(tmgr, &user, old_token.role_ids, old_token.role_count, old_token.group_ids,
-						  old_token.group_count, NULL, 604800000, &refresh_token);
+						  old_token.group_count, NULL, 604800000, NULL, &refresh_token);
 	}
 	token_destroy(&old_token);
 
