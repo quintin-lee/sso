@@ -628,9 +628,9 @@ sso_error_t handle_verify(sso_context_t* ctx, const http_request_t* req, http_re
 
 	LOG_INFO("[verify] Authentication successful for user: %s", user.username);
 
-	char			rotation_header[1024] = "";
-	sso_timestamp_t now					  = sso_timestamp_now();
-	sso_timestamp_t ttl					  = tok.expires_at - tok.issued_at;
+	char			rotation_header[SSO_MAX_TOKEN_STR + 128] = "";
+	sso_timestamp_t now										 = sso_timestamp_now();
+	sso_timestamp_t ttl										 = tok.expires_at - tok.issued_at;
 
 	/* Silent Token Rotation: if more than half of the TTL has passed, issue a fresh token */
 	if (ttl > 0 && now >= tok.issued_at && (now - tok.issued_at) > (ttl / 2)) {
@@ -860,8 +860,8 @@ sso_error_t handle_certs(sso_context_t* ctx, const http_request_t* req, http_res
 	}
 
 	/* Wrap in JSON */
-	yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-	yyjson_mut_val *root = yyjson_mut_obj(doc);
+	yyjson_mut_doc* doc	 = yyjson_mut_doc_new(NULL);
+	yyjson_mut_val* root = yyjson_mut_obj(doc);
 	yyjson_mut_doc_set_root(doc, root);
 	yyjson_mut_obj_add_str(doc, root, "public_key", pem);
 	yyjson_mut_obj_add_str(doc, root, "alg", "RS256");
