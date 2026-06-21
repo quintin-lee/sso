@@ -38,6 +38,9 @@ jobs:
     - name: Build and run unit test suite
       run: make test
 
+    - name: Run performance benchmark (validation)
+      run: make bench BENCHMARK_ITERATIONS=100000
+
     - name: Build with AddressSanitizer
       run: make asan
 
