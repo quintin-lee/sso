@@ -21,7 +21,7 @@
 #include "role.h"
 #include "user.h"
 #include "storage.h"
-#include "cJSON.h"
+#include "yyjson.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -95,19 +95,20 @@ static sso_error_t rbac_compile(permission_strategy_t *self,
     (void)self;
     if (!rules_json || !compiled_rule) return SSO_ERR_INVALID_PARAM;
 
-    cJSON *root = cJSON_Parse(rules_json);
-    if (!root) return SSO_ERR_RULE_INVALID;
+    yyjson_doc *doc = yyjson_read(rules_json, strlen(rules_json), 0);
+    if (!doc) return SSO_ERR_RULE_INVALID;
 
-    const cJSON *roles_arr = cJSON_GetObjectItem(root, "roles");
-    if (!cJSON_IsArray(roles_arr)) {
-        cJSON_Delete(root);
+    yyjson_val *root = yyjson_doc_get_root(doc);
+    yyjson_val *roles_arr = yyjson_obj_get(root, "roles");
+    if (!yyjson_is_arr(roles_arr)) {
+        yyjson_doc_free(doc);
         return SSO_ERR_RULE_INVALID;
     }
 
-    size_t count = (size_t)cJSON_GetArraySize(roles_arr);
+    size_t count = yyjson_arr_size(roles_arr);
     rbac_compiled_rule_t *compiled = (rbac_compiled_rule_t *)malloc(sizeof(rbac_compiled_rule_t));
     if (!compiled) {
-        cJSON_Delete(root);
+        yyjson_doc_free(doc);
         return SSO_ERR_OUT_OF_MEMORY;
     }
 
@@ -115,26 +116,27 @@ static sso_error_t rbac_compile(permission_strategy_t *self,
     compiled->items = (rbac_rule_item_t *)calloc(count, sizeof(rbac_rule_item_t));
     if (!compiled->items) {
         free(compiled);
-        cJSON_Delete(root);
+        yyjson_doc_free(doc);
         return SSO_ERR_OUT_OF_MEMORY;
     }
 
-    for (size_t i = 0; i < count; i++) {
-        const cJSON *item = cJSON_GetArrayItem(roles_arr, (int)i);
-        const cJSON *name = cJSON_GetObjectItem(item, "name");
-        const cJSON *effect = cJSON_GetObjectItem(item, "effect");
+    size_t idx, max;
+    yyjson_val *item;
+    yyjson_arr_foreach(roles_arr, idx, max, item) {
+        yyjson_val *name = yyjson_obj_get(item, "name");
+        yyjson_val *effect = yyjson_obj_get(item, "effect");
 
-        if (cJSON_IsString(name)) {
-            sso_strlcpy(compiled->items[i].role_name, name->valuestring, 63);
+        if (yyjson_is_str(name)) {
+            sso_strlcpy(compiled->items[idx].role_name, yyjson_get_str(name), 63);
         }
-        if (cJSON_IsString(effect)) {
-            compiled->items[i].is_allow = (strcmp(effect->valuestring, "allow") == 0);
+        if (yyjson_is_str(effect)) {
+            compiled->items[idx].is_allow = (strcmp(yyjson_get_str(effect), "allow") == 0);
         } else {
-            compiled->items[i].is_allow = true; 
+            compiled->items[idx].is_allow = true; 
         }
     }
 
-    cJSON_Delete(root);
+    yyjson_doc_free(doc);
     *compiled_rule = compiled;
     return SSO_OK;
 }
@@ -183,16 +185,17 @@ static sso_error_t rbac_validate(permission_strategy_t *self,
     (void)self;
     if (!rules_json) return SSO_ERR_INVALID_PARAM;
 
-    cJSON *root = cJSON_Parse(rules_json);
-    if (!root) return SSO_ERR_RULE_INVALID;
+    yyjson_doc *doc = yyjson_read(rules_json, strlen(rules_json), 0);
+    if (!doc) return SSO_ERR_RULE_INVALID;
 
-    const cJSON *roles = cJSON_GetObjectItem(root, "roles");
-    if (!cJSON_IsArray(roles)) {
-        cJSON_Delete(root);
+    yyjson_val *root = yyjson_doc_get_root(doc);
+    yyjson_val *roles = yyjson_obj_get(root, "roles");
+    if (!yyjson_is_arr(roles)) {
+        yyjson_doc_free(doc);
         return SSO_ERR_RULE_INVALID;
     }
 
-    cJSON_Delete(root);
+    yyjson_doc_free(doc);
     return SSO_OK;
 }
 

@@ -16,7 +16,7 @@
 
 #include "sso.h"
 #include "policy.h"
-#include "cJSON.h"
+#include "yyjson.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -108,70 +108,71 @@ static sso_error_t loc_compile(permission_strategy_t *self,
     (void)self;
     if (!rules_json || !compiled_rule) return SSO_ERR_INVALID_PARAM;
 
-    cJSON *root = cJSON_Parse(rules_json);
-    if (!root) return SSO_ERR_RULE_INVALID;
+    yyjson_doc *doc = yyjson_read(rules_json, strlen(rules_json), 0);
+    if (!doc) return SSO_ERR_RULE_INVALID;
 
-    const cJSON *location_list = cJSON_GetObjectItem(root, "locations");
-    if (!cJSON_IsArray(location_list)) {
-        location_list = cJSON_GetObjectItem(root, "allowed_ips");
+    yyjson_val *root = yyjson_doc_get_root(doc);
+    yyjson_val *location_list = yyjson_obj_get(root, "locations");
+    if (!yyjson_is_arr(location_list)) {
+        location_list = yyjson_obj_get(root, "allowed_ips");
     }
-    if (!cJSON_IsArray(location_list)) {
-        cJSON_Delete(root);
+    if (!yyjson_is_arr(location_list)) {
+        yyjson_doc_free(doc);
         return SSO_ERR_RULE_INVALID;
     }
 
-    size_t count = (size_t)cJSON_GetArraySize(location_list);
+    size_t count = yyjson_arr_size(location_list);
     loc_compiled_rule_t *compiled = (loc_compiled_rule_t *)
         malloc(sizeof(loc_compiled_rule_t));
-    if (!compiled) { cJSON_Delete(root); return SSO_ERR_OUT_OF_MEMORY; }
+    if (!compiled) { yyjson_doc_free(doc); return SSO_ERR_OUT_OF_MEMORY; }
 
     compiled->count = count;
     compiled->items = (loc_rule_item_t *)
         calloc(count, sizeof(loc_rule_item_t));
     if (!compiled->items) {
-        free(compiled); cJSON_Delete(root);
+        free(compiled); yyjson_doc_free(doc);
         return SSO_ERR_OUT_OF_MEMORY;
     }
 
-    for (size_t i = 0; i < count; i++) {
-        const cJSON *item = cJSON_GetArrayItem(location_list, (int)i);
-
-        if (cJSON_IsString(item)) {
+    size_t idx, max;
+    yyjson_val *item;
+    yyjson_arr_foreach(location_list, idx, max, item) {
+        if (yyjson_is_str(item)) {
             /* Simple string format: exact IP match */
-            sso_strlcpy(compiled->items[i].value,
-                    item->valuestring, 255);
-            compiled->items[i].type = LOC_TYPE_EXACT;
-            compiled->items[i].is_allow = true;
-        } else if (cJSON_IsObject(item)) {
+            sso_strlcpy(compiled->items[idx].value,
+                    yyjson_get_str(item), 255);
+            compiled->items[idx].type = LOC_TYPE_EXACT;
+            compiled->items[idx].is_allow = true;
+        } else if (yyjson_is_obj(item)) {
             /* Object format: {type, value, effect} */
-            cJSON *type  = cJSON_GetObjectItem(item, "type");
-            const cJSON *value = cJSON_GetObjectItem(item, "value");
-            const cJSON *effect = cJSON_GetObjectItem(item, "effect");
+            yyjson_val *type  = yyjson_obj_get(item, "type");
+            yyjson_val *value = yyjson_obj_get(item, "value");
+            yyjson_val *effect = yyjson_obj_get(item, "effect");
 
-            if (value && cJSON_IsString(value))
-                sso_strlcpy(compiled->items[i].value,
-                        value->valuestring, 255);
+            if (yyjson_is_str(value))
+                sso_strlcpy(compiled->items[idx].value,
+                        yyjson_get_str(value), 255);
 
-            if (type && cJSON_IsString(type) &&
-                strcmp(type->valuestring, "geo") == 0) {
-                compiled->items[i].type = LOC_TYPE_GEO;
+            if (yyjson_is_str(type) &&
+                strcmp(yyjson_get_str(type), "geo") == 0) {
+                compiled->items[idx].type = LOC_TYPE_GEO;
             } else {
                 /* Default: treat as IP CIDR (or EXACT if parse fails) */
-                compiled->items[i].type = LOC_TYPE_IP_CIDR;
-                if (!parse_cidr(compiled->items[i].value,
-                                &compiled->items[i].cidr_network,
-                                &compiled->items[i].cidr_prefix)) {
-                    compiled->items[i].type = LOC_TYPE_EXACT;
+                compiled->items[idx].type = LOC_TYPE_IP_CIDR;
+                if (!parse_cidr(compiled->items[idx].value,
+                                &compiled->items[idx].cidr_network,
+                                &compiled->items[idx].cidr_prefix)) {
+                    compiled->items[idx].type = LOC_TYPE_EXACT;
                 }
             }
 
-            compiled->items[i].is_allow =
-                !(effect && cJSON_IsString(effect) &&
-                  strcmp(effect->valuestring, "deny") == 0);
+            compiled->items[idx].is_allow =
+                !(yyjson_is_str(effect) &&
+                  strcmp(yyjson_get_str(effect), "deny") == 0);
         }
     }
 
-    cJSON_Delete(root);
+    yyjson_doc_free(doc);
     *compiled_rule = compiled;
     return SSO_OK;
 }
@@ -239,9 +240,9 @@ static sso_error_t loc_validate(permission_strategy_t *self,
                                  const char *rules_json) {
     (void)self;
     if (!rules_json) return SSO_ERR_INVALID_PARAM;
-    cJSON *root = cJSON_Parse(rules_json);
-    if (!root) return SSO_ERR_RULE_INVALID;
-    cJSON_Delete(root);
+    yyjson_doc *doc = yyjson_read(rules_json, strlen(rules_json), 0);
+    if (!doc) return SSO_ERR_RULE_INVALID;
+    yyjson_doc_free(doc);
     return SSO_OK;
 }
 
