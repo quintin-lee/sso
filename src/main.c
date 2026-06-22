@@ -267,10 +267,11 @@ static int run_server(sso_config_t* cfg, const char* config_path) {
 			{"/api/v1/oauth/revoke", HTTP_POST, handle_oauth_revoke, true},
 			{"/api/v1/oauth/end-session", HTTP_GET, handle_oauth_end_session, false},
 
-			/* Raft Cluster RPC */
+			/* Raft Cluster Endpoints */
 			{"/raft/request_vote", HTTP_POST, handle_raft_request_vote, false},
 			{"/raft/append_entries", HTTP_POST, handle_raft_append_entries, false},
 			{"/api/v1/raft/execute", HTTP_POST, handle_raft_execute, false},
+			{"/api/v1/raft/status", HTTP_GET, handle_raft_status, false},
 	};
 
 	size_t route_count = sizeof(routes) / sizeof(routes[0]);

@@ -37,6 +37,10 @@
           <i class="pi pi-desktop text-sm"></i>
           <span>{{ $t('sidebar.apps') }}</span>
         </button>
+        <button @click="currentTab = 'cluster'" :class="tabClass('cluster')">
+          <i class="pi pi-server text-sm"></i>
+          <span>Cluster</span>
+        </button>
 
         <div class="px-3 pt-5 pb-2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.1em]">{{ $t('sidebar.security') }}</div>
         <button @click="currentTab = 'policies'" :class="tabClass('policies')">
@@ -108,6 +112,63 @@
         <PolicyManagement v-else-if="currentTab === 'policies'" ref="policyRef" :search="searchQuery" />
         <AppManagement v-else-if="currentTab === 'apps'" ref="appRef" :search="searchQuery" />
         <AuditLogViewer v-else-if="currentTab === 'logs'" :search="searchQuery" />
+        
+        <!-- Cluster Content -->
+        <div v-else-if="currentTab === 'cluster'" class="bg-[var(--bg-elevated)] rounded-xl border border-[var(--border-primary)] shadow-sm p-6 overflow-hidden flex flex-col h-full">
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <i class="pi pi-server text-[var(--accent)]"></i> Raft Consensus Cluster
+            </h3>
+            <button @click="fetchClusterStatus" class="px-3 py-1.5 text-xs bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] rounded-lg transition-colors font-medium flex items-center gap-2">
+              <i class="pi pi-refresh" :class="{ 'animate-spin': loadingCluster }"></i> Refresh Status
+            </button>
+          </div>
+          
+          <div v-if="loadingCluster && !clusterStatus" class="flex-grow flex items-center justify-center">
+            <i class="pi pi-spinner animate-spin text-2xl text-[var(--text-muted)]"></i>
+          </div>
+          
+          <div v-else-if="clusterStatus" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-4 flex flex-col items-center justify-center gap-2">
+              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Node State</span>
+              <div class="flex items-center gap-2">
+                <div class="w-2.5 h-2.5 rounded-full" :class="{
+                  'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]': clusterStatus.state === 'leader',
+                  'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]': clusterStatus.state === 'follower',
+                  'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]': clusterStatus.state === 'candidate'
+                }"></div>
+                <span class="text-lg font-bold text-[var(--text-primary)] capitalize">{{ clusterStatus.state }}</span>
+              </div>
+            </div>
+            
+            <div class="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-4 flex flex-col items-center justify-center gap-2">
+              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Current Term</span>
+              <span class="text-2xl font-mono font-bold text-[var(--text-primary)]">{{ clusterStatus.term }}</span>
+            </div>
+            
+            <div class="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-4 flex flex-col items-center justify-center gap-2">
+              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Log Index</span>
+              <span class="text-2xl font-mono font-bold text-[var(--text-primary)]">{{ clusterStatus.current_idx }}</span>
+            </div>
+            
+            <div class="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-4 flex flex-col items-center justify-center gap-2">
+              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Cluster Size</span>
+              <span class="text-2xl font-mono font-bold text-[var(--text-primary)]">{{ clusterStatus.num_nodes }} Nodes</span>
+            </div>
+            
+            <div class="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-4 flex flex-col items-center justify-center gap-2 col-span-1 md:col-span-2 lg:col-span-2">
+              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Leader Address</span>
+              <span class="text-sm font-mono text-[var(--text-secondary)] bg-[var(--bg-primary)] px-3 py-1 rounded border border-[var(--border-primary)] w-full text-center truncate">
+                {{ clusterStatus.leader_url || '(Unknown/Election in progress)' }}
+              </span>
+            </div>
+          </div>
+          
+          <div v-else class="flex-grow flex flex-col items-center justify-center text-[var(--text-muted)] gap-3">
+            <i class="pi pi-exclamation-triangle text-3xl"></i>
+            <p class="text-sm">Failed to load cluster status</p>
+          </div>
+        </div>
       </div>
     </main>
   </div>
@@ -115,7 +176,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { authService } from '../services/api';
@@ -130,6 +191,8 @@ import AppManagement from '../components/admin/AppManagement.vue';
 import AuditLogViewer from '../components/admin/AuditLogViewer.vue';
 
 const searchQuery = ref('');
+const loadingCluster = ref(false);
+const clusterStatus = ref<any>(null);
 
 const { locale } = useI18n();
 const router = useRouter();
@@ -182,6 +245,28 @@ const handleLogout = async () => {
     router.push('/login');
   } catch (err) {
     router.push('/login');
+  }
+};
+
+watch(currentTab, (newTab) => {
+  if (newTab === 'cluster') {
+    fetchClusterStatus();
+  }
+});
+
+const fetchClusterStatus = async () => {
+  loadingCluster.value = true;
+  try {
+    const res = await fetch('/api/v1/raft/status');
+    if (res.ok) {
+      clusterStatus.value = await res.json();
+    } else {
+      console.error("Failed to fetch cluster status");
+    }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    loadingCluster.value = false;
   }
 };
 </script>

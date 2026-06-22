@@ -389,3 +389,45 @@ sso_error_t handle_raft_execute(sso_context_t* ctx, const http_request_t* req, h
 	}
 	return SSO_OK;
 }
+
+sso_error_t handle_raft_status(sso_context_t* ctx, const http_request_t* req, http_response_t* resp) {
+	(void)req;
+	raft_cluster_t* cluster = NULL;
+	if (!ctx || !ctx->storage_backend) return SSO_ERR_STORAGE;
+	storage_backend_t* sb = (storage_backend_t*)ctx->storage_backend;
+	cluster = (raft_cluster_t*)sb->context;
+	if (!cluster) return SSO_ERR_STORAGE;
+
+	pthread_mutex_lock(&cluster->lock);
+	int is_leader = raft_is_leader(cluster->raft);
+	int state = raft_get_state(cluster->raft);
+	raft_term_t term = raft_get_current_term(cluster->raft);
+	raft_index_t idx = raft_get_current_idx(cluster->raft);
+	int num_nodes = raft_get_num_nodes(cluster->raft);
+	raft_node_t* leader_node = raft_get_current_leader_node(cluster->raft);
+	const char* leader_url = leader_node ? (const char*)raft_node_get_udata(leader_node) : "";
+	pthread_mutex_unlock(&cluster->lock);
+
+	const char* state_str = "unknown";
+	if (state == RAFT_STATE_FOLLOWER) state_str = "follower";
+	else if (state == RAFT_STATE_CANDIDATE) state_str = "candidate";
+	else if (state == RAFT_STATE_LEADER) state_str = "leader";
+
+	yyjson_mut_doc* doc = yyjson_mut_doc_new(NULL);
+	yyjson_mut_val* root = yyjson_mut_obj(doc);
+	yyjson_mut_doc_set_root(doc, root);
+
+	yyjson_mut_obj_add_bool(doc, root, "is_leader", is_leader);
+	yyjson_mut_obj_add_str(doc, root, "state", state_str);
+	yyjson_mut_obj_add_int(doc, root, "term", term);
+	yyjson_mut_obj_add_int(doc, root, "current_idx", idx);
+	yyjson_mut_obj_add_int(doc, root, "num_nodes", num_nodes);
+	yyjson_mut_obj_add_str(doc, root, "leader_url", leader_url);
+
+	char* json = yyjson_mut_write(doc, 0, NULL);
+	yyjson_mut_doc_free(doc);
+
+	sso_response_ok(resp, json);
+	free(json);
+	return SSO_OK;
+}
