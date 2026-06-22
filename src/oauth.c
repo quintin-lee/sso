@@ -642,7 +642,16 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 			goto cleanup;
 		}
 
-		if (rt_record.revoked || sso_timestamp_now() > rt_record.expires_at) {
+		if (rt_record.revoked) {
+			/* Token Replay Detected! Revoke the entire token family. */
+			if (sb && sb->refresh_token_revoke_family) {
+				sb->refresh_token_revoke_family(sb, rt_record.user_id, rt_record.client_id);
+			}
+			json_error_response(resp, 400, "invalid_grant");
+			goto cleanup;
+		}
+
+		if (sso_timestamp_now() > rt_record.expires_at) {
 			json_error_response(resp, 400, "invalid_grant");
 			goto cleanup;
 		}

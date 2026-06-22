@@ -539,6 +539,16 @@ static sso_error_t mem_rt_revoke(storage_backend_t *self, const char *h) {
     return SSO_ERR_NOT_FOUND;
 }
 
+static sso_error_t mem_rt_revoke_family(storage_backend_t *self, sso_id_t user_id, const char *client_id) {
+    mem_priv_t *p = (mem_priv_t*)self->handle; if (!p || !client_id) return SSO_ERR_STORAGE;
+    for (size_t i = 0; i < p->rt_n; i++) {
+        if (p->refresh_tokens[i].user_id == user_id && strcmp(p->refresh_tokens[i].client_id, client_id) == 0) {
+            p->refresh_tokens[i].revoked = 1;
+        }
+    }
+    return SSO_OK;
+}
+
 static sso_error_t mem_jti_revoke(storage_backend_t *self, const char *jti, sso_timestamp_t expires_at) {
     mem_priv_t *p = (mem_priv_t*)self->handle;
     if (!p || !jti) return SSO_ERR_STORAGE;
@@ -651,6 +661,7 @@ sso_error_t storage_memory_create(storage_backend_t **backend) {
     (*backend)->refresh_token_create = mem_rt_create;
     (*backend)->refresh_token_get    = mem_rt_get;
     (*backend)->refresh_token_revoke = mem_rt_revoke;
+    (*backend)->refresh_token_revoke_family = mem_rt_revoke_family;
     (*backend)->jti_revoke           = mem_jti_revoke;
     (*backend)->jti_is_revoked       = mem_jti_is_revoked;
 

@@ -1604,6 +1604,19 @@ static sso_error_t sqlite_refresh_token_revoke(storage_backend_t* self, const ch
 	return err;
 }
 
+static sso_error_t sqlite_refresh_token_revoke_family(storage_backend_t* self, sso_id_t user_id, const char* client_id) {
+	sqlite_priv_t* priv = (sqlite_priv_t*)self->handle;
+	sqlite3_stmt*  stmt;
+	if (sqlite3_prepare_v2(priv->db, "UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ? AND client_id = ?", -1, &stmt, NULL) !=
+		SQLITE_OK)
+		return SSO_ERR_STORAGE;
+	sqlite3_bind_int64(stmt, 1, user_id);
+	sqlite3_bind_text(stmt, 2, client_id, -1, SQLITE_STATIC);
+	sso_error_t err = (sqlite3_step(stmt) == SQLITE_DONE) ? SSO_OK : SSO_ERR_STORAGE;
+	sqlite3_finalize(stmt);
+	return err;
+}
+
 static sso_error_t sqlite_jti_revoke(storage_backend_t* self, const char* jti, sso_timestamp_t expires_at) {
 	sqlite_priv_t* priv = (sqlite_priv_t*)self->handle;
 	sqlite3_stmt*  stmt;
@@ -1965,6 +1978,7 @@ sso_error_t storage_sqlite_create(storage_backend_t** backend) {
 	(*backend)->refresh_token_create = sqlite_refresh_token_create;
 	(*backend)->refresh_token_get	 = sqlite_refresh_token_get;
 	(*backend)->refresh_token_revoke = sqlite_refresh_token_revoke;
+	(*backend)->refresh_token_revoke_family = sqlite_refresh_token_revoke_family;
 	(*backend)->jti_revoke			 = sqlite_jti_revoke;
 	(*backend)->jti_is_revoked		 = sqlite_jti_is_revoked;
 	(*backend)->audit_log_write		 = sqlite_audit_log_write;

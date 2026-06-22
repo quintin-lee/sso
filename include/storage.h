@@ -124,6 +124,7 @@ typedef sso_error_t (*storage_refresh_token_create_fn)(storage_backend_t* self, 
 typedef sso_error_t (*storage_refresh_token_get_fn)(storage_backend_t* self, const char* token_hash,
 													refresh_token_t* out);
 typedef sso_error_t (*storage_refresh_token_revoke_fn)(storage_backend_t* self, const char* token_hash);
+typedef sso_error_t (*storage_refresh_token_revoke_family_fn)(storage_backend_t* self, sso_id_t user_id, const char* client_id);
 
 typedef sso_error_t (*storage_jti_revoke_fn)(storage_backend_t* self, const char* jti, sso_timestamp_t expires_at);
 typedef bool (*storage_jti_is_revoked_fn)(storage_backend_t* self, const char* jti);
@@ -291,6 +292,7 @@ struct storage_backend {
 	storage_refresh_token_create_fn refresh_token_create;
 	storage_refresh_token_get_fn	refresh_token_get;
 	storage_refresh_token_revoke_fn refresh_token_revoke;
+	storage_refresh_token_revoke_family_fn refresh_token_revoke_family;
 
 	storage_jti_revoke_fn	  jti_revoke;
 	storage_jti_is_revoked_fn jti_is_revoked;

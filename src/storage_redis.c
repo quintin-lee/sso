@@ -2047,6 +2047,39 @@ static sso_error_t redis_refresh_token_revoke(storage_backend_t *self, const cha
     return redis_ok(priv->ctx, r);
 }
 
+static sso_error_t redis_refresh_token_revoke_family(storage_backend_t *self, sso_id_t user_id, const char *client_id) {
+    redis_priv_t *priv = redis_get_priv(self);
+    if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
+
+    redisReply *r = redis_cmd(priv->ctx, "KEYS refresh_token:*");
+    if (!r) return SSO_ERR_STORAGE;
+    if (r->type != REDIS_REPLY_ARRAY) {
+        freeReplyObject(r);
+        return SSO_ERR_STORAGE;
+    }
+
+    char uid_str[32];
+    snprintf(uid_str, sizeof(uid_str), "%lld", (long long)user_id);
+
+    for (size_t i = 0; i < r->elements; i++) {
+        if (r->element[i]->type == REDIS_REPLY_STRING) {
+            const char *key = r->element[i]->str;
+            redisReply *hmget = redis_cmd(priv->ctx, "HMGET %s user_id client_id", key);
+            if (hmget && hmget->type == REDIS_REPLY_ARRAY && hmget->elements == 2) {
+                if (hmget->element[0]->type == REDIS_REPLY_STRING && hmget->element[1]->type == REDIS_REPLY_STRING) {
+                    if (strcmp(hmget->element[0]->str, uid_str) == 0 && strcmp(hmget->element[1]->str, client_id) == 0) {
+                        redisReply *hset = redis_cmd(priv->ctx, "HSET %s revoked 1", key);
+                        if (hset) freeReplyObject(hset);
+                    }
+                }
+            }
+            if (hmget) freeReplyObject(hmget);
+        }
+    }
+    freeReplyObject(r);
+    return SSO_OK;
+}
+
 static sso_error_t redis_jti_revoke(storage_backend_t *self, const char *jti, sso_timestamp_t expires_at) {
     redis_priv_t *priv = redis_get_priv(self);
     if (!priv || !priv->ctx) return SSO_ERR_STORAGE;
@@ -2186,6 +2219,7 @@ sso_error_t storage_redis_create(storage_backend_t **backend) {
     (*backend)->refresh_token_create = redis_refresh_token_create;
     (*backend)->refresh_token_get    = redis_refresh_token_get;
     (*backend)->refresh_token_revoke = redis_refresh_token_revoke;
+    (*backend)->refresh_token_revoke_family = redis_refresh_token_revoke_family;
     (*backend)->jti_revoke           = redis_jti_revoke;
     (*backend)->jti_is_revoked       = redis_jti_is_revoked;
 

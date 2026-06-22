@@ -1888,6 +1888,28 @@ static sso_error_t postgres_rt_revoke(storage_backend_t* self, const char* token
 	return SSO_OK;
 }
 
+static sso_error_t postgres_rt_revoke_family(storage_backend_t* self, sso_id_t user_id, const char* client_id) {
+	if (!self || !client_id)
+		return SSO_ERR_INVALID_PARAM;
+	postgres_priv_t* priv = postgres_get_priv(self);
+
+	const char* query	  = "UPDATE refresh_tokens SET revoked = 1 WHERE user_id = $1 AND client_id = $2";
+	
+	char user_id_str[32];
+	snprintf(user_id_str, sizeof(user_id_str), "%" PRIu64, user_id);
+	
+	const char* params[2] = {user_id_str, client_id};
+
+	PGresult* res = PQexecParams(priv->conn, query, 2, NULL, params, NULL, NULL, 0);
+	if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+		PQclear(res);
+		return SSO_ERR_STORAGE;
+	}
+
+	PQclear(res);
+	return SSO_OK;
+}
+
 static sso_error_t postgres_jti_revoke(storage_backend_t* self, const char* jti, sso_timestamp_t expires_at) {
 	if (!self || !jti)
 		return SSO_ERR_INVALID_PARAM;
@@ -2261,6 +2283,7 @@ sso_error_t storage_postgres_create(storage_backend_t** backend) {
 	(*backend)->refresh_token_create = postgres_rt_create;
 	(*backend)->refresh_token_get	 = postgres_rt_get;
 	(*backend)->refresh_token_revoke = postgres_rt_revoke;
+	(*backend)->refresh_token_revoke_family = postgres_rt_revoke_family;
 	(*backend)->jti_revoke			 = postgres_jti_revoke;
 	(*backend)->jti_is_revoked		 = postgres_jti_is_revoked;
 	(*backend)->audit_log_write		 = postgres_audit_log_write;
