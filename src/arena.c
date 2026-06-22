@@ -1,3 +1,13 @@
+/*
+ * arena.c — Arena memory allocator for request-scoped allocations.
+ *
+ * Provides a bump-pointer arena allocator that allocates memory in
+ * fixed-size blocks and frees the entire arena in one shot. Purpose-built
+ * for HTTP request processing where many small, short-lived allocations
+ * are freed together at request end — eliminates fragmentation and
+ * per-allocation free overhead.
+ */
+
 #include "arena.h"
 #include <stdlib.h>
 #include <string.h>

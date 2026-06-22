@@ -1,3 +1,12 @@
+/*
+ * logger.c — Structured logging subsystem with level filtering and JSON output.
+ *
+ * Supports configurable log levels (DEBUG, INFO, WARN, ERROR), thread-local
+ * request ID injection, plain-text and ELK-compatible JSON output formats,
+ * and file or stderr destinations. All LOG_* macros route through this module
+ * for consistent structured logging across the SSO system.
+ */
+
 #include "logger.h"
 #include <stdlib.h>
 #include <string.h>

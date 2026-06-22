@@ -1,3 +1,12 @@
+/*
+ * intern.c — String interning pool for memory-efficient string deduplication.
+ *
+ * Maintains a thread-safe hash table of unique string pointers. Frequently
+ * repeated strings (header names, claim keys, policy rule keys) are interned
+ * so that identical strings share a single allocation, reducing memory
+ * footprint and enabling pointer-equality comparisons instead of strcmp().
+ */
+
 #include "intern.h"
 #include <stdlib.h>
 #include <string.h>

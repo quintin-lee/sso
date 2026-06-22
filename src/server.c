@@ -1,3 +1,12 @@
+/*
+ * server.c — Legacy POSIX socket HTTP server (fallback backend).
+ *
+ * Implements the server.h API using raw POSIX sockets, epoll or select
+ * I/O multiplexing, and a pthread thread pool.  Supports TLS via
+ * OpenSSL, per-thread arena allocators, and dynamic route registration.
+ * Compiled as a fallback when libmicrohttpd is not available.
+ */
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -8,7 +17,6 @@
 #include "user.h"
 #include "token.h"
 #include "config.h"
-
 
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -489,7 +497,7 @@ static int parse_request(buf_reader_t* br, http_request_t* req, long max_body_si
 				val++;
 			sso_strlcpy(req->user_agent, val, sizeof(req->user_agent));
 			req->user_agent[sizeof(req->user_agent) - 1] = '\0';
-			size_t olen = strlen(req->user_agent);
+			size_t olen									 = strlen(req->user_agent);
 			while (olen > 0 && (req->user_agent[olen - 1] == ' ' || req->user_agent[olen - 1] == '\r'))
 				req->user_agent[--olen] = '\0';
 		}

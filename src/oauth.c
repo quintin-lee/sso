@@ -1,3 +1,13 @@
+/*
+ * oauth.c — OAuth 2.0 / OpenID Connect endpoint handlers.
+ *
+ * Implements the core OAuth 2.0 and OIDC protocol endpoints: authorization
+ * code grant (authorize + token exchange), token introspection (RFC 7662),
+ * token revocation (RFC 7009), end-session, userinfo (standard claims),
+ * JWKS (RFC 7517), and OIDC discovery (/.well-known/openid-configuration).
+ * Supports PKCE (S256/plain), refresh token rotation, and DPoP binding.
+ */
+
 #include "sso.h"
 #include "oauth.h"
 #include "token.h"

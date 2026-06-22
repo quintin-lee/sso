@@ -1,3 +1,13 @@
+/*
+ * handlers_common.c — Shared HTTP handler utilities.
+ *
+ * Provides JSON helper functions (json_str_value, json_int_value,
+ * json_bool_value), standardized error response construction,
+ * CORS header injection, auth context extraction middleware, query
+ * parameter parsing, and response body building routines used by
+ * all handler modules.
+ */
+
 #include "sso.h"
 #include "server.h"
 #include "logger.h"

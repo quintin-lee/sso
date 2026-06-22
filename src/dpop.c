@@ -1,3 +1,12 @@
+/*
+ * dpop.c — DPoP (Demonstration of Proof-of-Possession) token verification.
+ *
+ * Implements RFC 9449 DPoP proof validation: parses the DPoP JWT header,
+ * verifies the signature against the embedded public key (JWK thumbprint),
+ * validates required claims (htu, htm, jti, iat), and extracts the
+ * confirmation key thumbprint (cnf/jkt) for binding to access/refresh tokens.
+ */
+
 #include "dpop.h"
 #include "yyjson.h"
 #include "logger.h"
@@ -64,11 +73,11 @@ sso_error_t dpop_verify_proof(const char* dpop_proof, const char* method, const 
 	size_t		   pld_bin_len = base64url_decode(pld_b64, pld_bin, pld_len);
 	pld_bin[pld_bin_len]	   = '\0';
 
-	yyjson_doc *hdr_doc = yyjson_read((const char*)hdr_bin, hdr_bin_len, 0);
-	yyjson_val *hdr_json = hdr_doc ? yyjson_doc_get_root(hdr_doc) : NULL;
+	yyjson_doc* hdr_doc	 = yyjson_read((const char*)hdr_bin, hdr_bin_len, 0);
+	yyjson_val* hdr_json = hdr_doc ? yyjson_doc_get_root(hdr_doc) : NULL;
 
-	yyjson_doc *pld_doc = yyjson_read((const char*)pld_bin, pld_bin_len, 0);
-	yyjson_val *pld_json = pld_doc ? yyjson_doc_get_root(pld_doc) : NULL;
+	yyjson_doc* pld_doc	 = yyjson_read((const char*)pld_bin, pld_bin_len, 0);
+	yyjson_val* pld_json = pld_doc ? yyjson_doc_get_root(pld_doc) : NULL;
 
 	sso_error_t result	   = SSO_ERR_TOKEN_INVALID;
 	EVP_PKEY*	pkey	   = NULL;
@@ -94,7 +103,7 @@ sso_error_t dpop_verify_proof(const char* dpop_proof, const char* method, const 
 	if (!jwk || !yyjson_is_obj(jwk))
 		goto cleanup;
 
-	yyjson_val* kty	 = yyjson_obj_get(jwk, "kty");
+	yyjson_val* kty	  = yyjson_obj_get(jwk, "kty");
 	yyjson_val* n_val = yyjson_obj_get(jwk, "n");
 	yyjson_val* e_val = yyjson_obj_get(jwk, "e");
 	if (!kty || !yyjson_is_str(kty) || strcmp(yyjson_get_str(kty), "RSA") != 0 || !n_val || !yyjson_is_str(n_val) ||

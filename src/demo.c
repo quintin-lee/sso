@@ -1,3 +1,13 @@
+/*
+ * demo.c — SSO system demo mode: sample data creation and verification.
+ *
+ * When run without --server or --interactive, creates 3 sample users
+ * (admin, alice, bob), 3 roles (admin -> editor -> viewer hierarchy),
+ * 2 groups (engineering, finance), and policies across all 7 permission
+ * strategies. Then executes a comprehensive suite of permission checks
+ * and a 1000-iteration cache stress test to validate the system end-to-end.
+ */
+
 #include "sso.h"
 #include "server.h"
 #include "handlers.h"

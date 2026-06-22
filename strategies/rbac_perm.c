@@ -1,19 +1,21 @@
 /*
- * rbac_perm.c — RBAC (Role-Based Access Control) permission strategy.
+ * rbac_perm.c — Role-Based Access Control (RBAC) permission strategy.
  *
- * Evaluates whether a user has a specific role membership.
- * Rules are a JSON array of role names with allow/deny semantics.
+ * Checks whether a user holds a specific role in the role hierarchy.
+ * Supports recursive ancestor inheritance: if role B is a child of
+ * role A, assigning B implicitly grants A's permissions.  The check
+ * resolves the user's effective role set via the storage backend's
+ * get_user_roles_with_ancestors() call.
  *
- * Rule format (JSON):
- *   {
- *     "roles": [
- *       {"name": "admin",   "effect": "allow"},
- *       {"name": "viewer",  "effect": "deny"},
- *       {"name": "auditor", "effect": "allow"}
- *     ]
- *   }
+ * At compile time the JSON rules are parsed into a flat array of
+ * rbac_rule_item_t entries.  Evaluation looks up the requested
+ * role_name and tests membership through the resolved ancestor set.
  *
- * This version uses pre-compilation for production performance.
+ * JSON rule format:
+ *   { "roles": [{"name": "admin", "effect": "allow"}] }
+ *
+ * Example: a policy with this rule grants access to any user holding
+ * the admin role (or any descendant role through the hierarchy).
  */
 
 #include "sso.h"
@@ -30,186 +32,186 @@
  * Pre-compiled RBAC rule structure
  * ----------------------------------------------------------------------- */
 typedef struct {
-    char    role_name[64];
-    bool    is_allow;
+	char role_name[64];
+	bool is_allow;
 } rbac_rule_item_t;
 
 typedef struct {
-    rbac_rule_item_t *items;
-    size_t            count;
+	rbac_rule_item_t* items;
+	size_t			  count;
 } rbac_compiled_rule_t;
 
 /* -----------------------------------------------------------------------
  * Helper: check if a user ID holds a named role.
  * ----------------------------------------------------------------------- */
-static bool user_has_role(sso_context_t *sso_ctx, sso_id_t user_id,
-                          const char *role_name) {
-    if (!sso_ctx || !role_name) return false;
+static bool user_has_role(sso_context_t* sso_ctx, sso_id_t user_id, const char* role_name) {
+	if (!sso_ctx || !role_name)
+		return false;
 
-    storage_backend_t *sb = (storage_backend_t *)sso_ctx->storage_backend;
-    role_manager_t *rmgr = (role_manager_t *)sso_ctx->role_mgr;
-    if (!sb || !rmgr) return false;
+	storage_backend_t* sb	= (storage_backend_t*)sso_ctx->storage_backend;
+	role_manager_t*	   rmgr = (role_manager_t*)sso_ctx->role_mgr;
+	if (!sb || !rmgr)
+		return false;
 
-    /* Look up the target role by name to get its numeric ID. */
-    role_t target_role;
-    if (role_get_by_name(rmgr, role_name, &target_role) != SSO_OK) {
-        return false;
-    }
+	/* Look up the target role by name to get its numeric ID. */
+	role_t target_role;
+	if (role_get_by_name(rmgr, role_name, &target_role) != SSO_OK) {
+		return false;
+	}
 
-    if (!sb->get_user_roles_with_ancestors) {
-        return false;
-    }
+	if (!sb->get_user_roles_with_ancestors) {
+		return false;
+	}
 
-    sso_id_t user_role_ids[128];
-    size_t count = 128;
-    sso_error_t err = sb->get_user_roles_with_ancestors(sb, user_id,
-                                                         user_role_ids,
-                                                         &count, 128);
-    if (err != SSO_OK) return false;
+	sso_id_t	user_role_ids[128];
+	size_t		count = 128;
+	sso_error_t err	  = sb->get_user_roles_with_ancestors(sb, user_id, user_role_ids, &count, 128);
+	if (err != SSO_OK)
+		return false;
 
-    for (size_t i = 0; i < count; i++) {
-        if (user_role_ids[i] == target_role.id) {
-            return true;
-        }
-    }
+	for (size_t i = 0; i < count; i++) {
+		if (user_role_ids[i] == target_role.id) {
+			return true;
+		}
+	}
 
-    return false;
+	return false;
 }
 
 /* -----------------------------------------------------------------------
  * Strategy implementation
  * ----------------------------------------------------------------------- */
 
-static sso_error_t rbac_init(permission_strategy_t *self, sso_context_t *ctx) {
-    self->userdata = ctx; 
-    return SSO_OK;
+static sso_error_t rbac_init(permission_strategy_t* self, sso_context_t* ctx) {
+	self->userdata = ctx;
+	return SSO_OK;
 }
 
-static void rbac_destroy(permission_strategy_t *self) {
-    (void)self;
+static void rbac_destroy(permission_strategy_t* self) {
+	(void)self;
 }
 
-static sso_error_t rbac_compile(permission_strategy_t *self,
-                                const char *rules_json,
-                                void **compiled_rule) {
-    (void)self;
-    if (!rules_json || !compiled_rule) return SSO_ERR_INVALID_PARAM;
+static sso_error_t rbac_compile(permission_strategy_t* self, const char* rules_json, void** compiled_rule) {
+	(void)self;
+	if (!rules_json || !compiled_rule)
+		return SSO_ERR_INVALID_PARAM;
 
-    yyjson_doc *doc = yyjson_read(rules_json, strlen(rules_json), 0);
-    if (!doc) return SSO_ERR_RULE_INVALID;
+	yyjson_doc* doc = yyjson_read(rules_json, strlen(rules_json), 0);
+	if (!doc)
+		return SSO_ERR_RULE_INVALID;
 
-    yyjson_val *root = yyjson_doc_get_root(doc);
-    yyjson_val *roles_arr = yyjson_obj_get(root, "roles");
-    if (!yyjson_is_arr(roles_arr)) {
-        yyjson_doc_free(doc);
-        return SSO_ERR_RULE_INVALID;
-    }
+	yyjson_val* root	  = yyjson_doc_get_root(doc);
+	yyjson_val* roles_arr = yyjson_obj_get(root, "roles");
+	if (!yyjson_is_arr(roles_arr)) {
+		yyjson_doc_free(doc);
+		return SSO_ERR_RULE_INVALID;
+	}
 
-    size_t count = yyjson_arr_size(roles_arr);
-    rbac_compiled_rule_t *compiled = (rbac_compiled_rule_t *)malloc(sizeof(rbac_compiled_rule_t));
-    if (!compiled) {
-        yyjson_doc_free(doc);
-        return SSO_ERR_OUT_OF_MEMORY;
-    }
+	size_t				  count	   = yyjson_arr_size(roles_arr);
+	rbac_compiled_rule_t* compiled = (rbac_compiled_rule_t*)malloc(sizeof(rbac_compiled_rule_t));
+	if (!compiled) {
+		yyjson_doc_free(doc);
+		return SSO_ERR_OUT_OF_MEMORY;
+	}
 
-    compiled->count = count;
-    compiled->items = (rbac_rule_item_t *)calloc(count, sizeof(rbac_rule_item_t));
-    if (!compiled->items) {
-        free(compiled);
-        yyjson_doc_free(doc);
-        return SSO_ERR_OUT_OF_MEMORY;
-    }
+	compiled->count = count;
+	compiled->items = (rbac_rule_item_t*)calloc(count, sizeof(rbac_rule_item_t));
+	if (!compiled->items) {
+		free(compiled);
+		yyjson_doc_free(doc);
+		return SSO_ERR_OUT_OF_MEMORY;
+	}
 
-    size_t idx, max;
-    yyjson_val *item;
-    yyjson_arr_foreach(roles_arr, idx, max, item) {
-        yyjson_val *name = yyjson_obj_get(item, "name");
-        yyjson_val *effect = yyjson_obj_get(item, "effect");
+	size_t		idx, max;
+	yyjson_val* item;
+	yyjson_arr_foreach(roles_arr, idx, max, item) {
+		yyjson_val* name   = yyjson_obj_get(item, "name");
+		yyjson_val* effect = yyjson_obj_get(item, "effect");
 
-        if (yyjson_is_str(name)) {
-            sso_strlcpy(compiled->items[idx].role_name, yyjson_get_str(name), 63);
-        }
-        if (yyjson_is_str(effect)) {
-            compiled->items[idx].is_allow = (strcmp(yyjson_get_str(effect), "allow") == 0);
-        } else {
-            compiled->items[idx].is_allow = true; 
-        }
-    }
+		if (yyjson_is_str(name)) {
+			sso_strlcpy(compiled->items[idx].role_name, yyjson_get_str(name), 63);
+		}
+		if (yyjson_is_str(effect)) {
+			compiled->items[idx].is_allow = (strcmp(yyjson_get_str(effect), "allow") == 0);
+		} else {
+			compiled->items[idx].is_allow = true;
+		}
+	}
 
-    yyjson_doc_free(doc);
-    *compiled_rule = compiled;
-    return SSO_OK;
+	yyjson_doc_free(doc);
+	*compiled_rule = compiled;
+	return SSO_OK;
 }
 
-static void rbac_free_compiled(permission_strategy_t *self,
-                               void *compiled_rule) {
-    (void)self;
-    if (!compiled_rule) return;
-    rbac_compiled_rule_t *compiled = (rbac_compiled_rule_t *)compiled_rule;
-    free(compiled->items);
-    free(compiled);
+static void rbac_free_compiled(permission_strategy_t* self, void* compiled_rule) {
+	(void)self;
+	if (!compiled_rule)
+		return;
+	rbac_compiled_rule_t* compiled = (rbac_compiled_rule_t*)compiled_rule;
+	free(compiled->items);
+	free(compiled);
 }
 
-static sso_error_t rbac_evaluate(permission_strategy_t *self,
-                                 eval_context_t *ctx,
-                                 const policy_t *policy,
-                                 void *compiled_rule,
-                                 bool *result) {
-    if (!ctx || !policy || !result || !compiled_rule) return SSO_ERR_INVALID_PARAM;
+static sso_error_t rbac_evaluate(permission_strategy_t* self, eval_context_t* ctx, const policy_t* policy,
+								 void* compiled_rule, bool* result) {
+	if (!ctx || !policy || !result || !compiled_rule)
+		return SSO_ERR_INVALID_PARAM;
 
-    const char *role_name = ctx->params.rbac.role_name;
-    if (!role_name || role_name[0] == '\0') {
-        return SSO_ERR_NOT_FOUND;
-    }
+	const char* role_name = ctx->params.rbac.role_name;
+	if (!role_name || role_name[0] == '\0') {
+		return SSO_ERR_NOT_FOUND;
+	}
 
-    sso_context_t *sso_ctx = (sso_context_t *)self->userdata;
-    if (!sso_ctx) return SSO_ERR_NOT_FOUND;
+	sso_context_t* sso_ctx = (sso_context_t*)self->userdata;
+	if (!sso_ctx)
+		return SSO_ERR_NOT_FOUND;
 
-    rbac_compiled_rule_t *compiled = (rbac_compiled_rule_t *)compiled_rule;
+	rbac_compiled_rule_t* compiled = (rbac_compiled_rule_t*)compiled_rule;
 
-    for (size_t i = 0; i < compiled->count; i++) {
-        if (strcmp(compiled->items[i].role_name, role_name) == 0) {
-            if (user_has_role(sso_ctx, ctx->user_id, role_name)) {
-                *result = compiled->items[i].is_allow;
-                return SSO_OK;
-            }
-            return SSO_ERR_NOT_FOUND;
-        }
-    }
+	for (size_t i = 0; i < compiled->count; i++) {
+		if (strcmp(compiled->items[i].role_name, role_name) == 0) {
+			if (user_has_role(sso_ctx, ctx->user_id, role_name)) {
+				*result = compiled->items[i].is_allow;
+				return SSO_OK;
+			}
+			return SSO_ERR_NOT_FOUND;
+		}
+	}
 
-    return SSO_ERR_NOT_FOUND;
+	return SSO_ERR_NOT_FOUND;
 }
 
-static sso_error_t rbac_validate(permission_strategy_t *self,
-                                 const char *rules_json) {
-    (void)self;
-    if (!rules_json) return SSO_ERR_INVALID_PARAM;
+static sso_error_t rbac_validate(permission_strategy_t* self, const char* rules_json) {
+	(void)self;
+	if (!rules_json)
+		return SSO_ERR_INVALID_PARAM;
 
-    yyjson_doc *doc = yyjson_read(rules_json, strlen(rules_json), 0);
-    if (!doc) return SSO_ERR_RULE_INVALID;
+	yyjson_doc* doc = yyjson_read(rules_json, strlen(rules_json), 0);
+	if (!doc)
+		return SSO_ERR_RULE_INVALID;
 
-    yyjson_val *root = yyjson_doc_get_root(doc);
-    yyjson_val *roles = yyjson_obj_get(root, "roles");
-    if (!yyjson_is_arr(roles)) {
-        yyjson_doc_free(doc);
-        return SSO_ERR_RULE_INVALID;
-    }
+	yyjson_val* root  = yyjson_doc_get_root(doc);
+	yyjson_val* roles = yyjson_obj_get(root, "roles");
+	if (!yyjson_is_arr(roles)) {
+		yyjson_doc_free(doc);
+		return SSO_ERR_RULE_INVALID;
+	}
 
-    yyjson_doc_free(doc);
-    return SSO_OK;
+	yyjson_doc_free(doc);
+	return SSO_OK;
 }
 
 /* ========================================================================
  * Strategy vtable
  * ======================================================================== */
 permission_strategy_t rbac_perm_strategy = {
-    .type          = PERM_STRATEGY_RBAC,
-    .name          = "rbac",
-    .init          = rbac_init,
-    .destroy       = rbac_destroy,
-    .compile_rules = rbac_compile,
-    .free_compiled_rules = rbac_free_compiled,
-    .evaluate      = rbac_evaluate,
-    .validate_rules = rbac_validate,
-    .userdata      = NULL,
+		.type				 = PERM_STRATEGY_RBAC,
+		.name				 = "rbac",
+		.init				 = rbac_init,
+		.destroy			 = rbac_destroy,
+		.compile_rules		 = rbac_compile,
+		.free_compiled_rules = rbac_free_compiled,
+		.evaluate			 = rbac_evaluate,
+		.validate_rules		 = rbac_validate,
+		.userdata			 = NULL,
 };

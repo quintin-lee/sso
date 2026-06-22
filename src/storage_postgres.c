@@ -1,3 +1,17 @@
+/*
+ * storage_postgres.c — PostgreSQL storage backend.
+ *
+ * Implements the full storage_backend vtable using libpq.
+ * Provides a connection pool with thread-local connections, automatic
+ * schema loading from sql/postgres/schema.sql, and WAL-mode checkpointing.
+ *
+ * Key features:
+ *   - Thread-safe connection pool (up to POSTGRES_POOL_MAX)
+ *   - TLS-aware thread-local connections via postgres_thread_init/cleanup
+ *   - Parameterised queries ($1..$N style) throughout
+ *   - Cascade deletes for users, roles, groups, and policy assignments
+ */
+
 #include "storage.h"
 #include "user.h"
 #include "role.h"
