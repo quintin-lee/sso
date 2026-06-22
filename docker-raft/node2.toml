@@ -1,5 +1,5 @@
 [server]
-port = 80
+port = 8080
 log_level = 1
 
 [database]
@@ -10,7 +10,7 @@ url = "/app/data/node2.db"
 enabled = true
 node_id = 2
 nodes = [
-    { id = 1, url = "http://node1" },
-    { id = 2, url = "http://node2" },
-    { id = 3, url = "http://node3" }
+    { id = 1, url = "http://node1:8080" },
+    { id = 2, url = "http://node2:8080" },
+    { id = 3, url = "http://node3:8080" }
 ]

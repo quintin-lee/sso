@@ -17,6 +17,7 @@ services:
       - "8081:80"
     environment:
       - SSO_TOKEN_SECRET=RAFT_CLUSTER_SECRET
+      - SSO_ADMIN_PASSWORD=admin123
     volumes:
       - ./docker-raft/node1.toml:/app/sso.toml
       - sso_node1_data:/app/data
@@ -34,6 +35,7 @@ services:
       - "8082:80"
     environment:
       - SSO_TOKEN_SECRET=RAFT_CLUSTER_SECRET
+      - SSO_ADMIN_PASSWORD=admin123
     volumes:
       - ./docker-raft/node2.toml:/app/sso.toml
       - sso_node2_data:/app/data
@@ -51,6 +53,7 @@ services:
       - "8083:80"
     environment:
       - SSO_TOKEN_SECRET=RAFT_CLUSTER_SECRET
+      - SSO_ADMIN_PASSWORD=admin123
     volumes:
       - ./docker-raft/node3.toml:/app/sso.toml
       - sso_node3_data:/app/data
