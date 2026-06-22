@@ -792,17 +792,6 @@ void sso_server_stop(sso_server_t* server) {
 		close(*sock);
 		*sock = 0;
 	}
-
-	if (server->ssl_ctx) {
-		SSL_CTX_free(server->ssl_ctx);
-		server->ssl_ctx = NULL;
-	}
-
-	/* Free per-method route index */
-	for (http_method_t m = HTTP_GET; m <= HTTP_OPTIONS; m++) {
-		free(server->method_routes[m]);
-		server->method_routes[m] = NULL;
-	}
 }
 
 sso_error_t sso_server_start(sso_server_t* server) {
@@ -944,7 +933,40 @@ sso_error_t sso_server_start(sso_server_t* server) {
 	}
 
 	pool_shutdown();
-	close(server_fd);
+
+	/* Wait for inflight requests to complete gracefully */
+	LOG_INFO("Waiting up to 5 seconds for inflight requests to complete...");
+	int wait_ms = 5000;
+	while (atomic_load(&g_metric_active_connections) > 0 && wait_ms > 0) {
+		usleep(10000); /* 10ms */
+		wait_ms -= 10;
+	}
+	if (atomic_load(&g_metric_active_connections) > 0) {
+		LOG_WARN("Graceful shutdown timeout, %d requests still active. Forcibly terminating.",
+				 (int)atomic_load(&g_metric_active_connections));
+	} else {
+		LOG_INFO("All inflight requests completed.");
+	}
+
+	if (server->ssl_ctx) {
+		SSL_CTX_free(server->ssl_ctx);
+		server->ssl_ctx = NULL;
+	}
+
+	/* Free per-method route index */
+	for (http_method_t m = HTTP_GET; m <= HTTP_OPTIONS; m++) {
+		free(server->method_routes[m]);
+		server->method_routes[m] = NULL;
+	}
+
+	/* Ensure socket is closed */
+	if (server_fd > 0) {
+		int* sock = (int*)&server->server_data;
+		if (*sock > 0) {
+			close(*sock);
+			*sock = 0;
+		}
+	}
 	server->server_data = NULL;
 	LOG_INFO("SSO management API stopped.");
 	return SSO_OK;

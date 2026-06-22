@@ -301,6 +301,9 @@ static enum MHD_Result mhd_access_handler(void* cls, struct MHD_Connection* conn
 
 	/* ---- Phase 1: allocate per-connection state ---- */
 	if (state == NULL) {
+		if (g_shutdown) {
+			return MHD_NO;
+		}
 		state = (mhd_conn_state_t*)calloc(1, sizeof(mhd_conn_state_t));
 		if (!state)
 			return MHD_NO;
@@ -390,7 +393,6 @@ static enum MHD_Result mhd_access_handler(void* cls, struct MHD_Connection* conn
 	if (ua) {
 		sso_strlcpy(req.user_agent, ua, sizeof(req.user_agent));
 	}
-
 
 	/* ---- Build response ---- */
 	memset(&resp, 0, sizeof(resp));
@@ -744,6 +746,20 @@ sso_error_t sso_server_start(sso_server_t* server) {
 			}
 		}
 		sleep(1);
+	}
+
+	/* Wait for inflight requests to complete gracefully */
+	LOG_INFO("Waiting up to 5 seconds for inflight requests to complete...");
+	int wait_ms = 5000;
+	while (atomic_load(&g_metric_active_connections) > 0 && wait_ms > 0) {
+		usleep(10000); /* 10ms */
+		wait_ms -= 10;
+	}
+	if (atomic_load(&g_metric_active_connections) > 0) {
+		LOG_WARN("Graceful shutdown timeout, %d requests still active. Forcibly terminating.",
+				 (int)atomic_load(&g_metric_active_connections));
+	} else {
+		LOG_INFO("All inflight requests completed.");
 	}
 
 	/* Stop the daemon */
