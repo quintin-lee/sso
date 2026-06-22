@@ -78,6 +78,7 @@ static int __ensurecapacity(log_private_t * me)
 int log_load_from_snapshot(log_t *me_, raft_index_t idx, raft_term_t term)
 {
     log_private_t* me = (log_private_t*)me_;
+    (void)term;
 
     log_clear_entries(me_);
     log_clear(me_);
