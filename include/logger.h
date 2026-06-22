@@ -41,7 +41,8 @@ void log_set_request_id(const char* req_id);
  */
 void log_write(log_level_t level, const char* file, int line, int saved_errno, const char* fmt, ...);
 
-/* Convenience macros — capture file/line/errno automatically. */                                                                                                 \
+/* Convenience macros — capture file/line/errno automatically. */
+#define LOG_DEBUG(...)                                                                                                 \
 	do {                                                                                                               \
 		int _e = errno;                                                                                                \
 		log_write(LOG_DEBUG, __FILE__, __LINE__, _e, __VA_ARGS__);                                                     \
