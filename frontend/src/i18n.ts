@@ -14,7 +14,8 @@ const messages = {
       management: 'Management',
       security: 'Security',
       administrator: 'Administrator',
-      apps: 'Applications'
+      apps: 'Applications',
+      cluster: 'Cluster'
     },
     common: {
       add: 'Add',
@@ -333,7 +334,8 @@ const messages = {
       management: '系统管理',
       security: '安全管理',
       administrator: '系统管理员',
-      apps: '应用管理'
+      apps: '应用管理',
+      cluster: '集群'
     },
     common: {
       add: '添加',

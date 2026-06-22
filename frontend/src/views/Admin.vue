@@ -39,7 +39,7 @@
         </button>
         <button @click="currentTab = 'cluster'" :class="tabClass('cluster')">
           <i class="pi pi-server text-sm"></i>
-          <span>{{ $t('admin.cluster.title') }}</span>
+          <span>{{ $t('sidebar.cluster') }}</span>
         </button>
 
         <div class="px-3 pt-5 pb-2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.1em]">{{ $t('sidebar.security') }}</div>
