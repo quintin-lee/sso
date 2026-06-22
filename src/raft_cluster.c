@@ -10,6 +10,10 @@
 #include <unistd.h>
 #include <curl/curl.h>
 
+#include "role.h"
+#include "group.h"
+#include "policy.h"
+
 struct raft_cluster_t {
 	raft_server_t*	   raft;
 	storage_backend_t* inner_storage;
@@ -93,8 +97,15 @@ static int raft_persist_term_cb(raft_server_t* raft, void* user_data, raft_term_
 static int raft_log_offer_cb(raft_server_t* raft, void* user_data, raft_entry_t* entry, raft_index_t entry_idx) {
 	(void)raft;
 	(void)user_data;
-	(void)entry;
 	(void)entry_idx;
+	if (entry->data.buf && entry->data.len > 0) {
+		void* copy = malloc(entry->data.len + 1);
+		memcpy(copy, entry->data.buf, entry->data.len);
+		((char*)copy)[entry->data.len] = '\0';
+		entry->data.buf = copy;
+	} else {
+		entry->data.buf = NULL;
+	}
 	return 0;
 }
 
@@ -117,7 +128,7 @@ static int raft_log_pop_cb(raft_server_t* raft, void* user_data, raft_entry_t* e
 static sso_error_t raft_cluster_propose_and_wait(raft_cluster_t* cluster, const char* json, size_t len) {
 	msg_entry_t entry = {0};
 	entry.id		  = rand();
-	entry.data.buf	  = strdup(json);
+	entry.data.buf	  = (void*)json;
 	entry.data.len	  = len;
 
 	msg_entry_response_t response;
@@ -127,6 +138,52 @@ static sso_error_t raft_cluster_propose_and_wait(raft_cluster_t* cluster, const 
 	pthread_mutex_unlock(&cluster->lock);
 
 	if (e != 0) {
+		if (e == RAFT_ERR_NOT_LEADER) {
+			/* Automatically forward to leader */
+			raft_node_t* leader = raft_get_current_leader_node(cluster->raft);
+			if (leader) {
+				const char* leader_url = (const char*)raft_node_get_udata(leader);
+				if (leader_url) {
+					char exec_url[512];
+					snprintf(exec_url, sizeof(exec_url), "%s/api/v1/raft/execute", leader_url);
+					
+					CURL* curl = curl_easy_init();
+					if (curl) {
+						curl_easy_setopt(curl, CURLOPT_URL, exec_url);
+						curl_easy_setopt(curl, CURLOPT_NOPROXY, "*");
+						curl_easy_setopt(curl, CURLOPT_POST, 1L);
+						curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json);
+						curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)len);
+						curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+						
+						struct curl_slist* headers = NULL;
+						headers = curl_slist_append(headers, "Content-Type: application/json");
+						/* Bypass auth for internal RPC */
+						headers = curl_slist_append(headers, "Authorization: Bearer internal-rpc"); 
+						curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+						
+						CURLcode res = curl_easy_perform(curl);
+						long http_code = 0;
+						curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+						
+						curl_slist_free_all(headers);
+						curl_easy_cleanup(curl);
+						
+						if (res == CURLE_OK && http_code == 200) {
+							return SSO_OK;
+						} else {
+							LOG_ERROR("Raft: Forwarding to %s failed! curl_res=%d, http_code=%ld", exec_url, res, http_code);
+						}
+					} else {
+						LOG_ERROR("Raft: Failed to init curl for forwarding");
+					}
+				} else {
+					LOG_ERROR("Raft: Leader URL is NULL");
+				}
+			} else {
+				LOG_ERROR("Raft: No leader currently elected to forward to");
+			}
+		}
 		LOG_ERROR("Raft: Failed to append entry: %d", e);
 		return SSO_ERR_STORAGE;
 	}
@@ -281,8 +338,10 @@ sso_error_t handle_raft_append_entries(sso_context_t* ctx, const http_request_t*
 		}
 	}
 
-	msg_appendentries_response_t r			 = {0};
-	raft_node_t*				 sender_node = raft_get_current_leader_node(g_cluster->raft);
+	raft_node_id_t sender_id = yyjson_get_int(yyjson_obj_get(root, "sender_id"));
+	raft_node_t* sender_node = raft_get_node(g_cluster->raft, sender_id);
+
+	msg_appendentries_response_t r = {0};
 
 	pthread_mutex_lock(&g_cluster->lock);
 	int e = raft_recv_appendentries(g_cluster->raft, sender_node, &m, &r);
@@ -308,5 +367,25 @@ sso_error_t handle_raft_append_entries(sso_context_t* ctx, const http_request_t*
 
 	sso_response_ok(resp, json);
 	free(json);
+	return SSO_OK;
+}
+
+sso_error_t handle_raft_execute(sso_context_t* ctx, const http_request_t* req, http_response_t* resp) {
+	if (!req->body) {
+		sso_response_error(resp, 400, "Missing payload");
+		return SSO_OK;
+	}
+	raft_cluster_t* cluster = NULL;
+	if (!ctx || !ctx->storage_backend) return SSO_ERR_STORAGE;
+	storage_backend_t* sb = (storage_backend_t*)ctx->storage_backend;
+	cluster = (raft_cluster_t*)sb->context;
+	if (!cluster) return SSO_ERR_STORAGE;
+
+	sso_error_t err = raft_cluster_propose_and_wait(cluster, req->body, req->body_len);
+	if (err == SSO_OK) {
+		sso_response_ok(resp, "{\"success\":true}");
+	} else {
+		sso_response_error(resp, 500, "Raft propose failed");
+	}
 	return SSO_OK;
 }

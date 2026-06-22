@@ -9,11 +9,11 @@ static sso_error_t proxy_user_create(storage_backend_t *self, user_t* user) {
     if (user) {
         yyjson_mut_val *user_obj = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_int(doc, user_obj, "id", (int64_t)user->id);
-        yyjson_mut_obj_add_str(doc, user_obj, "username", user->username ? user->username : "");
-        yyjson_mut_obj_add_str(doc, user_obj, "phone", user->phone ? user->phone : "");
-        yyjson_mut_obj_add_str(doc, user_obj, "password_hash", user->password_hash ? user->password_hash : "");
-        yyjson_mut_obj_add_str(doc, user_obj, "email", user->email ? user->email : "");
-        yyjson_mut_obj_add_str(doc, user_obj, "display_name", user->display_name ? user->display_name : "");
+        yyjson_mut_obj_add_str(doc, user_obj, "username", user->username);
+        yyjson_mut_obj_add_str(doc, user_obj, "phone", user->phone);
+        yyjson_mut_obj_add_str(doc, user_obj, "password_hash", user->password_hash);
+        yyjson_mut_obj_add_str(doc, user_obj, "email", user->email);
+        yyjson_mut_obj_add_str(doc, user_obj, "display_name", user->display_name);
         yyjson_mut_obj_add_int(doc, user_obj, "status", (int64_t)user->status);
         yyjson_mut_obj_add_int(doc, user_obj, "created_at", (int64_t)user->created_at);
         yyjson_mut_obj_add_int(doc, user_obj, "updated_at", (int64_t)user->updated_at);
@@ -38,11 +38,11 @@ static sso_error_t proxy_user_update(storage_backend_t *self, const user_t* user
     if (user) {
         yyjson_mut_val *user_obj = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_int(doc, user_obj, "id", (int64_t)user->id);
-        yyjson_mut_obj_add_str(doc, user_obj, "username", user->username ? user->username : "");
-        yyjson_mut_obj_add_str(doc, user_obj, "phone", user->phone ? user->phone : "");
-        yyjson_mut_obj_add_str(doc, user_obj, "password_hash", user->password_hash ? user->password_hash : "");
-        yyjson_mut_obj_add_str(doc, user_obj, "email", user->email ? user->email : "");
-        yyjson_mut_obj_add_str(doc, user_obj, "display_name", user->display_name ? user->display_name : "");
+        yyjson_mut_obj_add_str(doc, user_obj, "username", user->username);
+        yyjson_mut_obj_add_str(doc, user_obj, "phone", user->phone);
+        yyjson_mut_obj_add_str(doc, user_obj, "password_hash", user->password_hash);
+        yyjson_mut_obj_add_str(doc, user_obj, "email", user->email);
+        yyjson_mut_obj_add_str(doc, user_obj, "display_name", user->display_name);
         yyjson_mut_obj_add_int(doc, user_obj, "status", (int64_t)user->status);
         yyjson_mut_obj_add_int(doc, user_obj, "created_at", (int64_t)user->created_at);
         yyjson_mut_obj_add_int(doc, user_obj, "updated_at", (int64_t)user->updated_at);
@@ -117,7 +117,17 @@ static sso_error_t proxy_role_create(storage_backend_t *self, role_t* role) {
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_str(doc, root, "op", "role_create");
-    /* FIXME: Serialize struct role_t* role */
+    if (role) {
+        yyjson_mut_val *role_obj = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_int(doc, role_obj, "id", (int64_t)role->id);
+        yyjson_mut_obj_add_str(doc, role_obj, "name", role->name);
+        yyjson_mut_obj_add_str(doc, role_obj, "description", role->description);
+        yyjson_mut_obj_add_int(doc, role_obj, "parent_role_id", (int64_t)role->parent_role_id);
+        yyjson_mut_obj_add_int(doc, role_obj, "status", (int64_t)role->status);
+        yyjson_mut_obj_add_int(doc, role_obj, "created_at", (int64_t)role->created_at);
+        yyjson_mut_obj_add_int(doc, role_obj, "updated_at", (int64_t)role->updated_at);
+        yyjson_mut_obj_add_val(doc, root, "role", role_obj);
+    }
     size_t len;
     char *json = yyjson_mut_write(doc, 0, &len);
     yyjson_mut_doc_free(doc);
@@ -134,7 +144,17 @@ static sso_error_t proxy_role_update(storage_backend_t *self, const role_t* role
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_str(doc, root, "op", "role_update");
-    /* FIXME: Serialize struct role_t* role */
+    if (role) {
+        yyjson_mut_val *role_obj = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_int(doc, role_obj, "id", (int64_t)role->id);
+        yyjson_mut_obj_add_str(doc, role_obj, "name", role->name);
+        yyjson_mut_obj_add_str(doc, role_obj, "description", role->description);
+        yyjson_mut_obj_add_int(doc, role_obj, "parent_role_id", (int64_t)role->parent_role_id);
+        yyjson_mut_obj_add_int(doc, role_obj, "status", (int64_t)role->status);
+        yyjson_mut_obj_add_int(doc, role_obj, "created_at", (int64_t)role->created_at);
+        yyjson_mut_obj_add_int(doc, role_obj, "updated_at", (int64_t)role->updated_at);
+        yyjson_mut_obj_add_val(doc, root, "role", role_obj);
+    }
     size_t len;
     char *json = yyjson_mut_write(doc, 0, &len);
     yyjson_mut_doc_free(doc);
@@ -168,7 +188,17 @@ static sso_error_t proxy_group_create(storage_backend_t *self, group_t* group) {
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_str(doc, root, "op", "group_create");
-    /* FIXME: Serialize struct group_t* group */
+    if (group) {
+        yyjson_mut_val *group_obj = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_int(doc, group_obj, "id", (int64_t)group->id);
+        yyjson_mut_obj_add_str(doc, group_obj, "name", group->name);
+        yyjson_mut_obj_add_str(doc, group_obj, "description", group->description);
+        yyjson_mut_obj_add_int(doc, group_obj, "parent_group_id", (int64_t)group->parent_group_id);
+        yyjson_mut_obj_add_int(doc, group_obj, "status", (int64_t)group->status);
+        yyjson_mut_obj_add_int(doc, group_obj, "created_at", (int64_t)group->created_at);
+        yyjson_mut_obj_add_int(doc, group_obj, "updated_at", (int64_t)group->updated_at);
+        yyjson_mut_obj_add_val(doc, root, "group", group_obj);
+    }
     size_t len;
     char *json = yyjson_mut_write(doc, 0, &len);
     yyjson_mut_doc_free(doc);
@@ -185,7 +215,17 @@ static sso_error_t proxy_group_update(storage_backend_t *self, const group_t* gr
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_str(doc, root, "op", "group_update");
-    /* FIXME: Serialize struct group_t* group */
+    if (group) {
+        yyjson_mut_val *group_obj = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_int(doc, group_obj, "id", (int64_t)group->id);
+        yyjson_mut_obj_add_str(doc, group_obj, "name", group->name);
+        yyjson_mut_obj_add_str(doc, group_obj, "description", group->description);
+        yyjson_mut_obj_add_int(doc, group_obj, "parent_group_id", (int64_t)group->parent_group_id);
+        yyjson_mut_obj_add_int(doc, group_obj, "status", (int64_t)group->status);
+        yyjson_mut_obj_add_int(doc, group_obj, "created_at", (int64_t)group->created_at);
+        yyjson_mut_obj_add_int(doc, group_obj, "updated_at", (int64_t)group->updated_at);
+        yyjson_mut_obj_add_val(doc, root, "group", group_obj);
+    }
     size_t len;
     char *json = yyjson_mut_write(doc, 0, &len);
     yyjson_mut_doc_free(doc);
@@ -219,7 +259,19 @@ static sso_error_t proxy_policy_create(storage_backend_t *self, policy_t* policy
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_str(doc, root, "op", "policy_create");
-    /* FIXME: Serialize struct policy_t* policy */
+    if (policy) {
+        yyjson_mut_val *policy_obj = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_int(doc, policy_obj, "id", (int64_t)policy->id);
+        yyjson_mut_obj_add_str(doc, policy_obj, "name", policy->name);
+        yyjson_mut_obj_add_int(doc, policy_obj, "strategy_type", (int64_t)policy->strategy_type);
+        yyjson_mut_obj_add_int(doc, policy_obj, "effect", (int64_t)policy->effect);
+        yyjson_mut_obj_add_int(doc, policy_obj, "priority", (int64_t)policy->priority);
+        yyjson_mut_obj_add_str(doc, policy_obj, "rules", policy->rules);
+        yyjson_mut_obj_add_int(doc, policy_obj, "status", (int64_t)policy->status);
+        yyjson_mut_obj_add_int(doc, policy_obj, "created_at", (int64_t)policy->created_at);
+        yyjson_mut_obj_add_int(doc, policy_obj, "updated_at", (int64_t)policy->updated_at);
+        yyjson_mut_obj_add_val(doc, root, "policy", policy_obj);
+    }
     size_t len;
     char *json = yyjson_mut_write(doc, 0, &len);
     yyjson_mut_doc_free(doc);
@@ -236,7 +288,19 @@ static sso_error_t proxy_policy_update(storage_backend_t *self, const policy_t* 
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_str(doc, root, "op", "policy_update");
-    /* FIXME: Serialize struct policy_t* policy */
+    if (policy) {
+        yyjson_mut_val *policy_obj = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_int(doc, policy_obj, "id", (int64_t)policy->id);
+        yyjson_mut_obj_add_str(doc, policy_obj, "name", policy->name);
+        yyjson_mut_obj_add_int(doc, policy_obj, "strategy_type", (int64_t)policy->strategy_type);
+        yyjson_mut_obj_add_int(doc, policy_obj, "effect", (int64_t)policy->effect);
+        yyjson_mut_obj_add_int(doc, policy_obj, "priority", (int64_t)policy->priority);
+        yyjson_mut_obj_add_str(doc, policy_obj, "rules", policy->rules);
+        yyjson_mut_obj_add_int(doc, policy_obj, "status", (int64_t)policy->status);
+        yyjson_mut_obj_add_int(doc, policy_obj, "created_at", (int64_t)policy->created_at);
+        yyjson_mut_obj_add_int(doc, policy_obj, "updated_at", (int64_t)policy->updated_at);
+        yyjson_mut_obj_add_val(doc, root, "policy", policy_obj);
+    }
     size_t len;
     char *json = yyjson_mut_write(doc, 0, &len);
     yyjson_mut_doc_free(doc);
@@ -614,17 +678,17 @@ static sso_error_t raft_apply_dispatch(raft_cluster_t* cluster, const char* json
         yyjson_val *user_obj = yyjson_obj_get(root, "user");
         if (user_obj) {
             user_val.id = yyjson_get_int(yyjson_obj_get(user_obj, "id"));
-            const char* un = yyjson_get_str(yyjson_obj_get(user_obj, "username"));
-            if (un) strncpy(user_val.username, un, sizeof(user_val.username)-1);
-            const char* ph = yyjson_get_str(yyjson_obj_get(user_obj, "phone"));
-            if (ph) strncpy(user_val.phone, ph, sizeof(user_val.phone)-1);
-            const char* phsh = yyjson_get_str(yyjson_obj_get(user_obj, "password_hash"));
-            if (phsh) strncpy(user_val.password_hash, phsh, sizeof(user_val.password_hash)-1);
-            const char* em = yyjson_get_str(yyjson_obj_get(user_obj, "email"));
-            if (em) strncpy(user_val.email, em, sizeof(user_val.email)-1);
-            const char* dn = yyjson_get_str(yyjson_obj_get(user_obj, "display_name"));
-            if (dn) strncpy(user_val.display_name, dn, sizeof(user_val.display_name)-1);
-            user_val.status = (user_status_t)yyjson_get_int(yyjson_obj_get(user_obj, "status"));
+            const char* _str_username = yyjson_get_str(yyjson_obj_get(user_obj, "username"));
+            if (_str_username) strncpy(user_val.username, _str_username, sizeof(user_val.username)-1);
+            const char* _str_phone = yyjson_get_str(yyjson_obj_get(user_obj, "phone"));
+            if (_str_phone) strncpy(user_val.phone, _str_phone, sizeof(user_val.phone)-1);
+            const char* _str_password_hash = yyjson_get_str(yyjson_obj_get(user_obj, "password_hash"));
+            if (_str_password_hash) strncpy(user_val.password_hash, _str_password_hash, sizeof(user_val.password_hash)-1);
+            const char* _str_email = yyjson_get_str(yyjson_obj_get(user_obj, "email"));
+            if (_str_email) strncpy(user_val.email, _str_email, sizeof(user_val.email)-1);
+            const char* _str_display_name = yyjson_get_str(yyjson_obj_get(user_obj, "display_name"));
+            if (_str_display_name) strncpy(user_val.display_name, _str_display_name, sizeof(user_val.display_name)-1);
+            user_val.status = yyjson_get_int(yyjson_obj_get(user_obj, "status"));
             user_val.created_at = yyjson_get_int(yyjson_obj_get(user_obj, "created_at"));
             user_val.updated_at = yyjson_get_int(yyjson_obj_get(user_obj, "updated_at"));
         }
@@ -637,17 +701,17 @@ static sso_error_t raft_apply_dispatch(raft_cluster_t* cluster, const char* json
         yyjson_val *user_obj = yyjson_obj_get(root, "user");
         if (user_obj) {
             user_val.id = yyjson_get_int(yyjson_obj_get(user_obj, "id"));
-            const char* un = yyjson_get_str(yyjson_obj_get(user_obj, "username"));
-            if (un) strncpy(user_val.username, un, sizeof(user_val.username)-1);
-            const char* ph = yyjson_get_str(yyjson_obj_get(user_obj, "phone"));
-            if (ph) strncpy(user_val.phone, ph, sizeof(user_val.phone)-1);
-            const char* phsh = yyjson_get_str(yyjson_obj_get(user_obj, "password_hash"));
-            if (phsh) strncpy(user_val.password_hash, phsh, sizeof(user_val.password_hash)-1);
-            const char* em = yyjson_get_str(yyjson_obj_get(user_obj, "email"));
-            if (em) strncpy(user_val.email, em, sizeof(user_val.email)-1);
-            const char* dn = yyjson_get_str(yyjson_obj_get(user_obj, "display_name"));
-            if (dn) strncpy(user_val.display_name, dn, sizeof(user_val.display_name)-1);
-            user_val.status = (user_status_t)yyjson_get_int(yyjson_obj_get(user_obj, "status"));
+            const char* _str_username = yyjson_get_str(yyjson_obj_get(user_obj, "username"));
+            if (_str_username) strncpy(user_val.username, _str_username, sizeof(user_val.username)-1);
+            const char* _str_phone = yyjson_get_str(yyjson_obj_get(user_obj, "phone"));
+            if (_str_phone) strncpy(user_val.phone, _str_phone, sizeof(user_val.phone)-1);
+            const char* _str_password_hash = yyjson_get_str(yyjson_obj_get(user_obj, "password_hash"));
+            if (_str_password_hash) strncpy(user_val.password_hash, _str_password_hash, sizeof(user_val.password_hash)-1);
+            const char* _str_email = yyjson_get_str(yyjson_obj_get(user_obj, "email"));
+            if (_str_email) strncpy(user_val.email, _str_email, sizeof(user_val.email)-1);
+            const char* _str_display_name = yyjson_get_str(yyjson_obj_get(user_obj, "display_name"));
+            if (_str_display_name) strncpy(user_val.display_name, _str_display_name, sizeof(user_val.display_name)-1);
+            user_val.status = yyjson_get_int(yyjson_obj_get(user_obj, "status"));
             user_val.created_at = yyjson_get_int(yyjson_obj_get(user_obj, "created_at"));
             user_val.updated_at = yyjson_get_int(yyjson_obj_get(user_obj, "updated_at"));
         }
@@ -669,15 +733,39 @@ static sso_error_t raft_apply_dispatch(raft_cluster_t* cluster, const char* json
         res = cluster->inner_storage->delete_sms_code(cluster->inner_storage, phone);
     } else
     if (strcmp(op, "role_create") == 0) {
-        /* FIXME: Deserialize struct role_t* role */
-        role_t* role;
-        memset(&role, 0, sizeof(role));
+        role_t role_val;
+        memset(&role_val, 0, sizeof(role_val));
+        yyjson_val *role_obj = yyjson_obj_get(root, "role");
+        if (role_obj) {
+            role_val.id = yyjson_get_int(yyjson_obj_get(role_obj, "id"));
+            const char* _str_name = yyjson_get_str(yyjson_obj_get(role_obj, "name"));
+            if (_str_name) strncpy(role_val.name, _str_name, sizeof(role_val.name)-1);
+            const char* _str_description = yyjson_get_str(yyjson_obj_get(role_obj, "description"));
+            if (_str_description) strncpy(role_val.description, _str_description, sizeof(role_val.description)-1);
+            role_val.parent_role_id = yyjson_get_int(yyjson_obj_get(role_obj, "parent_role_id"));
+            role_val.status = yyjson_get_int(yyjson_obj_get(role_obj, "status"));
+            role_val.created_at = yyjson_get_int(yyjson_obj_get(role_obj, "created_at"));
+            role_val.updated_at = yyjson_get_int(yyjson_obj_get(role_obj, "updated_at"));
+        }
+        role_t* role = role_obj ? &role_val : NULL;
         res = cluster->inner_storage->role_create(cluster->inner_storage, role);
     } else
     if (strcmp(op, "role_update") == 0) {
-        /* FIXME: Deserialize struct role_t* role */
-        role_t* role;
-        memset(&role, 0, sizeof(role));
+        role_t role_val;
+        memset(&role_val, 0, sizeof(role_val));
+        yyjson_val *role_obj = yyjson_obj_get(root, "role");
+        if (role_obj) {
+            role_val.id = yyjson_get_int(yyjson_obj_get(role_obj, "id"));
+            const char* _str_name = yyjson_get_str(yyjson_obj_get(role_obj, "name"));
+            if (_str_name) strncpy(role_val.name, _str_name, sizeof(role_val.name)-1);
+            const char* _str_description = yyjson_get_str(yyjson_obj_get(role_obj, "description"));
+            if (_str_description) strncpy(role_val.description, _str_description, sizeof(role_val.description)-1);
+            role_val.parent_role_id = yyjson_get_int(yyjson_obj_get(role_obj, "parent_role_id"));
+            role_val.status = yyjson_get_int(yyjson_obj_get(role_obj, "status"));
+            role_val.created_at = yyjson_get_int(yyjson_obj_get(role_obj, "created_at"));
+            role_val.updated_at = yyjson_get_int(yyjson_obj_get(role_obj, "updated_at"));
+        }
+        role_t* role = role_obj ? &role_val : NULL;
         res = cluster->inner_storage->role_update(cluster->inner_storage, role);
     } else
     if (strcmp(op, "role_delete") == 0) {
@@ -685,15 +773,39 @@ static sso_error_t raft_apply_dispatch(raft_cluster_t* cluster, const char* json
         res = cluster->inner_storage->role_delete(cluster->inner_storage, id);
     } else
     if (strcmp(op, "group_create") == 0) {
-        /* FIXME: Deserialize struct group_t* group */
-        group_t* group;
-        memset(&group, 0, sizeof(group));
+        group_t group_val;
+        memset(&group_val, 0, sizeof(group_val));
+        yyjson_val *group_obj = yyjson_obj_get(root, "group");
+        if (group_obj) {
+            group_val.id = yyjson_get_int(yyjson_obj_get(group_obj, "id"));
+            const char* _str_name = yyjson_get_str(yyjson_obj_get(group_obj, "name"));
+            if (_str_name) strncpy(group_val.name, _str_name, sizeof(group_val.name)-1);
+            const char* _str_description = yyjson_get_str(yyjson_obj_get(group_obj, "description"));
+            if (_str_description) strncpy(group_val.description, _str_description, sizeof(group_val.description)-1);
+            group_val.parent_group_id = yyjson_get_int(yyjson_obj_get(group_obj, "parent_group_id"));
+            group_val.status = yyjson_get_int(yyjson_obj_get(group_obj, "status"));
+            group_val.created_at = yyjson_get_int(yyjson_obj_get(group_obj, "created_at"));
+            group_val.updated_at = yyjson_get_int(yyjson_obj_get(group_obj, "updated_at"));
+        }
+        group_t* group = group_obj ? &group_val : NULL;
         res = cluster->inner_storage->group_create(cluster->inner_storage, group);
     } else
     if (strcmp(op, "group_update") == 0) {
-        /* FIXME: Deserialize struct group_t* group */
-        group_t* group;
-        memset(&group, 0, sizeof(group));
+        group_t group_val;
+        memset(&group_val, 0, sizeof(group_val));
+        yyjson_val *group_obj = yyjson_obj_get(root, "group");
+        if (group_obj) {
+            group_val.id = yyjson_get_int(yyjson_obj_get(group_obj, "id"));
+            const char* _str_name = yyjson_get_str(yyjson_obj_get(group_obj, "name"));
+            if (_str_name) strncpy(group_val.name, _str_name, sizeof(group_val.name)-1);
+            const char* _str_description = yyjson_get_str(yyjson_obj_get(group_obj, "description"));
+            if (_str_description) strncpy(group_val.description, _str_description, sizeof(group_val.description)-1);
+            group_val.parent_group_id = yyjson_get_int(yyjson_obj_get(group_obj, "parent_group_id"));
+            group_val.status = yyjson_get_int(yyjson_obj_get(group_obj, "status"));
+            group_val.created_at = yyjson_get_int(yyjson_obj_get(group_obj, "created_at"));
+            group_val.updated_at = yyjson_get_int(yyjson_obj_get(group_obj, "updated_at"));
+        }
+        group_t* group = group_obj ? &group_val : NULL;
         res = cluster->inner_storage->group_update(cluster->inner_storage, group);
     } else
     if (strcmp(op, "group_delete") == 0) {
@@ -701,15 +813,43 @@ static sso_error_t raft_apply_dispatch(raft_cluster_t* cluster, const char* json
         res = cluster->inner_storage->group_delete(cluster->inner_storage, id);
     } else
     if (strcmp(op, "policy_create") == 0) {
-        /* FIXME: Deserialize struct policy_t* policy */
-        policy_t* policy;
-        memset(&policy, 0, sizeof(policy));
+        policy_t policy_val;
+        memset(&policy_val, 0, sizeof(policy_val));
+        yyjson_val *policy_obj = yyjson_obj_get(root, "policy");
+        if (policy_obj) {
+            policy_val.id = yyjson_get_int(yyjson_obj_get(policy_obj, "id"));
+            const char* _str_name = yyjson_get_str(yyjson_obj_get(policy_obj, "name"));
+            if (_str_name) strncpy(policy_val.name, _str_name, sizeof(policy_val.name)-1);
+            policy_val.strategy_type = yyjson_get_int(yyjson_obj_get(policy_obj, "strategy_type"));
+            policy_val.effect = yyjson_get_int(yyjson_obj_get(policy_obj, "effect"));
+            policy_val.priority = yyjson_get_int(yyjson_obj_get(policy_obj, "priority"));
+            const char* _str_rules = yyjson_get_str(yyjson_obj_get(policy_obj, "rules"));
+            if (_str_rules) strncpy(policy_val.rules, _str_rules, sizeof(policy_val.rules)-1);
+            policy_val.status = yyjson_get_int(yyjson_obj_get(policy_obj, "status"));
+            policy_val.created_at = yyjson_get_int(yyjson_obj_get(policy_obj, "created_at"));
+            policy_val.updated_at = yyjson_get_int(yyjson_obj_get(policy_obj, "updated_at"));
+        }
+        policy_t* policy = policy_obj ? &policy_val : NULL;
         res = cluster->inner_storage->policy_create(cluster->inner_storage, policy);
     } else
     if (strcmp(op, "policy_update") == 0) {
-        /* FIXME: Deserialize struct policy_t* policy */
-        policy_t* policy;
-        memset(&policy, 0, sizeof(policy));
+        policy_t policy_val;
+        memset(&policy_val, 0, sizeof(policy_val));
+        yyjson_val *policy_obj = yyjson_obj_get(root, "policy");
+        if (policy_obj) {
+            policy_val.id = yyjson_get_int(yyjson_obj_get(policy_obj, "id"));
+            const char* _str_name = yyjson_get_str(yyjson_obj_get(policy_obj, "name"));
+            if (_str_name) strncpy(policy_val.name, _str_name, sizeof(policy_val.name)-1);
+            policy_val.strategy_type = yyjson_get_int(yyjson_obj_get(policy_obj, "strategy_type"));
+            policy_val.effect = yyjson_get_int(yyjson_obj_get(policy_obj, "effect"));
+            policy_val.priority = yyjson_get_int(yyjson_obj_get(policy_obj, "priority"));
+            const char* _str_rules = yyjson_get_str(yyjson_obj_get(policy_obj, "rules"));
+            if (_str_rules) strncpy(policy_val.rules, _str_rules, sizeof(policy_val.rules)-1);
+            policy_val.status = yyjson_get_int(yyjson_obj_get(policy_obj, "status"));
+            policy_val.created_at = yyjson_get_int(yyjson_obj_get(policy_obj, "created_at"));
+            policy_val.updated_at = yyjson_get_int(yyjson_obj_get(policy_obj, "updated_at"));
+        }
+        policy_t* policy = policy_obj ? &policy_val : NULL;
         res = cluster->inner_storage->policy_update(cluster->inner_storage, policy);
     } else
     if (strcmp(op, "policy_delete") == 0) {

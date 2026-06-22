@@ -121,6 +121,7 @@ void raft_rpc_send_requestvote(raft_cluster_t* cluster, raft_node_t* node, msg_r
 	yyjson_mut_doc* doc	 = yyjson_mut_doc_new(NULL);
 	yyjson_mut_val* root = yyjson_mut_obj(doc);
 	yyjson_mut_doc_set_root(doc, root);
+	yyjson_mut_obj_add_int(doc, root, "sender_id", raft_node_get_id(raft_get_my_node(raft_cluster_get_server(cluster))));
 	yyjson_mut_obj_add_int(doc, root, "term", m->term);
 	yyjson_mut_obj_add_int(doc, root, "candidate_id", m->candidate_id);
 	yyjson_mut_obj_add_int(doc, root, "last_log_idx", m->last_log_idx);
@@ -144,6 +145,7 @@ void raft_rpc_send_appendentries(raft_cluster_t* cluster, raft_node_t* node, msg
 	yyjson_mut_doc* doc	 = yyjson_mut_doc_new(NULL);
 	yyjson_mut_val* root = yyjson_mut_obj(doc);
 	yyjson_mut_doc_set_root(doc, root);
+	yyjson_mut_obj_add_int(doc, root, "sender_id", raft_node_get_id(raft_get_my_node(raft_cluster_get_server(cluster))));
 	yyjson_mut_obj_add_int(doc, root, "term", m->term);
 	yyjson_mut_obj_add_int(doc, root, "prev_log_idx", m->prev_log_idx);
 	yyjson_mut_obj_add_int(doc, root, "prev_log_term", m->prev_log_term);

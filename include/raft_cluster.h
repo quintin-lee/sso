@@ -23,5 +23,6 @@ storage_backend_t* raft_cluster_get_storage(raft_cluster_t* cluster);
 /* HTTP handlers for Raft inter-node RPC */
 sso_error_t handle_raft_request_vote(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
 sso_error_t handle_raft_append_entries(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
+sso_error_t handle_raft_execute(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
 
 #endif
