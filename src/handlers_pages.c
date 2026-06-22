@@ -268,3 +268,61 @@ sso_error_t handle_list_audit_logs(sso_context_t* ctx, const http_request_t* req
 	free(buffer);
 	return SSO_OK;
 }
+
+sso_error_t handle_swagger_ui(sso_context_t* ctx, const http_request_t* req, http_response_t* resp) {
+	(void)ctx;
+	(void)req;
+	FILE* f = fopen("docs/swagger-ui.html", "r");
+	if (!f) {
+		sso_response_error(resp, 404, "Swagger UI template not found");
+		return SSO_OK;
+	}
+	fseek(f, 0, SEEK_END);
+	long fsize = ftell(f);
+	fseek(f, 0, SEEK_SET);
+
+	char* buf = (char*)malloc(fsize + 1);
+	if (!buf) {
+		fclose(f);
+		sso_response_error(resp, 500, "Out of memory");
+		return SSO_OK;
+	}
+	fread(buf, 1, fsize, f);
+	fclose(f);
+	buf[fsize] = 0;
+
+	resp->status_code = 200;
+	resp->body		  = buf;
+	resp->body_len	  = fsize;
+	strcpy(resp->content_type, "text/html; charset=utf-8");
+	return SSO_OK;
+}
+
+sso_error_t handle_openapi_yaml(sso_context_t* ctx, const http_request_t* req, http_response_t* resp) {
+	(void)ctx;
+	(void)req;
+	FILE* f = fopen("docs/openapi.yaml", "r");
+	if (!f) {
+		sso_response_error(resp, 404, "openapi.yaml not found");
+		return SSO_OK;
+	}
+	fseek(f, 0, SEEK_END);
+	long fsize = ftell(f);
+	fseek(f, 0, SEEK_SET);
+
+	char* buf = (char*)malloc(fsize + 1);
+	if (!buf) {
+		fclose(f);
+		sso_response_error(resp, 500, "Out of memory");
+		return SSO_OK;
+	}
+	fread(buf, 1, fsize, f);
+	fclose(f);
+	buf[fsize] = 0;
+
+	resp->status_code = 200;
+	resp->body		  = buf;
+	resp->body_len	  = fsize;
+	strcpy(resp->content_type, "application/yaml; charset=utf-8");
+	return SSO_OK;
+}

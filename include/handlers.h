@@ -46,6 +46,8 @@ sso_error_t handle_health(sso_context_t* ctx, const http_request_t* req, http_re
 sso_error_t handle_metrics(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
 sso_error_t handle_admin_status(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
 sso_error_t handle_list_audit_logs(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
+sso_error_t handle_swagger_ui(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
+sso_error_t handle_openapi_yaml(sso_context_t* ctx, const http_request_t* req, http_response_t* resp);
 
 /* -----------------------------------------------------------------------
  * Auth handlers

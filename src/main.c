@@ -63,8 +63,7 @@ static sso_error_t bootstrap_data(sso_context_t* ctx) {
 	storage_backend_t* storage = (storage_backend_t*)ctx->storage_backend;
 	if (storage && storage->exec_sql_file) {
 		char seed_path[128];
-		snprintf(seed_path, sizeof(seed_path), "sql/%s/seed.sql",
-				 storage->name[0] ? storage->name : "sqlite");
+		snprintf(seed_path, sizeof(seed_path), "sql/%s/seed.sql", storage->name[0] ? storage->name : "sqlite");
 		err = storage->exec_sql_file(storage, seed_path);
 		if (err != SSO_OK) {
 			LOG_ERROR("[bootstrap] Failed to execute %s", seed_path);
@@ -170,6 +169,8 @@ static int run_server(sso_config_t* cfg, const char* config_path) {
 			{"/metrics", HTTP_GET, handle_metrics, false},
 			{"/api/v1/health", HTTP_GET, handle_health, false},
 			{"/api/v1/admin/status", HTTP_GET, handle_admin_status, true},
+			{"/api/v1/docs", HTTP_GET, handle_swagger_ui, false},
+			{"/api/v1/docs/openapi.yaml", HTTP_GET, handle_openapi_yaml, false},
 			{"/api/v1/auth/login", HTTP_POST, handle_login, false},
 			{"/api/v1/auth/send_sms", HTTP_POST, handle_send_sms, false},
 			{"/api/v1/auth/login_by_sms", HTTP_POST, handle_login_by_sms, false},
