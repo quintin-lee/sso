@@ -1,0 +1,16 @@
+[server]
+port = 80
+log_level = 1
+
+[database]
+type = "sqlite3"
+url = "/app/data/node2.db"
+
+[raft]
+enabled = true
+node_id = 2
+nodes = [
+    { id = 1, url = "http://node1" },
+    { id = 2, url = "http://node2" },
+    { id = 3, url = "http://node3" }
+]
