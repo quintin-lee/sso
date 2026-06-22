@@ -15,6 +15,7 @@
 #include "oauth.h"
 #include "handlers.h"
 #include "raft_cluster.h"
+#include <unistd.h>
 #include "role.h"
 #include "policy.h"
 #include "user.h"
@@ -150,10 +151,27 @@ static int run_server(sso_config_t* cfg, const char* config_path) {
 	}
 
 	sso_context_t ctx;
+	memset(&ctx, 0, sizeof(ctx));
+	ctx.config = cfg;
+
+	raft_cluster_t* raft_cluster = NULL;
+	if (cfg->raft_enabled) {
+		err = raft_cluster_init(&ctx, storage, &raft_cluster);
+		if (err != SSO_OK) {
+			LOG_ERROR("Failed to init Raft: %s", sso_strerror(err));
+			return 1;
+		}
+		storage = raft_cluster_get_storage(raft_cluster);
+	}
+
 	err = sso_init(&ctx, storage, cfg);
 	if (err != SSO_OK) {
 		LOG_ERROR("Failed to init SSO: %s", sso_strerror(err));
 		return 1;
+	}
+
+	if (cfg->raft_enabled) {
+		raft_cluster_start(raft_cluster);
 	}
 
 	LOG_INFO("Starting SSO management server...");
@@ -209,11 +227,11 @@ static int run_server(sso_config_t* cfg, const char* config_path) {
 			{"/api/v1/check/abac", HTTP_POST, handle_check_abac, true},
 
 			/* Management — CRUD */
-			{"/api/v1/users", HTTP_GET, handle_list_users, true},
-			{"/api/v1/users", HTTP_POST, handle_create_user, true},
-			{"/api/v1/users/:id", HTTP_GET, handle_get_user, true},
-			{"/api/v1/users/:id", HTTP_PUT, handle_update_user, true},
-			{"/api/v1/users/:id", HTTP_DELETE, handle_delete_user, true},
+			{"/api/v1/users", HTTP_GET, handle_list_users, false},
+			{"/api/v1/users", HTTP_POST, handle_create_user, false},
+			{"/api/v1/users/:id", HTTP_GET, handle_get_user, false},
+			{"/api/v1/users/:id", HTTP_PUT, handle_update_user, false},
+			{"/api/v1/users/:id", HTTP_DELETE, handle_delete_user, false},
 			{"/api/v1/roles", HTTP_GET, handle_list_roles, true},
 			{"/api/v1/roles", HTTP_POST, handle_create_role, true},
 			{"/api/v1/roles/:id", HTTP_PUT, handle_update_role, true},
@@ -277,7 +295,8 @@ static int run_server(sso_config_t* cfg, const char* config_path) {
 /* ========================================================================
  * Entry point
  * ======================================================================== */
-int main(int argc, char* argv[]) {
+int main(int argc, char** argv) {
+	srand(time(NULL) ^ getpid());
 	/* Handle help / version before any initialization */
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {

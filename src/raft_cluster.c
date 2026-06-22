@@ -117,7 +117,7 @@ static int raft_log_pop_cb(raft_server_t* raft, void* user_data, raft_entry_t* e
 static sso_error_t raft_cluster_propose_and_wait(raft_cluster_t* cluster, const char* json, size_t len) {
 	msg_entry_t entry = {0};
 	entry.id		  = rand();
-	entry.data.buf	  = (void*)json;
+	entry.data.buf	  = strdup(json);
 	entry.data.len	  = len;
 
 	msg_entry_response_t response;
@@ -289,10 +289,6 @@ sso_error_t handle_raft_append_entries(sso_context_t* ctx, const http_request_t*
 	pthread_mutex_unlock(&g_cluster->lock);
 
 	if (m.entries) {
-		for (int i = 0; i < m.n_entries; i++) {
-			if (m.entries[i].data.buf)
-				free(m.entries[i].data.buf);
-		}
 		free(m.entries);
 	}
 	yyjson_doc_free(doc);

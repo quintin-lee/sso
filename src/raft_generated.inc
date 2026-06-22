@@ -6,7 +6,19 @@ static sso_error_t proxy_user_create(storage_backend_t *self, user_t* user) {
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_str(doc, root, "op", "user_create");
-    /* FIXME: Serialize struct user_t* user */
+    if (user) {
+        yyjson_mut_val *user_obj = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_int(doc, user_obj, "id", (int64_t)user->id);
+        yyjson_mut_obj_add_str(doc, user_obj, "username", user->username ? user->username : "");
+        yyjson_mut_obj_add_str(doc, user_obj, "phone", user->phone ? user->phone : "");
+        yyjson_mut_obj_add_str(doc, user_obj, "password_hash", user->password_hash ? user->password_hash : "");
+        yyjson_mut_obj_add_str(doc, user_obj, "email", user->email ? user->email : "");
+        yyjson_mut_obj_add_str(doc, user_obj, "display_name", user->display_name ? user->display_name : "");
+        yyjson_mut_obj_add_int(doc, user_obj, "status", (int64_t)user->status);
+        yyjson_mut_obj_add_int(doc, user_obj, "created_at", (int64_t)user->created_at);
+        yyjson_mut_obj_add_int(doc, user_obj, "updated_at", (int64_t)user->updated_at);
+        yyjson_mut_obj_add_val(doc, root, "user", user_obj);
+    }
     size_t len;
     char *json = yyjson_mut_write(doc, 0, &len);
     yyjson_mut_doc_free(doc);
@@ -23,7 +35,19 @@ static sso_error_t proxy_user_update(storage_backend_t *self, const user_t* user
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_str(doc, root, "op", "user_update");
-    /* FIXME: Serialize struct user_t* user */
+    if (user) {
+        yyjson_mut_val *user_obj = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_int(doc, user_obj, "id", (int64_t)user->id);
+        yyjson_mut_obj_add_str(doc, user_obj, "username", user->username ? user->username : "");
+        yyjson_mut_obj_add_str(doc, user_obj, "phone", user->phone ? user->phone : "");
+        yyjson_mut_obj_add_str(doc, user_obj, "password_hash", user->password_hash ? user->password_hash : "");
+        yyjson_mut_obj_add_str(doc, user_obj, "email", user->email ? user->email : "");
+        yyjson_mut_obj_add_str(doc, user_obj, "display_name", user->display_name ? user->display_name : "");
+        yyjson_mut_obj_add_int(doc, user_obj, "status", (int64_t)user->status);
+        yyjson_mut_obj_add_int(doc, user_obj, "created_at", (int64_t)user->created_at);
+        yyjson_mut_obj_add_int(doc, user_obj, "updated_at", (int64_t)user->updated_at);
+        yyjson_mut_obj_add_val(doc, root, "user", user_obj);
+    }
     size_t len;
     char *json = yyjson_mut_write(doc, 0, &len);
     yyjson_mut_doc_free(doc);
@@ -578,18 +602,56 @@ static sso_error_t raft_apply_dispatch(raft_cluster_t* cluster, const char* json
     if (!doc) return SSO_ERR_INVALID_PARAM;
     yyjson_val *root = yyjson_doc_get_root(doc);
     const char *op = yyjson_get_str(yyjson_obj_get(root, "op"));
+    if (!op) {
+        yyjson_doc_free(doc);
+        return SSO_ERR_INVALID_PARAM;
+    }
     sso_error_t res = SSO_ERR_INVALID_PARAM;
 
     if (strcmp(op, "user_create") == 0) {
-        /* FIXME: Deserialize struct user_t* user */
-        user_t* user;
-        memset(&user, 0, sizeof(user));
+        user_t user_val;
+        memset(&user_val, 0, sizeof(user_val));
+        yyjson_val *user_obj = yyjson_obj_get(root, "user");
+        if (user_obj) {
+            user_val.id = yyjson_get_int(yyjson_obj_get(user_obj, "id"));
+            const char* un = yyjson_get_str(yyjson_obj_get(user_obj, "username"));
+            if (un) strncpy(user_val.username, un, sizeof(user_val.username)-1);
+            const char* ph = yyjson_get_str(yyjson_obj_get(user_obj, "phone"));
+            if (ph) strncpy(user_val.phone, ph, sizeof(user_val.phone)-1);
+            const char* phsh = yyjson_get_str(yyjson_obj_get(user_obj, "password_hash"));
+            if (phsh) strncpy(user_val.password_hash, phsh, sizeof(user_val.password_hash)-1);
+            const char* em = yyjson_get_str(yyjson_obj_get(user_obj, "email"));
+            if (em) strncpy(user_val.email, em, sizeof(user_val.email)-1);
+            const char* dn = yyjson_get_str(yyjson_obj_get(user_obj, "display_name"));
+            if (dn) strncpy(user_val.display_name, dn, sizeof(user_val.display_name)-1);
+            user_val.status = (user_status_t)yyjson_get_int(yyjson_obj_get(user_obj, "status"));
+            user_val.created_at = yyjson_get_int(yyjson_obj_get(user_obj, "created_at"));
+            user_val.updated_at = yyjson_get_int(yyjson_obj_get(user_obj, "updated_at"));
+        }
+        user_t* user = user_obj ? &user_val : NULL;
         res = cluster->inner_storage->user_create(cluster->inner_storage, user);
     } else
     if (strcmp(op, "user_update") == 0) {
-        /* FIXME: Deserialize struct user_t* user */
-        user_t* user;
-        memset(&user, 0, sizeof(user));
+        user_t user_val;
+        memset(&user_val, 0, sizeof(user_val));
+        yyjson_val *user_obj = yyjson_obj_get(root, "user");
+        if (user_obj) {
+            user_val.id = yyjson_get_int(yyjson_obj_get(user_obj, "id"));
+            const char* un = yyjson_get_str(yyjson_obj_get(user_obj, "username"));
+            if (un) strncpy(user_val.username, un, sizeof(user_val.username)-1);
+            const char* ph = yyjson_get_str(yyjson_obj_get(user_obj, "phone"));
+            if (ph) strncpy(user_val.phone, ph, sizeof(user_val.phone)-1);
+            const char* phsh = yyjson_get_str(yyjson_obj_get(user_obj, "password_hash"));
+            if (phsh) strncpy(user_val.password_hash, phsh, sizeof(user_val.password_hash)-1);
+            const char* em = yyjson_get_str(yyjson_obj_get(user_obj, "email"));
+            if (em) strncpy(user_val.email, em, sizeof(user_val.email)-1);
+            const char* dn = yyjson_get_str(yyjson_obj_get(user_obj, "display_name"));
+            if (dn) strncpy(user_val.display_name, dn, sizeof(user_val.display_name)-1);
+            user_val.status = (user_status_t)yyjson_get_int(yyjson_obj_get(user_obj, "status"));
+            user_val.created_at = yyjson_get_int(yyjson_obj_get(user_obj, "created_at"));
+            user_val.updated_at = yyjson_get_int(yyjson_obj_get(user_obj, "updated_at"));
+        }
+        user_t* user = user_obj ? &user_val : NULL;
         res = cluster->inner_storage->user_update(cluster->inner_storage, user);
     } else
     if (strcmp(op, "user_delete") == 0) {

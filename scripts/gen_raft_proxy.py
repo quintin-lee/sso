@@ -85,10 +85,22 @@ def main():
                     out.write(f'    if ({n}) yyjson_mut_obj_add_str(doc, root, "{n}", {n});\n')
                 elif 'int' in t or 'size_t' in t or 'sso_timestamp_t' in t or 'sso_id_t' in t or 'policy_target_type_t' in t:
                     out.write(f'    yyjson_mut_obj_add_int(doc, root, "{n}", (int64_t){n});\n')
+                elif 'user_t' in t:
+                    out.write(f'    if ({n}) {{\n')
+                    out.write(f'        yyjson_mut_val *user_obj = yyjson_mut_obj(doc);\n')
+                    out.write(f'        yyjson_mut_obj_add_int(doc, user_obj, "id", (int64_t){n}->id);\n')
+                    out.write(f'        yyjson_mut_obj_add_str(doc, user_obj, "username", {n}->username ? {n}->username : "");\n')
+                    out.write(f'        yyjson_mut_obj_add_str(doc, user_obj, "phone", {n}->phone ? {n}->phone : "");\n')
+                    out.write(f'        yyjson_mut_obj_add_str(doc, user_obj, "password_hash", {n}->password_hash ? {n}->password_hash : "");\n')
+                    out.write(f'        yyjson_mut_obj_add_str(doc, user_obj, "email", {n}->email ? {n}->email : "");\n')
+                    out.write(f'        yyjson_mut_obj_add_str(doc, user_obj, "display_name", {n}->display_name ? {n}->display_name : "");\n')
+                    out.write(f'        yyjson_mut_obj_add_int(doc, user_obj, "status", (int64_t){n}->status);\n')
+                    out.write(f'        yyjson_mut_obj_add_int(doc, user_obj, "created_at", (int64_t){n}->created_at);\n')
+                    out.write(f'        yyjson_mut_obj_add_int(doc, user_obj, "updated_at", (int64_t){n}->updated_at);\n')
+                    out.write(f'        yyjson_mut_obj_add_val(doc, root, "{n}", user_obj);\n')
+                    out.write(f'    }}\n')
                 else:
-                    # structs (user_t*, role_t*, etc.)
-                    # Note: Full struct serialization requires custom logic per struct.
-                    # For MVP, we will cast the struct ptr to base64 or raw bytes, or log a FIXME.
+                    # structs (role_t*, etc.)
                     out.write(f'    /* FIXME: Serialize struct {t} {n} */\n')
             
             out.write("    size_t len;\n")
@@ -109,6 +121,10 @@ def main():
         out.write("    if (!doc) return SSO_ERR_INVALID_PARAM;\n")
         out.write("    yyjson_val *root = yyjson_doc_get_root(doc);\n")
         out.write("    const char *op = yyjson_get_str(yyjson_obj_get(root, \"op\"));\n")
+        out.write("    if (!op) {\n")
+        out.write("        yyjson_doc_free(doc);\n")
+        out.write("        return SSO_ERR_INVALID_PARAM;\n")
+        out.write("    }\n")
         out.write("    sso_error_t res = SSO_ERR_INVALID_PARAM;\n\n")
         
         for m in methods:
@@ -121,6 +137,27 @@ def main():
                     out.write(f'        const char* {n} = yyjson_get_str(yyjson_obj_get(root, "{n}"));\n')
                 elif 'int' in t or 'size_t' in t or 'sso_timestamp_t' in t or 'sso_id_t' in t or 'policy_target_type_t' in t:
                     out.write(f'        {t} {n} = ({t})yyjson_get_int(yyjson_obj_get(root, "{n}"));\n')
+                elif 'user_t' in t:
+                    out.write(f'        user_t {n}_val;\n')
+                    out.write(f'        memset(&{n}_val, 0, sizeof({n}_val));\n')
+                    out.write(f'        yyjson_val *{n}_obj = yyjson_obj_get(root, "{n}");\n')
+                    out.write(f'        if ({n}_obj) {{\n')
+                    out.write(f'            {n}_val.id = yyjson_get_int(yyjson_obj_get({n}_obj, "id"));\n')
+                    out.write(f'            const char* un = yyjson_get_str(yyjson_obj_get({n}_obj, "username"));\n')
+                    out.write(f'            if (un) strncpy({n}_val.username, un, sizeof({n}_val.username)-1);\n')
+                    out.write(f'            const char* ph = yyjson_get_str(yyjson_obj_get({n}_obj, "phone"));\n')
+                    out.write(f'            if (ph) strncpy({n}_val.phone, ph, sizeof({n}_val.phone)-1);\n')
+                    out.write(f'            const char* phsh = yyjson_get_str(yyjson_obj_get({n}_obj, "password_hash"));\n')
+                    out.write(f'            if (phsh) strncpy({n}_val.password_hash, phsh, sizeof({n}_val.password_hash)-1);\n')
+                    out.write(f'            const char* em = yyjson_get_str(yyjson_obj_get({n}_obj, "email"));\n')
+                    out.write(f'            if (em) strncpy({n}_val.email, em, sizeof({n}_val.email)-1);\n')
+                    out.write(f'            const char* dn = yyjson_get_str(yyjson_obj_get({n}_obj, "display_name"));\n')
+                    out.write(f'            if (dn) strncpy({n}_val.display_name, dn, sizeof({n}_val.display_name)-1);\n')
+                    out.write(f'            {n}_val.status = (user_status_t)yyjson_get_int(yyjson_obj_get({n}_obj, "status"));\n')
+                    out.write(f'            {n}_val.created_at = yyjson_get_int(yyjson_obj_get({n}_obj, "created_at"));\n')
+                    out.write(f'            {n}_val.updated_at = yyjson_get_int(yyjson_obj_get({n}_obj, "updated_at"));\n')
+                    out.write(f'        }}\n')
+                    out.write(f'        {t} {n} = {n}_obj ? &{n}_val : NULL;\n')
                 else:
                     out.write(f'        /* FIXME: Deserialize struct {t} {n} */\n')
                     out.write(f'        {t} {n};\n')

@@ -1,0 +1,16 @@
+[server]
+port = 8082
+log_level = "debug"
+
+[database]
+type = "sqlite3"
+url = "node2.db"
+
+[raft]
+enabled = true
+node_id = 2
+nodes = [
+    { id = 1, url = "http://127.0.0.1:8081" },
+    { id = 2, url = "http://127.0.0.1:8082" },
+    { id = 3, url = "http://127.0.0.1:8083" }
+]

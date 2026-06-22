@@ -68,6 +68,7 @@ static void* rpc_worker_thread(void* arg) {
 		}
 
 		curl_easy_setopt(curl, CURLOPT_URL, endpoint);
+		curl_easy_setopt(curl, CURLOPT_NOPROXY, "*");
 		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, task->json_payload);
 		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_writefunc);
@@ -79,6 +80,9 @@ static void* rpc_worker_thread(void* arg) {
 			LOG_ERROR("Raft RPC to %s failed: %s", endpoint, curl_easy_strerror(res));
 		} else {
 			yyjson_doc* doc = yyjson_read(s.ptr, s.len, 0);
+			if (!doc) {
+				LOG_ERROR("Raft RPC response from %s was not valid JSON. Response: %s", endpoint, s.ptr);
+			}
 			if (doc) {
 				yyjson_val*		 root = yyjson_doc_get_root(doc);
 				pthread_mutex_t* lock = raft_cluster_get_lock(task->cluster);

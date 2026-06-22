@@ -68,8 +68,13 @@ sso_error_t handle_create_user(sso_context_t* ctx, const http_request_t* req, ht
 	sso_response_ok(resp, buf);
 	{
 		auth_context_t* a = (auth_context_t*)req->userdata;
-		admin_audit_log((sso_config_t*)ctx->config, a->user.id, a->user.username, req->client_ip, "create_user",
-						"users", user.id, "success", buf);
+		if (a) {
+			admin_audit_log((sso_config_t*)ctx->config, a->user.id, a->user.username, req->client_ip, "create_user",
+							"users", user.id, "success", buf);
+		} else {
+			admin_audit_log((sso_config_t*)ctx->config, 0, "system", req->client_ip, "create_user", "users", user.id,
+							"success", buf);
+		}
 	}
 	return SSO_OK;
 }

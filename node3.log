@@ -1,0 +1,12 @@
+[2026-06-22 20:13:23] [INFO] [src/main.c:331] [sso] Loaded configuration from node3.toml
+[2026-06-22 20:13:23] [WARN] [src/sso.c:197] [sso] No SSO_TOKEN_SECRET set. Generated a random token secret. This secret will change on every restart, invalidating all previously issued tokens. Set SSO_TOKEN_SECRET for production use. (errno=22: Invalid argument)
+[2026-06-22 20:13:23] [INFO] [src/main.c:177] Starting SSO management server...
+[2026-06-22 20:13:23] [ERROR] [src/raft_cluster.c:130] Raft: Failed to append entry: -2 (errno=22: Invalid argument)
+[2026-06-22 20:13:23] [ERROR] [src/main.c:71] [bootstrap] Failed to execute sql/sqlite/seed.sql (errno=22: Invalid argument)
+[2026-06-22 20:13:23] [INFO] [src/server.c:875] SSO management API listening on http://0.0.0.0:8083
+[2026-06-22 20:13:29] [INFO] [src/raft_cluster.c:71] Raft: Committing entry 1 (term: 1)
+[2026-06-22 20:13:29] [INFO] [src/raft_cluster.c:71] Raft: Committing entry 2 (term: 1)
+[2026-06-22 20:13:30] [req-6a3926e9-0000001b] [ERROR] [src/raft_cluster.c:130] Raft: Failed to append entry: -2
+[2026-06-22 20:13:30] [req-6a3926e9-0000001b] [WARN] [src/handlers_common.c:286] API Error Response [500]: Failed to create user
+[2026-06-22 20:13:32] [INFO] [src/server.c:949] SSO management API stopped.
+double free or corruption (out)
