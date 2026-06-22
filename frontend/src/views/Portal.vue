@@ -119,9 +119,9 @@ const filteredApps = computed(() => {
         </div>
         <div class="flex flex-col">
           <span class="font-black text-lg tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-slate-50 via-slate-100 to-indigo-200 heading-font">
-            SSO PORTAL
+            {{ t('portal.brandTitle') }}
           </span>
-          <span class="text-[9px] text-[var(--text-muted)] tracking-[0.2em] font-extrabold uppercase mt-0.5">unified gateway</span>
+          <span class="text-[9px] text-[var(--text-muted)] tracking-[0.2em] font-extrabold uppercase mt-0.5">{{ t('portal.brandSubtitle') }}</span>
         </div>
       </div>
 
@@ -212,7 +212,7 @@ const filteredApps = computed(() => {
               </div>
               <div v-else-if="app.available && app.requiresAdmin" class="flex items-center gap-1.5 py-1 px-3 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-indigo-400 font-extrabold text-[9px] uppercase tracking-wider">
                 <i class="pi pi-key text-[9px]"></i>
-                <span>ADMIN</span>
+                <span>{{ t('portal.adminBadgeLabel') }}</span>
               </div>
             </div>
 
@@ -228,12 +228,12 @@ const filteredApps = computed(() => {
           <!-- Bottom Actions -->
           <div class="flex items-center justify-between border-t border-white/[0.05] pt-5 mt-auto relative z-10">
             <span class="text-[10px] text-slate-500 font-bold uppercase tracking-widest group-hover:text-slate-400 transition-colors">
-              {{ app.available ? 'SSO TRUSTED' : 'UNAUTHORIZED' }}
+              {{ app.available ? t('portal.trustedBadge') : t('portal.unauthorizedBadge') }}
             </span>
             
             <div class="flex items-center gap-2 launch-btn">
               <span class="text-xs font-bold text-[var(--accent)] opacity-0 group-hover:opacity-100 transition-all duration-300 -translate-x-2 group-hover:translate-x-0">
-                {{ app.available ? t('portal.openApp') : 'Locked' }}
+                {{ app.available ? t('portal.openApp') : t('portal.locked') }}
               </span>
               <div :class="[
                 'w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300',
@@ -251,7 +251,7 @@ const filteredApps = computed(() => {
 
     <!-- Footer -->
     <footer class="w-full py-8 text-center text-xs text-slate-600 border-t border-white/5 bg-[#0b0f19]/20 relative z-20">
-      &copy; 2026 Enterprise SSO Hub. All rights reserved.
+      {{ t('portal.footer') }}
     </footer>
   </div>
 </template>

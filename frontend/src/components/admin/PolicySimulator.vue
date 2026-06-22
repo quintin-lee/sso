@@ -20,25 +20,25 @@
         <!-- Dynamic Params Based on Strategy -->
         <div v-if="selectedStrategy === 'api'" class="space-y-3">
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">HTTP Method</label>
+            <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policySimulator.httpMethod') }}</label>
             <SelectButton v-model="apiMethod" :options="['GET', 'POST', 'PUT', 'DELETE']" />
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Path</label>
+            <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policySimulator.path') }}</label>
             <InputText v-model="apiPath" placeholder="/api/v1/users" />
           </div>
         </div>
         
         <div v-else-if="selectedStrategy === 'functional'" class="space-y-3">
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Function Code</label>
+            <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policySimulator.functionCode') }}</label>
             <InputText v-model="funcCode" placeholder="user:create" />
           </div>
         </div>
         
         <div v-else-if="selectedStrategy === 'rbac'" class="space-y-3">
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Role Name</label>
+            <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policySimulator.roleName') }}</label>
             <InputText v-model="rbacRole" placeholder="admin" />
           </div>
         </div>
@@ -108,7 +108,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { adminService } from '../../services/api';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
@@ -121,6 +122,7 @@ import ProgressSpinner from 'primevue/progressspinner';
 /* ------------------------------------------------------------------ */
 /*  Local state                                                         */
 /* ------------------------------------------------------------------ */
+const { t } = useI18n();
 const loading = ref(false);
 const users = ref<{ id: number; username: string }[]>([]);
 const selectedUser = ref<number | null>(null);
@@ -133,15 +135,15 @@ const apiPath = ref('/api/v1/users');
 const funcCode = ref('');
 const rbacRole = ref('');
 
-const strategies = [
-  { name: 'API Endpoint', value: 'api' },
-  { name: 'Functional', value: 'functional' },
-  { name: 'RBAC', value: 'rbac' },
-  { name: 'Data Scope', value: 'data' },
-  { name: 'Location', value: 'location' },
-  { name: 'ABAC', value: 'abac' },
-  { name: 'LBAC', value: 'lbac' },
-];
+const strategies = computed(() => [
+    { name: t('policySimulator.strategies.api'), value: 'api' },
+    { name: t('policySimulator.strategies.functional'), value: 'functional' },
+    { name: t('policySimulator.strategies.rbac'), value: 'rbac' },
+    { name: t('policySimulator.strategies.data'), value: 'data' },
+    { name: t('policySimulator.strategies.location'), value: 'location' },
+    { name: t('policySimulator.strategies.abac'), value: 'abac' },
+    { name: t('policySimulator.strategies.lbac'), value: 'lbac' },
+  ]);
 
 /* ------------------------------------------------------------------ */
 /*  Methods                                                             */

@@ -29,8 +29,8 @@
       <template #empty>
         <div class="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
           <i class="pi pi-lock text-4xl mb-3 opacity-40"></i>
-          <p class="text-sm font-medium">No policies found</p>
-          <p class="text-xs mt-1 opacity-60">Click Add to create a new policy</p>
+          <p class="text-sm font-medium">{{ $t('policies.emptyText') }}</p>
+          <p class="text-xs mt-1 opacity-60">{{ $t('policies.emptyHint') }}</p>
         </div>
       </template>
     </DataTable>
@@ -49,13 +49,13 @@
            <div class="flex flex-col gap-1.5">
                <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('policies.strategy') }}</label>
                <select v-model="policy.strategy_type" class="!bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !rounded-lg !px-3 !py-2.5 !text-sm">
-                <option :value="1">Functional (功能权限)</option>
-                <option :value="2">API (接口权限)</option>
-                <option :value="3">Data (数据权限)</option>
-                <option :value="4">RBAC (角色权限)</option>
-                <option :value="5">Location (位置权限)</option>
-                <option :value="6">ABAC (属性权限)</option>
-                <option :value="7">LBAC (标签权限)</option>
+                <option :value="1">{{ $t('policies.strategyOptions.functional') }}</option>
+                <option :value="2">{{ $t('policies.strategyOptions.api') }}</option>
+                <option :value="3">{{ $t('policies.strategyOptions.data') }}</option>
+                <option :value="4">{{ $t('policies.strategyOptions.rbac') }}</option>
+                <option :value="5">{{ $t('policies.strategyOptions.location') }}</option>
+                <option :value="6">{{ $t('policies.strategyOptions.abac') }}</option>
+                <option :value="7">{{ $t('policies.strategyOptions.lbac') }}</option>
               </select>
            </div>
 
@@ -103,7 +103,7 @@
            <!-- 2. API Strategy Visual Builder -->
            <div v-else-if="policy.strategy_type === 2" class="space-y-3">
              <div class="flex justify-between items-center">
-                <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">API Endpoint Rules</span>
+                <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">{{ $t('policies.apiRules') }}</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('endpoints')" />
              </div>
              <div v-for="(row, idx) in visualState.endpoints" :key="idx" class="flex gap-2 items-center">
@@ -163,7 +163,7 @@
            <!-- 4. RBAC Strategy Visual Builder -->
            <div v-else-if="policy.strategy_type === 4" class="space-y-3">
              <div class="flex justify-between items-center">
-                <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">Role Membership</span>
+                <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">{{ $t('policies.roleMembership') }}</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('roles')" />
              </div>
              <div v-for="(row, idx) in visualState.roles" :key="idx" class="flex gap-2 items-center">
@@ -179,7 +179,7 @@
            <!-- 5. Location Strategy Visual Builder -->
            <div v-else-if="policy.strategy_type === 5" class="space-y-3">
              <div class="flex justify-between items-center">
-                <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">Location Rules</span>
+                <span class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest">{{ $t('policies.locationRules') }}</span>
                <Button icon="pi pi-plus" size="small" rounded severity="secondary" @click="addVisualRow('locations')" />
              </div>
              <div v-for="(row, idx) in visualState.locations" :key="idx" class="flex gap-2 items-center">
@@ -284,7 +284,7 @@
                 <label class="text-xs font-bold text-[var(--text-secondary)] whitespace-nowrap">{{ $t('policies.target') }}</label>
                 <Select v-model="assignTargetId" :options="targetOptions" optionLabel="label" optionValue="value" filter :placeholder="$t('policies.searchPlaceholder')" class="w-full" :disabled="assignTargetType === null" />
               </div>
-              <Button icon="pi pi-plus" label="Assign" size="small" @click="addAssignment" :disabled="!assignTargetId" class="!rounded-lg !bg-[var(--accent-strong)] hover:!bg-[var(--accent)] !text-white !border-none mb-0.5 whitespace-nowrap" />
+              <Button icon="pi pi-plus" :label="$t('policies.assign')" size="small" @click="addAssignment" :disabled="!assignTargetId" class="!rounded-lg !bg-[var(--accent-strong)] hover:!bg-[var(--accent)] !text-white !border-none mb-0.5 whitespace-nowrap" />
             </div>
 
             <!-- Assigned Lists -->
@@ -566,7 +566,7 @@ const loadPolicies = async () => {
     const res = await adminService.listPolicies();
     policies.value = res.items;
   } catch (err) {
-    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to load policies', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: t('policies.toastLoadFailed'), life: 3000 });
   } finally {
     loading.value = false;
   }
@@ -649,11 +649,11 @@ const savePolicy = async () => {
       }
     }
 
-    toast.add({ severity: 'success', summary: t('common.success'), detail: 'Policy saved', life: 3000 });
+    toast.add({ severity: 'success', summary: t('common.success'), detail: t('policies.toastSaved'), life: 3000 });
     policyDialog.value = false;
     loadPolicies();
   } catch (err) {
-    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to save policy', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: t('policies.toastSaveFailed'), life: 3000 });
   }
 };
 
@@ -671,10 +671,10 @@ const confirmDeletePolicy = (data: Policy) => {
     accept: async () => {
       try {
         await adminService.deletePolicy(data.id);
-        toast.add({ severity: 'success', summary: t('common.success'), detail: 'Policy deleted successfully', life: 3000 });
+        toast.add({ severity: 'success', summary: t('common.success'), detail: t('policies.toastDeleted'), life: 3000 });
         loadPolicies();
       } catch (err) {
-        toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete policy', life: 3000 });
+        toast.add({ severity: 'error', summary: t('common.error'), detail: t('policies.toastDeleteFailed'), life: 3000 });
       }
     }
   });

@@ -13,7 +13,7 @@
         </div>
         <div class="mt-4">
           <h3 class="text-3xl font-extrabold text-white tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-indigo-200">{{ totalEvals }}</h3>
-          <p class="text-xs text-indigo-400 font-medium mt-1">Live requests stream</p>
+          <p class="text-xs text-indigo-400 font-medium mt-1">{{ $t('dashboard.liveRequests') }}</p>
         </div>
       </div>
 
@@ -29,7 +29,7 @@
         <div class="mt-4 flex items-baseline gap-2">
           <h3 class="text-3xl font-extrabold text-white tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-rose-200">{{ interceptionRate.toFixed(1) }}%</h3>
           <span class="text-xs font-semibold px-2 py-0.5 rounded-full" :class="interceptionRate > 20 ? 'bg-rose-500/15 text-rose-400' : 'bg-slate-500/10 text-[var(--text-secondary)]'">
-            {{ interceptionRate > 20 ? 'High' : 'Normal' }}
+            {{ interceptionRate > 20 ? $t('dashboard.interceptionHigh') : $t('dashboard.interceptionNormal') }}
           </span>
         </div>
       </div>
@@ -45,7 +45,7 @@
         </div>
         <div class="mt-4">
           <h3 class="text-3xl font-extrabold text-white tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-100 to-amber-200">{{ avgLatency.toFixed(2) }} ms</h3>
-          <p class="text-xs text-amber-400 font-medium mt-1">L1/L2 cache-optimized</p>
+          <p class="text-xs text-amber-400 font-medium mt-1">{{ $t('dashboard.cacheOptimized') }}</p>
         </div>
       </div>
 
@@ -207,7 +207,7 @@
           </div>
           <div class="flex-grow">
             <h4 class="font-bold text-sm tracking-wide uppercase" :class="a.severity === 'high' ? 'text-rose-400' : 'text-amber-400'">
-              {{ a.severity === 'high' ? 'Access Anomaly Alert' : 'System Performance Warning' }}
+              {{ a.severity === 'high' ? $t('dashboard.anomalyAlertTitle') : $t('dashboard.perfWarningTitle') }}
             </h4>
             <p class="text-[var(--text-secondary)] text-sm mt-1 font-medium">{{ a.message }}</p>
             <span class="text-[10px] text-[var(--text-muted)] font-mono font-bold mt-2.5 block">{{ a.time }}</span>

@@ -8,7 +8,7 @@
           <i class="pi pi-shield text-white text-base"></i>
         </div>
         <div>
-          <h2 class="text-base font-bold text-[var(--text-primary)] leading-tight tracking-tight">SSO Admin</h2>
+          <h2 class="text-base font-bold text-[var(--text-primary)] leading-tight tracking-tight">{{ $t('admin.brand') }}</h2>
           <span class="text-[10px] text-[var(--text-muted)] font-medium tracking-wider uppercase">{{ $t('sidebar.controlCenter') }}</span>
         </div>
       </div>
@@ -39,7 +39,7 @@
         </button>
         <button @click="currentTab = 'cluster'" :class="tabClass('cluster')">
           <i class="pi pi-server text-sm"></i>
-          <span>Cluster</span>
+          <span>{{ $t('admin.cluster.title') }}</span>
         </button>
 
         <div class="px-3 pt-5 pb-2 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-[0.1em]">{{ $t('sidebar.security') }}</div>
@@ -80,7 +80,7 @@
             {{ $t(`sidebar.${currentTab}`) }}
           </h1>
           <nav class="flex text-[11px] text-[var(--text-muted)] mt-0.5 font-medium">
-            <span class="hover:text-[var(--accent)] cursor-pointer transition-colors" @click="currentTab = 'dashboard'">SSO Admin</span>
+            <span class="hover:text-[var(--accent)] cursor-pointer transition-colors" @click="currentTab = 'dashboard'">{{ $t('admin.breadcrumb') }}</span>
             <span class="mx-1.5 text-[var(--border-primary)]">/</span>
             <span class="text-[var(--text-secondary)]">{{ $t(`sidebar.${currentTab}`) }}</span>
           </nav>
@@ -117,10 +117,10 @@
         <div v-else-if="currentTab === 'cluster'" class="bg-[var(--bg-elevated)] rounded-xl border border-[var(--border-primary)] shadow-sm p-6 overflow-hidden flex flex-col h-full">
           <div class="flex items-center justify-between mb-6">
             <h3 class="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <i class="pi pi-server text-[var(--accent)]"></i> Raft Consensus Cluster
+              <i class="pi pi-server text-[var(--accent)]"></i> {{ $t('admin.cluster.title') }}
             </h3>
             <button @click="fetchClusterStatus" class="px-3 py-1.5 text-xs bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] rounded-lg transition-colors font-medium flex items-center gap-2">
-              <i class="pi pi-refresh" :class="{ 'animate-spin': loadingCluster }"></i> Refresh Status
+              <i class="pi pi-refresh" :class="{ 'animate-spin': loadingCluster }"></i> {{ $t('admin.cluster.refresh') }}
             </button>
           </div>
           
@@ -130,7 +130,7 @@
           
           <div v-else-if="clusterStatus" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div class="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-4 flex flex-col items-center justify-center gap-2">
-              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Node State</span>
+              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">{{ $t('admin.cluster.nodeState') }}</span>
               <div class="flex items-center gap-2">
                 <div class="w-2.5 h-2.5 rounded-full" :class="{
                   'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]': clusterStatus.state === 'leader',
@@ -142,31 +142,31 @@
             </div>
             
             <div class="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-4 flex flex-col items-center justify-center gap-2">
-              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Current Term</span>
+              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">{{ $t('admin.cluster.currentTerm') }}</span>
               <span class="text-2xl font-mono font-bold text-[var(--text-primary)]">{{ clusterStatus.term }}</span>
             </div>
             
             <div class="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-4 flex flex-col items-center justify-center gap-2">
-              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Log Index</span>
+              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">{{ $t('admin.cluster.logIndex') }}</span>
               <span class="text-2xl font-mono font-bold text-[var(--text-primary)]">{{ clusterStatus.current_idx }}</span>
             </div>
             
             <div class="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-4 flex flex-col items-center justify-center gap-2">
-              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Cluster Size</span>
-              <span class="text-2xl font-mono font-bold text-[var(--text-primary)]">{{ clusterStatus.num_nodes }} Nodes</span>
+              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">{{ $t('admin.cluster.clusterSize') }}</span>
+              <span class="text-2xl font-mono font-bold text-[var(--text-primary)]">{{ clusterStatus.num_nodes }} {{ $t('admin.cluster.nodes') }}</span>
             </div>
             
             <div class="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-4 flex flex-col items-center justify-center gap-2 col-span-1 md:col-span-2 lg:col-span-2">
-              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Leader Address</span>
+              <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">{{ $t('admin.cluster.leaderAddress') }}</span>
               <span class="text-sm font-mono text-[var(--text-secondary)] bg-[var(--bg-primary)] px-3 py-1 rounded border border-[var(--border-primary)] w-full text-center truncate">
-                {{ clusterStatus.leader_url || '(Unknown/Election in progress)' }}
+                {{ clusterStatus.leader_url || $t('admin.cluster.unknownLeader') }}
               </span>
             </div>
           </div>
           
           <div v-else class="flex-grow flex flex-col items-center justify-center text-[var(--text-muted)] gap-3">
             <i class="pi pi-exclamation-triangle text-3xl"></i>
-            <p class="text-sm">Failed to load cluster status</p>
+            <p class="text-sm">{{ $t('admin.cluster.failedLoad') }}</p>
           </div>
         </div>
       </div>

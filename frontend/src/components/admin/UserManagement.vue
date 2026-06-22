@@ -42,8 +42,8 @@
       <template #empty>
         <div class="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
           <i class="pi pi-users text-4xl mb-3 opacity-40"></i>
-          <p class="text-sm font-medium">{{ $t('common.noData') || 'No users found' }}</p>
-          <p class="text-xs mt-1 opacity-60">{{ $t('common.addNewHint') || 'Click Add to create a new user' }}</p>
+          <p class="text-sm font-medium">{{ $t('users.emptyText') }}</p>
+          <p class="text-xs mt-1 opacity-60">{{ $t('users.emptyHint') }}</p>
         </div>
       </template>
     </DataTable>
@@ -110,7 +110,7 @@ import { useConfirm } from 'primevue/useconfirm';
 
 const props = defineProps<{ search?: string }>();
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const toast = useToast();
 const loading = ref(false);
 const users = ref<User[]>([]);
@@ -154,7 +154,7 @@ const loadUsers = async (page = 1) => {
     users.value = res.items;
     totalUsers.value = res.total;
   } catch (err) {
-    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to load users', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: t('users.toastLoadFailed'), life: 3000 });
   } finally {
     loading.value = false;
   }
@@ -220,7 +220,7 @@ const saveUser = async () => {
     toast.add({
       severity: 'error',
       summary: t('common.error'),
-      detail: locale.value === 'zh' ? '用户名至少需要3个字符' : 'Username must be at least 3 characters long',
+      detail: t('users.validationUsername'),
       life: 3000
     });
     return;
@@ -232,7 +232,7 @@ const saveUser = async () => {
       toast.add({
         severity: 'error',
         summary: t('common.error'),
-        detail: locale.value === 'zh' ? '电子邮箱格式不正确' : 'Invalid email address format',
+        detail: t('users.validationEmail'),
         life: 3000
       });
       return;
@@ -244,7 +244,7 @@ const saveUser = async () => {
       toast.add({
         severity: 'error',
         summary: t('common.error'),
-        detail: locale.value === 'zh' ? '密码长度至少为6位' : 'Password must be at least 6 characters long',
+        detail: t('users.validationPassword'),
         life: 3000
       });
       return;
@@ -278,15 +278,15 @@ const saveUser = async () => {
         } catch { /* skip duplicates */ }
       }
 
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'User updated successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: t('users.toastUpdated'), life: 3000 });
     } else {
       await adminService.createUser(user.value);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'User created successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: t('users.toastCreated'), life: 3000 });
     }
     userDialog.value = false;
     loadUsers();
   } catch (err) {
-    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to save user', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: t('users.toastSaveFailed'), life: 3000 });
   }
 };
 
@@ -304,10 +304,10 @@ const confirmDeleteUser = (data: User) => {
     accept: async () => {
       try {
         await adminService.deleteUser(data.id);
-        toast.add({ severity: 'success', summary: t('common.success'), detail: 'User deleted successfully', life: 3000 });
+        toast.add({ severity: 'success', summary: t('common.success'), detail: t('users.toastDeleted'), life: 3000 });
         loadUsers();
       } catch (err) {
-        toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete user', life: 3000 });
+        toast.add({ severity: 'error', summary: t('common.error'), detail: t('users.toastDeleteFailed'), life: 3000 });
       }
     }
   });

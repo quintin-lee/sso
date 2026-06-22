@@ -23,8 +23,8 @@
       <template #empty>
         <div class="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
           <i class="pi pi-tags text-4xl mb-3 opacity-40"></i>
-          <p class="text-sm font-medium">No roles found</p>
-          <p class="text-xs mt-1 opacity-60">Click Add to create a new role</p>
+          <p class="text-sm font-medium">{{ $t('roles.emptyText') }}</p>
+          <p class="text-xs mt-1 opacity-60">{{ $t('roles.emptyHint') }}</p>
         </div>
       </template>
     </DataTable>
@@ -96,7 +96,7 @@ const loadRoles = async () => {
     const res = await adminService.listRoles();
     roles.value = res.items;
   } catch (err) {
-    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to load roles', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: t('roles.toastLoadFailed'), life: 3000 });
   } finally {
     loading.value = false;
   }
@@ -116,15 +116,15 @@ const saveRole = async () => {
   try {
     if (role.value.id) {
       await adminService.updateRole(role.value.id, role.value);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Role updated successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: t('roles.toastUpdated'), life: 3000 });
     } else {
       await adminService.createRole(role.value);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Role created successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: t('roles.toastCreated'), life: 3000 });
     }
     roleDialog.value = false;
     loadRoles();
   } catch (err) {
-    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to save role', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: t('roles.toastSaveFailed'), life: 3000 });
   }
 };
 
@@ -142,10 +142,10 @@ const confirmDeleteRole = (data: Role) => {
     accept: async () => {
       try {
         await adminService.deleteRole(data.id);
-        toast.add({ severity: 'success', summary: t('common.success'), detail: 'Role deleted successfully', life: 3000 });
+        toast.add({ severity: 'success', summary: t('common.success'), detail: t('roles.toastDeleted'), life: 3000 });
         loadRoles();
       } catch (err) {
-        toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete role', life: 3000 });
+        toast.add({ severity: 'error', summary: t('common.error'), detail: t('roles.toastDeleteFailed'), life: 3000 });
       }
     }
   });

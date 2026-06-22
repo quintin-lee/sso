@@ -53,8 +53,8 @@
       <template #empty>
         <div class="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
           <i class="pi pi-desktop text-4xl mb-3 opacity-40"></i>
-          <p class="text-sm font-medium">{{ locale === 'zh' ? '没有找到应用' : 'No applications found' }}</p>
-          <p class="text-xs mt-1 opacity-60">{{ locale === 'zh' ? '点击添加来创建一个新应用' : 'Click Add to register a new application' }}</p>
+          <p class="text-sm font-medium">{{ $t('apps.emptyText') }}</p>
+          <p class="text-xs mt-1 opacity-60">{{ $t('apps.emptyHint') }}</p>
         </div>
       </template>
     </DataTable>
@@ -75,7 +75,7 @@
          <div class="flex flex-col gap-1.5">
              <label class="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">{{ $t('apps.clientSecret') }}</label>
              <div class="flex gap-2">
-               <Password v-model="app.client_secret" :feedback="false" :placeholder="app.id ? '••••••••' : 'Enter or generate client secret'" toggleMask class="w-full flex-grow" inputClass="w-full !bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-lg !px-4 !py-3 hover:!border-[var(--accent)] transition-all" />
+               <Password v-model="app.client_secret" :feedback="false" :placeholder="app.id ? '••••••••' : $t('apps.clientSecretPlaceholder')" toggleMask class="w-full flex-grow" inputClass="w-full !bg-[var(--bg-elevated)] !border-[var(--border-primary)] !text-[var(--text-primary)] !placeholder-[var(--text-muted)] !rounded-lg !px-4 !py-3 hover:!border-[var(--accent)] transition-all" />
                <Button icon="pi pi-key" @click="generateSecret" class="p-button-outlined !border-[var(--border-primary)] hover:!border-[var(--accent)] !rounded-lg !text-[var(--text-secondary)] hover:!text-[var(--accent)]" title="Generate Secret" />
              </div>
              <small class="text-[11px] text-[var(--text-muted)] mt-0.5">{{ $t('apps.clientSecretHelp') }}</small>
@@ -145,7 +145,7 @@ import { useConfirm } from 'primevue/useconfirm';
 
 const props = defineProps<{ search?: string }>();
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const toast = useToast();
 const loading = ref(false);
 const apps = ref<OAuthClient[]>([]);
@@ -197,7 +197,7 @@ const loadApps = async (page = 1) => {
     apps.value = res.items;
     totalApps.value = res.total;
   } catch (err) {
-    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to load applications', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: t('apps.toastLoadFailed'), life: 3000 });
   } finally {
     loading.value = false;
   }
@@ -239,7 +239,7 @@ const saveApp = async () => {
     toast.add({
       severity: 'error',
       summary: t('common.error'),
-      detail: locale.value === 'zh' ? '客户端 ID (Client ID) 至少需要2个字符' : 'Client ID must be at least 2 characters long',
+      detail: t('apps.validationClientId'),
       life: 3000
     });
     return;
@@ -249,7 +249,7 @@ const saveApp = async () => {
     toast.add({
       severity: 'error',
       summary: t('common.error'),
-      detail: locale.value === 'zh' ? '应用名称至少需要2个字符' : 'App Name must be at least 2 characters long',
+      detail: t('apps.validationAppName'),
       life: 3000
     });
     return;
@@ -259,7 +259,7 @@ const saveApp = async () => {
     toast.add({
       severity: 'error',
       summary: t('common.error'),
-      detail: locale.value === 'zh' ? '重定向 URI 不能为空' : 'Redirect URIs cannot be empty',
+      detail: t('apps.validationRedirectUri'),
       life: 3000
     });
     return;
@@ -269,7 +269,7 @@ const saveApp = async () => {
     toast.add({
       severity: 'error',
       summary: t('common.error'),
-      detail: locale.value === 'zh' ? '新应用的客户端密钥 (Client Secret) 至少需要8位' : 'Client Secret for new apps must be at least 8 characters long',
+      detail: t('apps.validationClientSecret'),
       life: 3000
     });
     return;
@@ -282,15 +282,15 @@ const saveApp = async () => {
         delete payload.client_secret;
       }
       await clientService.updateClient(app.value.client_id!, payload);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Application updated successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: t('apps.toastUpdated'), life: 3000 });
     } else {
       await clientService.createClient(app.value as any);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Application created successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: t('apps.toastCreated'), life: 3000 });
     }
     appDialog.value = false;
     loadApps();
   } catch (err) {
-    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to save application', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: t('apps.toastSaveFailed'), life: 3000 });
   }
 };
 
@@ -308,10 +308,10 @@ const confirmDeleteApp = (data: OAuthClient) => {
     accept: async () => {
       try {
         await clientService.deleteClient(data.client_id);
-        toast.add({ severity: 'success', summary: t('common.success'), detail: 'Application deleted successfully', life: 3000 });
+        toast.add({ severity: 'success', summary: t('common.success'), detail: t('apps.toastDeleted'), life: 3000 });
         loadApps();
       } catch (err) {
-        toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete application', life: 3000 });
+        toast.add({ severity: 'error', summary: t('common.error'), detail: t('apps.toastDeleteFailed'), life: 3000 });
       }
     }
   });

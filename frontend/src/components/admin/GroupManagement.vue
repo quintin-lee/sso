@@ -16,8 +16,8 @@
       <template #empty>
         <div class="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
           <i class="pi pi-sitemap text-4xl mb-3 opacity-40"></i>
-          <p class="text-sm font-medium">No groups found</p>
-          <p class="text-xs mt-1 opacity-60">Click Add to create a new group</p>
+          <p class="text-sm font-medium">{{ $t('groups.emptyText') }}</p>
+          <p class="text-xs mt-1 opacity-60">{{ $t('groups.emptyHint') }}</p>
         </div>
       </template>
     </DataTable>
@@ -79,7 +79,7 @@ const loadGroups = async () => {
     const res = await adminService.listGroups();
     groups.value = res.items;
   } catch (err) {
-    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to load groups', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: t('groups.toastLoadFailed'), life: 3000 });
   } finally {
     loading.value = false;
   }
@@ -99,15 +99,15 @@ const saveGroup = async () => {
   try {
     if (group.value.id) {
       await adminService.updateGroup(group.value.id, group.value);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Group updated successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: t('groups.toastUpdated'), life: 3000 });
     } else {
       await adminService.createGroup(group.value);
-      toast.add({ severity: 'success', summary: t('common.success'), detail: 'Group created successfully', life: 3000 });
+      toast.add({ severity: 'success', summary: t('common.success'), detail: t('groups.toastCreated'), life: 3000 });
     }
     groupDialog.value = false;
     loadGroups();
   } catch (err) {
-    toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to save group', life: 3000 });
+    toast.add({ severity: 'error', summary: t('common.error'), detail: t('groups.toastSaveFailed'), life: 3000 });
   }
 };
 
@@ -125,10 +125,10 @@ const confirmDeleteGroup = (data: Group) => {
     accept: async () => {
       try {
         await adminService.deleteGroup(data.id);
-        toast.add({ severity: 'success', summary: t('common.success'), detail: 'Group deleted successfully', life: 3000 });
+        toast.add({ severity: 'success', summary: t('common.success'), detail: t('groups.toastDeleted'), life: 3000 });
         loadGroups();
       } catch (err) {
-        toast.add({ severity: 'error', summary: t('common.error'), detail: 'Failed to delete group', life: 3000 });
+        toast.add({ severity: 'error', summary: t('common.error'), detail: t('groups.toastDeleteFailed'), life: 3000 });
       }
     }
   });
