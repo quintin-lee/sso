@@ -1,3 +1,12 @@
+# CI workflow — Build, test, and static-analysis for the SSO System.
+#
+# Runs on every push/PR to master/main:
+#   build-and-test:  release build, demo run, unit/integration tests,
+#                    AddressSanitizer, and performance benchmark.
+#   static-analysis: cppcheck + clang-tidy on the C11 codebase.
+#   frontend-build:  npm build for the Vue admin SPA.
+#   docker-build:    multi-stage image build (on success of prior jobs).
+
 name: C/C++ CI
 
 on:

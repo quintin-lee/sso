@@ -1,3 +1,9 @@
+# docker-compose.yml — SSO System with PostgreSQL and Redis.
+#
+# Spins up the SSO HTTP server on port 80 with a PostgreSQL
+# database backend and optional Redis cache.  Configure via
+# environment variables below or a custom sso.toml volume.
+
 services:
   sso:
     build:
@@ -9,7 +15,7 @@ services:
     ports:
       - "80:80"
     environment:
-      - SSO_TOKEN_SECRET=your_super_secret_key_32chars_at_least
+      - SSO_TOKEN_SECRET=CHANGE_ME
       - SSO_ADMIN_PASSWORD=admin123
       - SSO_DATABASE_URL=postgres://sso:sso_pass@db:5432/sso?sslmode=disable
       - SSO_DATABASE_TYPE=postgres

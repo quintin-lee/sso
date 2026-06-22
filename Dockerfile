@@ -1,3 +1,9 @@
+# Dockerfile — Multi-stage production image for the SSO System.
+#
+# Stage 1 (frontend-builder): Build the Vue.js admin SPA.
+# Stage 2 (backend-builder):   Cross-compile the C11 SSO daemon.
+# Stage 3 (runtime):          Minimal Alpine image with the binary + assets.
+
 ARG DOCKER_REGISTRY=""
 
 # Stage 1: Build Vue app
