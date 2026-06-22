@@ -30,6 +30,16 @@ fail() { FAILED=$((FAILED+1)); echo -e "  ${RED}FAIL${NC}: $1"; }
 
 # --- Setup: test config + server ---
 setup() {
+    # Kill any stale server on the test port so we start fresh
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k "${PORT}/tcp" 2>/dev/null || true
+    elif command -v ss >/dev/null 2>&1; then
+        local stale_pid
+        stale_pid=$(ss -tlnp "sport = :${PORT}" 2>/dev/null | grep -oP 'pid=\K[0-9]+' || true)
+        [ -n "$stale_pid" ] && kill "$stale_pid" 2>/dev/null || true
+    fi
+    sleep 0.5
+
     local test_dir
     test_dir="$(mktemp -d)"
     cat > "${test_dir}/sso.toml" <<EOF
