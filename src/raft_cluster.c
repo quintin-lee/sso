@@ -396,7 +396,10 @@ sso_error_t handle_raft_status(sso_context_t* ctx, const http_request_t* req, ht
 	if (!ctx || !ctx->storage_backend) return SSO_ERR_STORAGE;
 	storage_backend_t* sb = (storage_backend_t*)ctx->storage_backend;
 	cluster = (raft_cluster_t*)sb->context;
-	if (!cluster) return SSO_ERR_STORAGE;
+	if (!cluster) {
+		sso_response_ok(resp, "{\"enabled\": false}");
+		return SSO_OK;
+	}
 
 	pthread_mutex_lock(&cluster->lock);
 	int is_leader = raft_is_leader(cluster->raft);
@@ -417,6 +420,7 @@ sso_error_t handle_raft_status(sso_context_t* ctx, const http_request_t* req, ht
 	yyjson_mut_val* root = yyjson_mut_obj(doc);
 	yyjson_mut_doc_set_root(doc, root);
 
+	yyjson_mut_obj_add_bool(doc, root, "enabled", true);
 	yyjson_mut_obj_add_bool(doc, root, "is_leader", is_leader);
 	yyjson_mut_obj_add_str(doc, root, "state", state_str);
 	yyjson_mut_obj_add_int(doc, root, "term", term);
