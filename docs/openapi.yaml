@@ -12,10 +12,18 @@ info:
   license:
     name: MIT
 servers:
-  - url: http://localhost:8080
-    description: Local development
-  - url: https://sso.example.com
-    description: Production (TLS)
+  - url: http://{tenant}.localhost:8080
+    description: Multi-tenant local development
+    variables:
+      tenant:
+        default: "tenant1"
+        description: "Tenant hostname prefix for isolated sandbox context"
+  - url: https://{tenant}.sso.example.com
+    description: Multi-tenant Production (TLS)
+    variables:
+      tenant:
+        default: "tenant1"
+        description: "Tenant hostname prefix"
 
 paths:
   # ── Public Pages ──────────────────────────────────────────────────────
@@ -147,6 +155,84 @@ paths:
       responses:
         "200":
           description: Login successful
+  /api/v1/auth/webauthn/register/begin:
+    post:
+      summary: Begin WebAuthn registration
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Registration challenge
+  /api/v1/auth/webauthn/register/finish:
+    post:
+      summary: Finish WebAuthn registration
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientDataJSON, attestationObject]
+              properties:
+                clientDataJSON:
+                  type: string
+                attestationObject:
+                  type: string
+      responses:
+        "200":
+          description: Successfully registered WebAuthn credential
+  /api/v1/auth/webauthn/login/begin:
+    post:
+      summary: Begin WebAuthn passwordless login
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username]
+              properties:
+                username:
+                  type: string
+      responses:
+        "200":
+          description: Login challenge
+  /api/v1/auth/webauthn/login/finish:
+    post:
+      summary: Finish WebAuthn passwordless login
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [credentialId, clientDataJSON, authenticatorData, signature]
+              properties:
+                credentialId:
+                  type: string
+                clientDataJSON:
+                  type: string
+                authenticatorData:
+                  type: string
+                signature:
+                  type: string
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
   /api/v1/auth/verify:
     get:
       summary: Validate token
