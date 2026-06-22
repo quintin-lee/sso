@@ -1,7 +1,9 @@
 #include "raft_cluster.h"
+#include "raft_rpc.h"
 #include "raft.h"
 #include "logger.h"
 #include "yyjson.h"
+#include "server.h"
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,27 +33,35 @@ static void* raft_ticker(void* arg) {
 	return NULL;
 }
 
+pthread_mutex_t* raft_cluster_get_lock(raft_cluster_t* cluster) {
+	return &cluster->lock;
+}
+
+raft_server_t* raft_cluster_get_server(raft_cluster_t* cluster) {
+	return cluster->raft;
+}
+
 static int raft_send_requestvote_cb(raft_server_t* raft, void* user_data, raft_node_t* node, msg_requestvote_t* m) {
 	(void)raft;
-	(void)user_data;
-	const char* url = (const char*)raft_node_get_udata(node);
+	raft_cluster_t* cluster = (raft_cluster_t*)user_data;
+	const char*		url		= (const char*)raft_node_get_udata(node);
 	if (!url)
 		return 0;
 
-	/* TODO: Serialize m to JSON and POST using libcurl */
-	LOG_DEBUG("Raft: Sending RequestVote to %s (term: %d, cand: %d)", url, m->term, m->candidate_id);
+	LOG_DEBUG("Raft: Sending RequestVote to %s (term: %ld, cand: %ld)", url, (long)m->term, (long)m->candidate_id);
+	raft_rpc_send_requestvote(cluster, node, m, url);
 	return 0;
 }
 
 static int raft_send_appendentries_cb(raft_server_t* raft, void* user_data, raft_node_t* node, msg_appendentries_t* m) {
 	(void)raft;
-	(void)user_data;
-	const char* url = (const char*)raft_node_get_udata(node);
+	raft_cluster_t* cluster = (raft_cluster_t*)user_data;
+	const char*		url		= (const char*)raft_node_get_udata(node);
 	if (!url)
 		return 0;
 
-	/* TODO: Serialize m to JSON and POST using libcurl */
-	LOG_DEBUG("Raft: Sending AppendEntries to %s (term: %d)", url, m->term);
+	LOG_DEBUG("Raft: Sending AppendEntries to %s (term: %ld)", url, (long)m->term);
+	raft_rpc_send_appendentries(cluster, node, m, url);
 	return 0;
 }
 
@@ -175,8 +185,11 @@ sso_error_t raft_cluster_init(sso_context_t* ctx, storage_backend_t* inner_stora
 	return SSO_OK;
 }
 
+static raft_cluster_t* g_cluster = NULL;
+
 sso_error_t raft_cluster_start(raft_cluster_t* cluster) {
 	cluster->running = true;
+	g_cluster		 = cluster;
 	pthread_create(&cluster->ticker_thread, NULL, raft_ticker, cluster);
 	return SSO_OK;
 }
@@ -196,14 +209,108 @@ storage_backend_t* raft_cluster_get_storage(raft_cluster_t* cluster) {
 
 sso_error_t handle_raft_request_vote(sso_context_t* ctx, const http_request_t* req, http_response_t* resp) {
 	(void)ctx;
-	(void)req;
-	(void)resp;
+	if (!g_cluster || !req->body)
+		return SSO_ERR_INVALID_PARAM;
+
+	yyjson_doc* doc = yyjson_read(req->body, req->body_len, 0);
+	if (!doc)
+		return SSO_ERR_INVALID_PARAM;
+	yyjson_val* root = yyjson_doc_get_root(doc);
+
+	msg_requestvote_t m = {0};
+	m.term				= yyjson_get_int(yyjson_obj_get(root, "term"));
+	m.candidate_id		= yyjson_get_int(yyjson_obj_get(root, "candidate_id"));
+	m.last_log_idx		= yyjson_get_int(yyjson_obj_get(root, "last_log_idx"));
+	m.last_log_term		= yyjson_get_int(yyjson_obj_get(root, "last_log_term"));
+	yyjson_doc_free(doc);
+
+	msg_requestvote_response_t r = {0};
+	pthread_mutex_lock(&g_cluster->lock);
+	int e = raft_recv_requestvote(g_cluster->raft, raft_get_node(g_cluster->raft, m.candidate_id), &m, &r);
+	pthread_mutex_unlock(&g_cluster->lock);
+
+	if (e != 0)
+		return SSO_ERR_GENERAL;
+
+	yyjson_mut_doc* mut_doc	 = yyjson_mut_doc_new(NULL);
+	yyjson_mut_val* mut_root = yyjson_mut_obj(mut_doc);
+	yyjson_mut_doc_set_root(mut_doc, mut_root);
+	yyjson_mut_obj_add_int(mut_doc, mut_root, "term", r.term);
+	yyjson_mut_obj_add_int(mut_doc, mut_root, "vote_granted", r.vote_granted);
+	char* json = yyjson_mut_write(mut_doc, 0, NULL);
+	yyjson_mut_doc_free(mut_doc);
+
+	sso_response_ok(resp, json);
+	free(json);
 	return SSO_OK;
 }
 
 sso_error_t handle_raft_append_entries(sso_context_t* ctx, const http_request_t* req, http_response_t* resp) {
 	(void)ctx;
-	(void)req;
-	(void)resp;
+	if (!g_cluster || !req->body)
+		return SSO_ERR_INVALID_PARAM;
+
+	yyjson_doc* doc = yyjson_read(req->body, req->body_len, 0);
+	if (!doc)
+		return SSO_ERR_INVALID_PARAM;
+	yyjson_val* root = yyjson_doc_get_root(doc);
+
+	msg_appendentries_t m = {0};
+	m.term				  = yyjson_get_int(yyjson_obj_get(root, "term"));
+	m.prev_log_idx		  = yyjson_get_int(yyjson_obj_get(root, "prev_log_idx"));
+	m.prev_log_term		  = yyjson_get_int(yyjson_obj_get(root, "prev_log_term"));
+	m.leader_commit		  = yyjson_get_int(yyjson_obj_get(root, "leader_commit"));
+	m.n_entries			  = yyjson_get_int(yyjson_obj_get(root, "n_entries"));
+
+	yyjson_val* entries_arr = yyjson_obj_get(root, "entries");
+	if (m.n_entries > 0 && yyjson_is_arr(entries_arr)) {
+		m.entries = calloc(m.n_entries, sizeof(msg_entry_t));
+		size_t		idx, max;
+		yyjson_val* val;
+		yyjson_arr_foreach(entries_arr, idx, max, val) {
+			if (idx >= (size_t)m.n_entries)
+				break;
+			m.entries[idx].term	 = yyjson_get_int(yyjson_obj_get(val, "term"));
+			m.entries[idx].id	 = yyjson_get_int(yyjson_obj_get(val, "id"));
+			m.entries[idx].type	 = yyjson_get_int(yyjson_obj_get(val, "type"));
+			const char* data_str = yyjson_get_str(yyjson_obj_get(val, "data"));
+			if (data_str) {
+				m.entries[idx].data.buf = strdup(data_str);
+				m.entries[idx].data.len = strlen(data_str);
+			}
+		}
+	}
+
+	msg_appendentries_response_t r			 = {0};
+	raft_node_t*				 sender_node = raft_get_current_leader_node(g_cluster->raft);
+
+	pthread_mutex_lock(&g_cluster->lock);
+	int e = raft_recv_appendentries(g_cluster->raft, sender_node, &m, &r);
+	pthread_mutex_unlock(&g_cluster->lock);
+
+	if (m.entries) {
+		for (int i = 0; i < m.n_entries; i++) {
+			if (m.entries[i].data.buf)
+				free(m.entries[i].data.buf);
+		}
+		free(m.entries);
+	}
+	yyjson_doc_free(doc);
+
+	if (e != 0)
+		return SSO_ERR_GENERAL;
+
+	yyjson_mut_doc* mut_doc	 = yyjson_mut_doc_new(NULL);
+	yyjson_mut_val* mut_root = yyjson_mut_obj(mut_doc);
+	yyjson_mut_doc_set_root(mut_doc, mut_root);
+	yyjson_mut_obj_add_int(mut_doc, mut_root, "term", r.term);
+	yyjson_mut_obj_add_int(mut_doc, mut_root, "success", r.success);
+	yyjson_mut_obj_add_int(mut_doc, mut_root, "current_idx", r.current_idx);
+	yyjson_mut_obj_add_int(mut_doc, mut_root, "first_idx", r.first_idx);
+	char* json = yyjson_mut_write(mut_doc, 0, NULL);
+	yyjson_mut_doc_free(mut_doc);
+
+	sso_response_ok(resp, json);
+	free(json);
 	return SSO_OK;
 }

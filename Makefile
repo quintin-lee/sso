@@ -63,6 +63,7 @@ SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/demo.c          \
        $(SRCDIR)/interactive.c   \
        $(SRCDIR)/raft_cluster.c \
+       $(SRCDIR)/raft_rpc.c \
        third_party/raft/src/raft_log.c \
        third_party/raft/src/raft_node.c \
        third_party/raft/src/raft_server.c \
