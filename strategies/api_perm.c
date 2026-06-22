@@ -1,22 +1,20 @@
-/*
- * api_perm.c — API endpoint permission strategy.
- *
- * Controls access to REST API endpoints by matching HTTP method + path
- * against compiled rule entries.  Supports three wildcard conventions:
- *   *        — matches a single path segment
- *   **       — matches the remainder of the path (greedy)
- *   :param   — matches any single segment (named capture)
- *
- * At compile time the JSON rules are parsed into a flat array of
- * api_rule_item_t structs.  Evaluation iterates the array in order
- * and returns the first matching allow or deny result.
- *
- * JSON rule format:
- *   { "method": "GET", "path": "/api/v1/users/**", "effect": "allow" }
- *
- * Example: grants read access to all user resources nested under
- * /api/v1/users/ without limiting the depth.
- */
+// api_perm.c — API endpoint permission strategy.
+//
+// Controls access to REST API endpoints by matching HTTP method + path
+// against compiled rule entries.  Supports three wildcard conventions:
+//   *        — matches a single path segment
+//   **       — matches the remainder of the path (greedy)
+//   :param   — matches any single segment (named capture)
+//
+// At compile time the JSON rules are parsed into a flat array of
+// api_rule_item_t structs.  Evaluation iterates the array in order
+// and returns the first matching allow or deny result.
+//
+// JSON rule format:
+//   { "method": "GET", "path": "/api/v1/users/**", "effect": "allow" }
+//
+// Example: grants read access to all user resources nested under
+// /api/v1/users/ without limiting the depth.
 
 #include "sso.h"
 #include "policy.h"

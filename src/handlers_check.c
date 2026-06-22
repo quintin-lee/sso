@@ -1,11 +1,9 @@
-/*
- * handlers_check.c — Permission check HTTP request handlers.
- *
- * Implements the /api/v1/check/* endpoints for all seven permission
- * strategies: functional, API, data, RBAC, location, LBAC, and ABAC.
- * Each handler parses the request body, builds an eval_context_t,
- * and returns the engine's allow/deny decision as a JSON response.
- */
+// handlers_check.c — Permission check HTTP request handlers.
+//
+// Implements the /api/v1/check/* endpoints for all seven permission
+// strategies: functional, API, data, RBAC, location, LBAC, and ABAC.
+// Each handler parses the request body, builds an eval_context_t,
+// and returns the engine's allow/deny decision as a JSON response.
 
 #include "sso.h"
 #include "server.h"

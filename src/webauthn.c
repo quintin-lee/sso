@@ -137,6 +137,11 @@ static sso_error_t extract_cose_ec2_key(const unsigned char* cose_cbor, size_t l
 	if (!x || !y)
 		return SSO_ERR_TOKEN_INVALID;
 
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 	EC_KEY* eckey = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
 	BIGNUM* bn_x  = BN_bin2bn(x, 32, NULL);
 	BIGNUM* bn_y  = BN_bin2bn(y, 32, NULL);
@@ -146,6 +151,10 @@ static sso_error_t extract_cose_ec2_key(const unsigned char* cose_cbor, size_t l
 
 	EVP_PKEY* pkey = EVP_PKEY_new();
 	EVP_PKEY_assign_EC_KEY(pkey, eckey);
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 	BIO* bio = BIO_new(BIO_s_mem());
 	PEM_write_bio_PUBKEY(bio, pkey);

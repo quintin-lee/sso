@@ -1,11 +1,9 @@
-/*
- * handlers_auth.c — Authentication HTTP request handlers.
- *
- * Implements all /api/v1/auth/* endpoints: login, register, token
- * verification, refresh, logout, password change, MFA, WebAuthn,
- * session status, and the OIDC /userinfo and /certs endpoints.
- * All handlers operate on the sso_context_t and produce http_response_t.
- */
+// handlers_auth.c — Authentication HTTP request handlers.
+//
+// Implements all /api/v1/auth/* endpoints: login, register, token
+// verification, refresh, logout, password change, MFA, WebAuthn,
+// session status, and the OIDC /userinfo and /certs endpoints.
+// All handlers operate on the sso_context_t and produce http_response_t.
 
 #include "sso.h"
 #include "server.h"

@@ -1,16 +1,14 @@
-/*
- * handlers.h — HTTP request handler declarations.
- *
- * Organises all REST API handlers by category:
- *   Auth handlers      — /api/v1/auth/*
- *   Check handlers     — /api/v1/check/*
- *   Admin CRUD         — /api/v1/users|roles|groups|policies|clients
- *   OAuth/OIDC         — /api/v1/oauth/*  (declared in oauth.h)
- *   Pages / monitoring — /health, /metrics, /admin/status
- *
- * Each handler receives the SSO context, the parsed HTTP request,
- * and a response struct to populate.
- */
+// handlers.h — HTTP request handler declarations.
+//
+// Organises all REST API handlers by category:
+//   Auth handlers      — /api/v1/auth/*
+//   Check handlers     — /api/v1/check/*
+//   Admin CRUD         — /api/v1/users|roles|groups|policies|clients
+//   OAuth/OIDC         — /api/v1/oauth/*  (declared in oauth.h)
+//   Pages / monitoring — /health, /metrics, /admin/status
+//
+// Each handler receives the SSO context, the parsed HTTP request,
+// and a response struct to populate.
 
 #ifndef HANDLERS_H
 #define HANDLERS_H
