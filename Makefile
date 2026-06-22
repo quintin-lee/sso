@@ -62,7 +62,15 @@ SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/webauthn.c \
        $(SRCDIR)/demo.c          \
        $(SRCDIR)/interactive.c   \
+       $(SRCDIR)/raft_cluster.c \
+       third_party/raft/src/raft_log.c \
+       third_party/raft/src/raft_node.c \
+       third_party/raft/src/raft_server.c \
+       third_party/raft/src/raft_server_properties.c \
        $(SRCDIR)/main.c
+
+# Add raft include dir
+INCLUDES += -Ithird_party/raft/include
 
 # Detect hiredis availability
 HIREDIS_AVAIL := $(shell pkg-config --exists hiredis 2>/dev/null && echo yes)
@@ -129,6 +137,7 @@ dirs:
 
 # Compile rule: every .c file gets a .o in build/
 $(BUILDDIR)/%.c.o: %.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(TARGET): $(OBJS)

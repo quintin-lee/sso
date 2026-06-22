@@ -237,6 +237,37 @@ sso_error_t sso_config_load(const char* filename, sso_config_t* cfg) {
 		get_int(pp, "history_count", &cfg->password_policy.history_count);
 	}
 
+	/* Parse [raft] section */
+	toml_table_t* raft_table = toml_table_in(root, "raft");
+	if (raft_table) {
+		toml_datum_t d_enabled = toml_bool_in(raft_table, "enabled");
+		if (d_enabled.ok)
+			cfg->raft_enabled = d_enabled.u.b;
+
+		toml_datum_t d_id = toml_int_in(raft_table, "node_id");
+		if (d_id.ok)
+			cfg->raft_node_id = (int)d_id.u.i;
+
+		toml_array_t* nodes_arr = toml_array_in(raft_table, "nodes");
+		if (nodes_arr) {
+			int n = toml_array_nelem(nodes_arr);
+			for (int i = 0; i < n && i < 16; i++) {
+				toml_table_t* nt = toml_table_at(nodes_arr, i);
+				if (nt) {
+					toml_datum_t n_id  = toml_int_in(nt, "id");
+					toml_datum_t n_url = toml_string_in(nt, "url");
+					if (n_id.ok && n_url.ok) {
+						cfg->raft_nodes[cfg->raft_node_count].id = (int)n_id.u.i;
+						strncpy(cfg->raft_nodes[cfg->raft_node_count].url, n_url.u.s,
+								sizeof(cfg->raft_nodes[0].url) - 1);
+						cfg->raft_node_count++;
+						free(n_url.u.s);
+					}
+				}
+			}
+		}
+	}
+
 	toml_free(root);
 	return SSO_OK;
 }
