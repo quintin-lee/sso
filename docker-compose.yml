@@ -5,15 +5,26 @@
 # environment variables below or a custom sso.toml volume.
 
 services:
-  sso:
+  lb:
+    image: docker.1ms.run/library/nginx:alpine
+    container_name: sso_lb
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx-lb.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - sso1
+      - sso2
+      - sso3
+    restart: unless-stopped
+
+  sso1:
     build:
       context: .
       args:
         DOCKER_REGISTRY: docker.1ms.run/library/
         USE_CHINA_MIRROR: 1
-    container_name: sso_system
-    ports:
-      - "80:80"
+    container_name: sso_system_1
     environment:
       - SSO_TOKEN_SECRET=CHANGE_ME
       - SSO_ADMIN_PASSWORD=admin123
@@ -21,7 +32,61 @@ services:
       - SSO_DATABASE_TYPE=postgres
       - SSO_AUDIT_LOG_PATH=/app/data/audit.log
     volumes:
-      - sso_data:/app/data
+      - sso_data_1:/app/data
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  sso2:
+    build:
+      context: .
+      args:
+        DOCKER_REGISTRY: docker.1ms.run/library/
+        USE_CHINA_MIRROR: 1
+    container_name: sso_system_2
+    environment:
+      - SSO_TOKEN_SECRET=CHANGE_ME
+      - SSO_ADMIN_PASSWORD=admin123
+      - SSO_DATABASE_URL=postgres://sso:sso_pass@db:5432/sso?sslmode=disable
+      - SSO_DATABASE_TYPE=postgres
+      - SSO_AUDIT_LOG_PATH=/app/data/audit.log
+    volumes:
+      - sso_data_2:/app/data
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  sso3:
+    build:
+      context: .
+      args:
+        DOCKER_REGISTRY: docker.1ms.run/library/
+        USE_CHINA_MIRROR: 1
+    container_name: sso_system_3
+    environment:
+      - SSO_TOKEN_SECRET=CHANGE_ME
+      - SSO_ADMIN_PASSWORD=admin123
+      - SSO_DATABASE_URL=postgres://sso:sso_pass@db:5432/sso?sslmode=disable
+      - SSO_DATABASE_TYPE=postgres
+      - SSO_AUDIT_LOG_PATH=/app/data/audit.log
+    volumes:
+      - sso_data_3:/app/data
       - ./nginx.conf:/etc/nginx/nginx.conf
     depends_on:
       db:
@@ -59,6 +124,8 @@ services:
     restart: unless-stopped
 
 volumes:
-  sso_data:
+  sso_data_1:
+  sso_data_2:
+  sso_data_3:
   postgres_data:
   gogs_data:
