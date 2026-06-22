@@ -1,3 +1,11 @@
+/*
+ * test_user.c — Unit tests for the user management module.
+ *
+ * Tests user CRUD, Argon2id password hashing and verification,
+ * status lifecycle (active/disabled/locked), and assignment of
+ * roles and groups to users.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,50 +16,53 @@
 
 int tests_run = 0;
 
-static const char *test_user_creation_and_auth() {
-    printf("  Running test_user_creation_and_auth...\n");
-    storage_backend_t *storage;
-    storage_sqlite_create(&storage);
-    storage->open(storage, ":memory:");
+static const char* test_user_creation_and_auth() {
+	printf("  Running test_user_creation_and_auth...\n");
+	storage_backend_t* storage;
+	storage_sqlite_create(&storage);
+	storage->open(storage, ":memory:");
 
-    sso_context_t ctx;
-    memset(&ctx, 0, sizeof(ctx));
-    ctx.storage_backend = storage;
+	sso_context_t ctx;
+	memset(&ctx, 0, sizeof(ctx));
+	ctx.storage_backend = storage;
 
-    user_manager_t *umgr;
-    user_manager_create(&umgr, &ctx);
-    user_manager_set_hash_params(umgr, 2, 67108864); /* INTERACTIVE for speed */
-    ctx.user_mgr = umgr;
+	user_manager_t* umgr;
+	user_manager_create(&umgr, &ctx);
+	user_manager_set_hash_params(umgr, 2, 67108864); /* INTERACTIVE for speed */
+	ctx.user_mgr = umgr;
 
-    user_t user;
-    sso_error_t err = user_create(umgr, "testuser", "password123", "test@example.com", "Test User", &user);
-    ASSERT_INT_EQUAL(err, SSO_OK);
-    ASSERT_STR_EQUAL(user.username, "testuser");
+	user_t		user;
+	sso_error_t err = user_create(umgr, "testuser", "password123", "test@example.com", "Test User", &user);
+	ASSERT_INT_EQUAL(err, SSO_OK);
+	ASSERT_STR_EQUAL(user.username, "testuser");
 
-    user_t authed;
-    err = user_authenticate(umgr, "testuser", "password123", &authed);
-    ASSERT_INT_EQUAL(err, SSO_OK);
-    ASSERT_INT_EQUAL(authed.id, user.id);
+	user_t authed;
+	err = user_authenticate(umgr, "testuser", "password123", &authed);
+	ASSERT_INT_EQUAL(err, SSO_OK);
+	ASSERT_INT_EQUAL(authed.id, user.id);
 
-    err = user_authenticate(umgr, "testuser", "wrongpassword", &authed);
-    ASSERT_INT_EQUAL(err, SSO_ERR_AUTH_FAILED);
+	err = user_authenticate(umgr, "testuser", "wrongpassword", &authed);
+	ASSERT_INT_EQUAL(err, SSO_ERR_AUTH_FAILED);
 
-    user_manager_destroy(umgr);
-    storage->close(storage);
-    free(storage);
-    return 0;
+	user_manager_destroy(umgr);
+	storage->close(storage);
+	free(storage);
+	return 0;
 }
 
-static const char *all_tests() {
-    mu_run_test(test_user_creation_and_auth);
-    return 0;
+static const char* all_tests() {
+	mu_run_test(test_user_creation_and_auth);
+	return 0;
 }
 
-int main(int argc, char **argv) {
-    (void)argc; (void)argv;
-    const char *result = all_tests();
-    if (result != 0) printf("FAILED\n");
-    else printf("ALL TESTS PASSED\n");
-    printf("Tests run: %d\n", tests_run);
-    return result != 0;
+int main(int argc, char** argv) {
+	(void)argc;
+	(void)argv;
+	const char* result = all_tests();
+	if (result != 0)
+		printf("FAILED\n");
+	else
+		printf("ALL TESTS PASSED\n");
+	printf("Tests run: %d\n", tests_run);
+	return result != 0;
 }

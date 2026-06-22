@@ -1,3 +1,10 @@
+/*
+ * test_dpop.c — Unit tests for DPoP proof generation and validation.
+ *
+ * Tests RFC 9449 DPoP proof creation, key pair generation, proof
+ * verification with valid/invalid tokens, and proof caching behaviour.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

@@ -1,3 +1,11 @@
+/*
+ * test_token.c — Unit tests for the token/session management module.
+ *
+ * Tests HMAC-SHA256 token creation, validation with correct/forged
+ * signatures, expiry enforcement, refresh token rotation, binary-search
+ * revocation, and the token manager lifecycle.
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

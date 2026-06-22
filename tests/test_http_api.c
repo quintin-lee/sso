@@ -1,3 +1,11 @@
+/*
+ * test_http_api.c — Integration tests for the HTTP API server.
+ *
+ * Spins up the embedded server and exercises REST endpoints:
+ * registration, login, token refresh, permission checks, CRUD for
+ * users/roles/groups/policies, and error handling (4xx, 5xx).
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,7 +17,6 @@
 #include "user.h"
 #include "role.h"
 #include "config.h"
-
 
 int tests_run = 0;
 

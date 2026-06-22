@@ -1,3 +1,11 @@
+/*
+ * bench_permission.c — Performance benchmark for the permission engine.
+ *
+ * Measures throughput (QPS) and latency (μs) of the multi-strategy
+ * permission evaluation engine under synthetic load.  Tests 7 strategies
+ * concurrently and reports per-strategy and aggregate performance.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
