@@ -227,11 +227,11 @@ static int run_server(sso_config_t* cfg, const char* config_path) {
 			{"/api/v1/check/abac", HTTP_POST, handle_check_abac, true},
 
 			/* Management — CRUD */
-			{"/api/v1/users", HTTP_GET, handle_list_users, false},
-			{"/api/v1/users", HTTP_POST, handle_create_user, false},
-			{"/api/v1/users/:id", HTTP_GET, handle_get_user, false},
-			{"/api/v1/users/:id", HTTP_PUT, handle_update_user, false},
-			{"/api/v1/users/:id", HTTP_DELETE, handle_delete_user, false},
+			{"/api/v1/users", HTTP_GET, handle_list_users, true},
+			{"/api/v1/users", HTTP_POST, handle_create_user, true},
+			{"/api/v1/users/:id", HTTP_GET, handle_get_user, true},
+			{"/api/v1/users/:id", HTTP_PUT, handle_update_user, true},
+			{"/api/v1/users/:id", HTTP_DELETE, handle_delete_user, true},
 			{"/api/v1/roles", HTTP_GET, handle_list_roles, true},
 			{"/api/v1/roles", HTTP_POST, handle_create_role, true},
 			{"/api/v1/roles/:id", HTTP_PUT, handle_update_role, true},

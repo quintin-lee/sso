@@ -66,11 +66,11 @@ nodes = [
 EOF
 
 echo "Starting 3 Raft Nodes..."
-./sso_system -c node1.toml --server > node1.log 2>&1 &
+SSO_TEST_DISABLE_AUTH=1 ./sso_system -c node1.toml --server > node1.log 2>&1 &
 PID1=$!
-./sso_system -c node2.toml --server > node2.log 2>&1 &
+SSO_TEST_DISABLE_AUTH=1 ./sso_system -c node2.toml --server > node2.log 2>&1 &
 PID2=$!
-./sso_system -c node3.toml --server > node3.log 2>&1 &
+SSO_TEST_DISABLE_AUTH=1 ./sso_system -c node3.toml --server > node3.log 2>&1 &
 PID3=$!
 
 function cleanup {

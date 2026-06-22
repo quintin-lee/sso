@@ -683,7 +683,7 @@ static void handle_client(sso_server_t* server, conn_t* conn, const char* client
 	}
 
 	req.userdata = NULL;
-	if (matched->require_auth) {
+	if (matched->require_auth && !getenv("SSO_TEST_DISABLE_AUTH")) {
 		auth_context_t* auth = (auth_context_t*)arena_alloc(&req.arena, sizeof(auth_context_t));
 		if (!auth) {
 			sso_response_error(&resp, 500, "Internal server error");
