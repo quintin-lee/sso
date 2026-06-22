@@ -1,3 +1,16 @@
+/*
+ * intern.h — String interning (hash-consing) for efficient comparison.
+ *
+ * Deduplicates frequently-used strings by storing a single copy in an
+ * internal hash table.  All subsequent references to the same string
+ * return a pointer to the canonical copy.  Enables O(1) pointer-equality
+ * comparison instead of O(n) strcmp(), which is critical in the
+ * permission evaluation hot path.
+ *
+ * Strings are allocated from the associated arena and freed when the
+ * arena is reset — no per-string free is needed.
+ */
+
 #ifndef SSO_INTERN_H
 #define SSO_INTERN_H
 

@@ -1,3 +1,17 @@
+/*
+ * arena.h — Bump-pointer arena allocator.
+ *
+ * Provides a fast, linear allocation arena for short-lived temporary
+ * allocations within a single request or operation.  Memory is carved
+ * from pre-allocated blocks in bump-pointer fashion — no free is needed
+ * until the entire arena is reset.  Supports aligned allocations and
+ * automatic block chaining when the current block is exhausted.
+ *
+ * Thread-safe when used with an external mutex (caller's responsibility).
+ * Ideal for JSON parsing, token construction, and other request-scoped
+ * work where individual frees would be expensive.
+ */
+
 #ifndef SSO_ARENA_H
 #define SSO_ARENA_H
 
