@@ -1,5 +1,6 @@
 # Logs
 audit.log
+*.log
 
 # Build artifacts
 build/
