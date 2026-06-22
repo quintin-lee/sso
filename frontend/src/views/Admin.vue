@@ -97,7 +97,7 @@
             <span>{{ locale === 'en' ? '中文' : 'EN' }}</span>
           </button>
 
-          <Button v-if="currentTab !== 'logs' && currentTab !== 'dashboard'" :label="$t('common.add')" icon="pi pi-plus" size="small"
+          <Button v-if="currentTab !== 'logs' && currentTab !== 'dashboard' && currentTab !== 'cluster'" :label="$t('common.add')" icon="pi pi-plus" size="small"
             class="!bg-[var(--accent-strong)] !border-none hover:!bg-[var(--accent)] !text-white !rounded-lg !px-3 !py-1.5 !text-xs !font-semibold"
             @click="handleCreate" />
         </div>
