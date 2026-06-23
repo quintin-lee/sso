@@ -14,6 +14,7 @@
 #include "sso.h"
 #include "config.h"
 #include "logger.h"
+#include "otlp.h"
 #include "permission.h"
 #include "policy.h"
 #include "user.h"
@@ -842,8 +843,8 @@ void admin_audit_log(sso_context_t* ctx, sso_id_t actor_user_id, const char* act
 	pthread_mutex_unlock(&audit_log_lock);
 }
 
-sso_error_t perm_engine_evaluate(permission_engine_t* engine, eval_context_t* ctx, bool* result,
-								 char** decision_trace) {
+static sso_error_t perm_engine_evaluate_internal(permission_engine_t* engine, eval_context_t* ctx, bool* result,
+												 char** decision_trace) {
 	if (!engine || !ctx || !result)
 		return SSO_ERR_INVALID_PARAM;
 	if (!ctx->user && ctx->user_id == 0)
@@ -1223,5 +1224,14 @@ sso_error_t perm_check_abac(sso_context_t* ctx, sso_id_t user_id, const char* su
 
 	err = perm_engine_evaluate((permission_engine_t*)ctx->perm_engine, &ectx, allowed, NULL);
 	eval_context_destroy(&ectx);
+	return err;
+}
+
+sso_error_t perm_engine_evaluate(permission_engine_t* engine, eval_context_t* ctx, bool* result,
+								 char** decision_trace) {
+	otlp_span_t span;
+	otlp_span_start_tls(&span, "perm.evaluate");
+	sso_error_t err = perm_engine_evaluate_internal(engine, ctx, result, decision_trace);
+	otlp_span_end_tls(&span, err != SSO_OK);
 	return err;
 }

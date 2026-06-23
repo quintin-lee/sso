@@ -31,4 +31,9 @@ void otlp_span_start(otlp_span_t* span, const char* name, const char* parent_tra
 /* End the span and queue it for export */
 void otlp_span_end(otlp_span_t* span, bool is_error);
 
+/* TLS Tracing API */
+void otlp_trace_init_tls(const char* new_trace_id);
+void otlp_span_start_tls(otlp_span_t* span, const char* name);
+void otlp_span_end_tls(otlp_span_t* span, bool is_error);
+
 #endif // SSO_OTLP_H

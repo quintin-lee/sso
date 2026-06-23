@@ -18,6 +18,7 @@
 #include <string.h>
 #include <time.h>
 #include "logger.h"
+#include "otlp.h"
 #include "intern.h"
 
 #include <stdio.h>
@@ -703,7 +704,7 @@ static sso_error_t scan_jwt_payload(const char* json, token_t* out) {
  * 5. Parse/scan the JSON payload claims.
  * 6. Verify expiration timestamp.
  */
-sso_error_t token_verify(token_manager_t* mgr, const char* token_str, token_t* out) {
+static sso_error_t token_verify_internal(token_manager_t* mgr, const char* token_str, token_t* out) {
 	if (!mgr || !token_str || !out)
 		return SSO_ERR_INVALID_PARAM;
 
@@ -1057,4 +1058,12 @@ sso_error_t token_bump_nonce(token_manager_t* mgr, sso_id_t user_id) {
 		return SSO_ERR_INVALID_PARAM;
 	uint64_t current = token_get_nonce(mgr, user_id);
 	return token_set_nonce(mgr, user_id, current + 1);
+}
+
+sso_error_t token_verify(token_manager_t* mgr, const char* token_str, token_t* out) {
+	otlp_span_t span;
+	otlp_span_start_tls(&span, "token.verify");
+	sso_error_t err = token_verify_internal(mgr, token_str, out);
+	otlp_span_end_tls(&span, err != SSO_OK);
+	return err;
 }

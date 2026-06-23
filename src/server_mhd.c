@@ -21,6 +21,7 @@
 #include "storage.h"
 #include "arena.h"
 #include "server.h"
+#include "otlp.h"
 #include "logger.h"
 #include "token.h"
 #include "config.h"
@@ -314,7 +315,7 @@ static enum MHD_Result mhd_access_handler(void* cls, struct MHD_Connection* conn
 		state->arena = t_arena;
 
 		unsigned long long req_num = atomic_fetch_add(&g_request_counter, 1);
-		snprintf(state->request_id, sizeof(state->request_id), "req-%lx-%08llx", (unsigned long)time(NULL), req_num);
+		otlp_generate_id(state->request_id, 16);
 
 		*req_cls = state;
 		atomic_fetch_add(&g_metric_active_connections, 1);
@@ -344,6 +345,9 @@ static enum MHD_Result mhd_access_handler(void* cls, struct MHD_Connection* conn
 	memset(&req, 0, sizeof(req));
 	sso_strlcpy(req.request_id, state->request_id, sizeof(req.request_id));
 	log_set_request_id(req.request_id);
+	otlp_trace_init_tls(req.request_id);
+	otlp_span_t req_span;
+	otlp_span_start_tls(&req_span, "http.request");
 
 	const char* host_hdr = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Host");
 	if (host_hdr)
@@ -457,6 +461,7 @@ static enum MHD_Result mhd_access_handler(void* cls, struct MHD_Connection* conn
 	}
 
 send_response:
+	otlp_span_end_tls(&req_span, resp.status_code >= 500);
 	/* Build MHD response from http_response_t */
 	{ /* block isolates local decl after label */
 		struct MHD_Response* mhd_resp;

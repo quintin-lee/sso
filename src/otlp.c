@@ -189,3 +189,42 @@ void otlp_shutdown(void) {
 		pthread_mutex_unlock(&g_otlp_mutex);
 	}
 }
+
+#define OTLP_MAX_SPAN_DEPTH 16
+typedef struct {
+	char trace_id[33];
+	char span_ids[OTLP_MAX_SPAN_DEPTH][17];
+	int	 depth;
+} otlp_trace_context_t;
+
+static _Thread_local otlp_trace_context_t g_otlp_ctx = {0};
+
+void otlp_trace_init_tls(const char* new_trace_id) {
+	g_otlp_ctx.depth = 0;
+	if (new_trace_id) {
+		strncpy(g_otlp_ctx.trace_id, new_trace_id, 32);
+		g_otlp_ctx.trace_id[32] = '\0';
+	} else {
+		otlp_generate_id(g_otlp_ctx.trace_id, 16);
+	}
+}
+
+void otlp_span_start_tls(otlp_span_t* span, const char* name) {
+	const char* parent_span = NULL;
+	if (g_otlp_ctx.depth > 0 && g_otlp_ctx.depth < OTLP_MAX_SPAN_DEPTH) {
+		parent_span = g_otlp_ctx.span_ids[g_otlp_ctx.depth - 1];
+	}
+	otlp_span_start(span, name, g_otlp_ctx.trace_id, parent_span);
+	if (g_otlp_ctx.depth < OTLP_MAX_SPAN_DEPTH) {
+		strncpy(g_otlp_ctx.span_ids[g_otlp_ctx.depth], span->span_id, 16);
+		g_otlp_ctx.span_ids[g_otlp_ctx.depth][16] = '\0';
+	}
+	g_otlp_ctx.depth++;
+}
+
+void otlp_span_end_tls(otlp_span_t* span, bool is_error) {
+	if (g_otlp_ctx.depth > 0) {
+		g_otlp_ctx.depth--;
+	}
+	otlp_span_end(span, is_error);
+}
