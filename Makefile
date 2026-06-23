@@ -61,6 +61,7 @@ SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/handlers_webauthn.c \
        $(SRCDIR)/webauthn.c \
        $(SRCDIR)/otlp.c          \
+       $(SRCDIR)/wasm_plugin.c   \
        $(SRCDIR)/demo.c          \
        $(SRCDIR)/interactive.c   \
        $(SRCDIR)/raft_cluster.c \

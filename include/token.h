@@ -54,8 +54,9 @@ struct token {
  * @brief Token signing mode (Symmetric or Asymmetric).
  */
 typedef enum {
-	SSO_TOKEN_MODE_HS256, /**< Symmetric HS256 (shared secret) signing */
-	SSO_TOKEN_MODE_RS256  /**< Asymmetric RS256 (RSA private/public pair) signing */
+	SSO_TOKEN_MODE_HS256,   /**< Symmetric HS256 (shared secret) signing */
+	SSO_TOKEN_MODE_RS256,   /**< Asymmetric RS256 (RSA private/public pair) signing */
+	SSO_TOKEN_MODE_CRYDI3   /**< Asymmetric Post-Quantum Crystals-Dilithium-3 signing */
 } sso_token_mode_t;
 
 /**

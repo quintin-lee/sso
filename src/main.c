@@ -21,6 +21,7 @@
 #include "user.h"
 #include "intern.h"
 #include "otlp.h"
+#include "wasm_plugin.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -345,7 +346,8 @@ int main(int argc, char** argv) {
 	log_set_format((log_format_t)g_config.log_format);
 
 	intern_init();
-
+	wasm_engine_init();
+	
 	if (g_config.otlp_endpoint[0] != '\0') {
 		otlp_init(g_config.otlp_endpoint);
 	}
@@ -363,6 +365,7 @@ int main(int argc, char** argv) {
 		otlp_shutdown();
 	}
 
+	wasm_engine_destroy();
 	intern_destroy();
 	return ret;
 }

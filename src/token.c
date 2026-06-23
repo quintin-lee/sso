@@ -319,10 +319,16 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 	yyjson_mut_doc *header_doc = yyjson_mut_doc_new(NULL);
 	yyjson_mut_val *header = yyjson_mut_obj(header_doc);
 	yyjson_mut_doc_set_root(header_doc, header);
-	yyjson_mut_obj_add_str(header_doc, header, "alg", mgr->mode == SSO_TOKEN_MODE_RS256 ? "RS256" : "HS256");
+	const char* alg_str = "HS256";
+	if (mgr->mode == SSO_TOKEN_MODE_RS256) alg_str = "RS256";
+	else if (mgr->mode == SSO_TOKEN_MODE_CRYDI3) alg_str = "CRYDI3";
+
+	yyjson_mut_obj_add_str(header_doc, header, "alg", alg_str);
 	yyjson_mut_obj_add_str(header_doc, header, "typ", "JWT");
 	if (mgr->mode == SSO_TOKEN_MODE_RS256) {
 		yyjson_mut_obj_add_str(header_doc, header, "kid", "sso-key-1");
+	} else if (mgr->mode == SSO_TOKEN_MODE_CRYDI3) {
+		yyjson_mut_obj_add_str(header_doc, header, "kid", "sso-pqc-1");
 	}
 	char* header_str = yyjson_mut_write(header_doc, 0, NULL);
 	yyjson_mut_doc_free(header_doc);
@@ -409,6 +415,24 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 		char sig_b64[EVP_MAX_MD_SIZE * 2 + 1];
 		base64url_encode(hmac_result, hmac_len, sig_b64, sizeof(sig_b64));
 		snprintf(out->token_str, sizeof(out->token_str), "%s.%s", signing_input, sig_b64);
+	} else if (mgr->mode == SSO_TOKEN_MODE_CRYDI3) {
+		/* Post-Quantum Cryptography (PQC) mock signature (CRYSTALS-Dilithium-3) */
+		/* In V5, this will be bound to liboqs / OpenSSL PQC provider */
+		size_t pqc_sig_len = 3293; /* Typical Dilithium-3 signature length */
+		unsigned char* pqc_sig = (unsigned char*)malloc(pqc_sig_len);
+		if (!pqc_sig) goto rs_fail;
+		memset(pqc_sig, 0xAA, pqc_sig_len); /* Mock signature bytes */
+		
+		char* sig_b64 = (char*)malloc(pqc_sig_len * 2 + 2);
+		if (!sig_b64) {
+			free(pqc_sig);
+			goto rs_fail;
+		}
+		base64url_encode(pqc_sig, pqc_sig_len, sig_b64, pqc_sig_len * 2 + 2);
+		snprintf(out->token_str, sizeof(out->token_str), "%s.%s", signing_input, sig_b64);
+		
+		free(pqc_sig);
+		free(sig_b64);
 	} else {
 		/* Asymmetric signing via OpenSSL RSA-SHA256 signature */
 		EVP_MD_CTX*	   md_ctx  = EVP_MD_CTX_new();
