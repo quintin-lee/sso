@@ -226,6 +226,19 @@ sso_error_t sso_config_load(const char* filename, sso_config_t* cfg) {
 		get_string(logging, "audit_log_secret", cfg->audit_log_secret, sizeof(cfg->audit_log_secret));
 	}
 
+	/* Telemetry */
+	toml_table_t* tel_tab = toml_table_in(root, "telemetry");
+	if (tel_tab) {
+		const char* raw = toml_raw_in(tel_tab, "otlp_endpoint");
+		if (raw) {
+			char* val;
+			if (toml_rtos(raw, &val) == 0) {
+				sso_strlcpy(cfg->otlp_endpoint, val, sizeof(cfg->otlp_endpoint));
+				free(val);
+			}
+		}
+	}
+
 	/* [ratelimit] */
 	toml_table_t* rl = toml_table_in(root, "ratelimit");
 	if (rl) {

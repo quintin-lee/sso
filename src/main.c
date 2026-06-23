@@ -20,6 +20,7 @@
 #include "policy.h"
 #include "user.h"
 #include "intern.h"
+#include "otlp.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -345,6 +346,10 @@ int main(int argc, char** argv) {
 
 	intern_init();
 
+	if (g_config.otlp_endpoint[0] != '\0') {
+		otlp_init(g_config.otlp_endpoint);
+	}
+
 	int ret = 0;
 	if (argc > 1 && strcmp(argv[argc - 1], "--server") == 0) {
 		ret = run_server(&g_config, config_path);
@@ -352,6 +357,10 @@ int main(int argc, char** argv) {
 		ret = interactive_config(&g_config);
 	} else {
 		ret = run_demo(&g_config);
+	}
+
+	if (g_config.otlp_endpoint[0] != '\0') {
+		otlp_shutdown();
 	}
 
 	intern_destroy();

@@ -20,13 +20,18 @@
 #include "risk.h"
 #include <string.h>
 #include "dpop.h"
+#include "otlp.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
 sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_response_t* resp) {
+	otlp_span_t span;
+	otlp_span_start(&span, "auth.login", NULL, NULL);
+
 	if (!req->body) {
 		sso_response_error(resp, 400, "Request body required");
+		otlp_span_end(&span, true);
 		return SSO_OK;
 	}
 
@@ -35,6 +40,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		sso_error_t rerr = rate_limiter_check((rate_limiter_t*)ctx->rate_limiter, req->client_ip, 60000, 5);
 		if (rerr != SSO_OK) {
 			sso_response_error(resp, 429, "Too many login attempts. Please wait.");
+			otlp_span_end(&span, true);
 			return SSO_OK;
 		}
 	}
@@ -45,6 +51,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		free(username);
 		free(password);
 		sso_response_error(resp, 400, "username and password required");
+		otlp_span_end(&span, true);
 		return SSO_OK;
 	}
 
@@ -57,6 +64,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 	if (err != SSO_OK) {
 		risk_record_login_attempt(0, req->client_ip, 0);
 		sso_response_error(resp, 401, "Invalid credentials");
+		otlp_span_end(&span, true);
 		return SSO_OK;
 	}
 
@@ -65,12 +73,14 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 	if (risk_score >= RISK_SCORE_HIGH) {
 		risk_record_login_attempt(user.id, req->client_ip, 0);
 		sso_response_error(resp, 401, "High risk login blocked");
+		otlp_span_end(&span, true);
 		return SSO_OK;
 	}
 
 	if (risk_score >= RISK_SCORE_MEDIUM && !user.mfa_enabled) {
 		risk_record_login_attempt(user.id, req->client_ip, 0);
 		sso_response_error(resp, 401, "Medium risk login requires MFA, but MFA is not configured. Access blocked.");
+		otlp_span_end(&span, true);
 		return SSO_OK;
 	}
 
@@ -83,6 +93,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		snprintf(full_url, sizeof(full_url), "http://%s%s", req->host[0] ? req->host : "localhost", req->path);
 		if (dpop_verify_proof(req->dpop_proof, req->method_str, full_url, NULL, dpop_jkt) != SSO_OK) {
 			sso_response_error(resp, 401, "Invalid DPoP Proof");
+			otlp_span_end(&span, true);
 			return SSO_OK;
 		}
 	}
@@ -111,6 +122,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		if (!buf) {
 			token_destroy(&mfa_token);
 			sso_response_error(resp, 500, "Out of memory");
+			otlp_span_end(&span, true);
 			return SSO_OK;
 		}
 		snprintf(buf, 8192,
@@ -122,6 +134,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		token_destroy(&mfa_token);
 		sso_response_ok(resp, buf);
 		free(buf);
+		otlp_span_end(&span, false);
 		return SSO_OK;
 	}
 
@@ -135,12 +148,14 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 	err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 900000, dpop_jkt, &access_token);
 	if (err != SSO_OK) {
 		sso_response_error(resp, 500, "Failed to issue access token");
+		otlp_span_end(&span, true);
 		return SSO_OK;
 	}
 	err = token_issue(tmgr, &user, roles, rc, groups, gc, NULL, 604800000, dpop_jkt, &refresh_token);
 	if (err != SSO_OK) {
 		token_destroy(&access_token);
 		sso_response_error(resp, 500, "Failed to issue refresh token");
+		otlp_span_end(&span, true);
 		return SSO_OK;
 	}
 
@@ -155,6 +170,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		token_destroy(&access_token);
 		token_destroy(&refresh_token);
 		sso_response_error(resp, 500, "Out of memory");
+		otlp_span_end(&span, true);
 		return SSO_OK;
 	}
 	snprintf(buf, 8192,
@@ -173,6 +189,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 	token_destroy(&refresh_token);
 	sso_response_ok(resp, buf);
 	free(buf);
+	otlp_span_end(&span, false);
 	return SSO_OK;
 }
 

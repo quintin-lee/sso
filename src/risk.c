@@ -13,6 +13,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define CACHE_SETS 1024
 #define CACHE_WAYS 4
@@ -35,6 +36,11 @@ typedef struct {
 static risk_ip_record_t	  g_ip_records[CACHE_SETS][CACHE_WAYS];
 static risk_user_record_t g_user_records[CACHE_SETS][CACHE_WAYS];
 static pthread_mutex_t	  g_risk_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* AI / ML Anomaly Detection (EMA + Z-Score) State */
+static double		   g_global_login_velocity_ema = 1.0;
+static double		   g_global_login_velocity_var = 0.1;
+static sso_timestamp_t g_last_login_ms			   = 0;
 
 static uint32_t simple_hash(const char* str) {
 	if (!str)
@@ -66,6 +72,31 @@ int risk_evaluate_login(sso_id_t user_id, const char* ip, const char* user_agent
 	uint32_t		ua_hash = simple_hash(user_agent);
 
 	pthread_mutex_lock(&g_risk_lock);
+
+	/* --- AI Anomaly Scoring (Z-Score of login velocity) --- */
+	if (g_last_login_ms > 0) {
+		double delta_s = (now - g_last_login_ms) / 1000.0;
+		if (delta_s < 0.001)
+			delta_s = 0.001; // max velocity cap
+		double velocity = 1.0 / delta_s;
+
+		// Update EMA
+		double alpha = 0.05;
+		double diff	 = velocity - g_global_login_velocity_ema;
+		g_global_login_velocity_ema += alpha * diff;
+		g_global_login_velocity_var = (1.0 - alpha) * (g_global_login_velocity_var + alpha * diff * diff);
+
+		double stddev = sqrt(g_global_login_velocity_var);
+		if (stddev > 0.01) {
+			double z_score = (velocity - g_global_login_velocity_ema) / stddev;
+			if (z_score > 3.0) {
+				score += (int)(z_score * 5); // Anomalous spike in velocity (Botnet attack)
+				LOG_WARN("[risk] AI Anomaly detected: Z-Score = %.2f (Velocity spike)", z_score);
+			}
+		}
+	}
+	g_last_login_ms = now;
+	/* ------------------------------------------------------- */
 
 	/* 1. Check IP failure history */
 	uint32_t ip_set = simple_hash(ip) % CACHE_SETS;

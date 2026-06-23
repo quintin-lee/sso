@@ -86,6 +86,8 @@ typedef struct {
 		char url[256];
 	} raft_nodes[16];
 	int raft_node_count;
+	/* Security & OTLP */
+	char otlp_endpoint[256];
 } sso_config_t;
 
 /* Initialize config with default values. */

@@ -22,7 +22,7 @@
 
 CC       = gcc
 CFLAGS   = -Wall -Wextra -Wpedantic -std=c11 -O2 -D_GNU_SOURCE -D_POSIX_C_SOURCE=199309L -Wno-overlength-strings -MD -MP $(MHD_CFLAGS) $(shell pkg-config --cflags libpq 2>/dev/null)
-LDFLAGS  = -lsodium -lsqlite3 -lssl -lcrypto -lcurl $(MHD_LIBS) $(shell pkg-config --libs libpq 2>/dev/null) $(HIREDIS_LIBS)
+LDFLAGS  = -lsodium -lsqlite3 -lssl -lcrypto -lcurl $(MHD_LIBS) $(shell pkg-config --libs libpq 2>/dev/null) $(HIREDIS_LIBS) -lm
 INCLUDES = -Iinclude
 
 SRCDIR   = src
@@ -60,6 +60,7 @@ SRCS_BASE = $(SRCDIR)/logger.c        \
        $(SRCDIR)/handlers_check.c \
        $(SRCDIR)/handlers_webauthn.c \
        $(SRCDIR)/webauthn.c \
+       $(SRCDIR)/otlp.c          \
        $(SRCDIR)/demo.c          \
        $(SRCDIR)/interactive.c   \
        $(SRCDIR)/raft_cluster.c \
