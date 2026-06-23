@@ -306,6 +306,7 @@ int run_demo(sso_config_t* cfg) {
 	/* ---- 21. Token authentication ---- */
 	printf("\n[21] Token-based authentication:\n");
 	token_manager_t* tmgr = (token_manager_t*)ctx.token_mgr;
+	tmgr->mode = SSO_TOKEN_MODE_CRYDI3; /* Force PQC signing for the demo */
 
 	user_t auth_user;
 	err = user_authenticate(umgr, "admin", "admin123", &auth_user);

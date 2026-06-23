@@ -420,19 +420,26 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 		/* In V5, this will be bound to liboqs / OpenSSL PQC provider */
 		size_t pqc_sig_len = 3293; /* Typical Dilithium-3 signature length */
 		unsigned char* pqc_sig = (unsigned char*)malloc(pqc_sig_len);
-		if (!pqc_sig) goto rs_fail;
+		if (!pqc_sig) goto pqc_fail;
 		memset(pqc_sig, 0xAA, pqc_sig_len); /* Mock signature bytes */
 		
 		char* sig_b64 = (char*)malloc(pqc_sig_len * 2 + 2);
 		if (!sig_b64) {
 			free(pqc_sig);
-			goto rs_fail;
+			goto pqc_fail;
 		}
 		base64url_encode(pqc_sig, pqc_sig_len, sig_b64, pqc_sig_len * 2 + 2);
 		snprintf(out->token_str, sizeof(out->token_str), "%s.%s", signing_input, sig_b64);
 		
 		free(pqc_sig);
 		free(sig_b64);
+		goto success;
+
+	pqc_fail:
+		token_destroy(out);
+		free(b64_payload);
+		free(signing_input);
+		return SSO_ERR_INIT;
 	} else {
 		/* Asymmetric signing via OpenSSL RSA-SHA256 signature */
 		EVP_MD_CTX*	   md_ctx  = EVP_MD_CTX_new();
