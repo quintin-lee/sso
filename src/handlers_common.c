@@ -23,6 +23,41 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "yyjson.h"
+
+static void* arena_yy_malloc(void* ctx, size_t size) {
+	return arena_alloc((arena_t*)ctx, size);
+}
+static void* arena_yy_realloc(void* ctx, void* ptr, size_t old_size, size_t size) {
+	return arena_realloc((arena_t*)ctx, ptr, old_size, size);
+}
+static void arena_yy_free(void* ctx, void* ptr) {
+	(void)ctx;
+	(void)ptr;
+}
+
+static yyjson_doc* req_get_json(const http_request_t* req) {
+	if (req->json_doc)
+		return (yyjson_doc*)req->json_doc;
+	if (!req->body || req->body_len == 0)
+		return NULL;
+	yyjson_alc	alc = {arena_yy_malloc, arena_yy_realloc, arena_yy_free, (void*)&req->arena};
+	yyjson_doc* doc = yyjson_read_opts((char*)req->body, req->body_len, YYJSON_READ_INSITU, &alc, NULL);
+	((http_request_t*)req)->json_doc = doc;
+	return doc;
+}
+
+char* req_json_str_value(const http_request_t* req, const char* key) {
+	yyjson_doc* doc = req_get_json(req);
+	if (!doc)
+		return NULL;
+	yyjson_val* root = yyjson_doc_get_root(doc);
+	yyjson_val* val	 = yyjson_obj_get(root, key);
+	if (!val)
+		return NULL;
+	return (char*)yyjson_get_str(val);
+}
+
 uint64_t get_time_ms() {
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);

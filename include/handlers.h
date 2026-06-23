@@ -33,6 +33,7 @@ void		parse_query_params(const http_request_t* req, char* q, int* status, int* p
 sso_id_t	extract_path_id(const char* path, const char* prefix);
 sso_error_t send_real_sms(const char* phone, const char* code);
 char*		json_str_value(arena_t* arena, const char* json, const char* key);
+char*		req_json_str_value(const http_request_t* req, const char* key);
 int64_t		json_int_value(const char* json, const char* key, int64_t def);
 const char* validate_password(const char* password, const password_policy_t* policy);
 

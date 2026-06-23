@@ -10,6 +10,7 @@
 
 #include "sso.h"
 #include "oauth.h"
+#include "handlers.h"
 #include "token.h"
 #include "storage.h"
 #include "dpop.h"
@@ -80,45 +81,6 @@ static token_manager_t* get_token_mgr(sso_context_t* ctx) {
 /* Get the user manager from ctx->user_mgr. */
 static user_manager_t* get_user_mgr(sso_context_t* ctx) {
 	return (user_manager_t*)ctx->user_mgr;
-}
-
-/* Extract string value from a JSON body for a given key.
- * Caller must free the returned string. */
-static char* json_str_value(arena_t* arena, const char* json, const char* key) {
-	if (!json || !key)
-		return NULL;
-	char search[128];
-	snprintf(search, sizeof(search), "\"%s\"", key);
-	const char* p = strstr(json, search);
-	if (!p)
-		return NULL;
-	p += strlen(search);
-	while (*p && *p != ':' && *p != ',')
-		p++;
-	if (*p == ':')
-		p++;
-	while (*p && (*p == ' ' || *p == '\t' || *p == '\n'))
-		p++;
-	if (*p == '"')
-		p++;
-	else
-		return NULL;
-	const char* end = p;
-	while (*end) {
-		if (*end == '\\' && *(end + 1) == '"')
-			end += 2;
-		else if (*end == '"')
-			break;
-		else
-			end++;
-	}
-	size_t len = (size_t)(end - p);
-	char*  val = (char*)arena_alloc(arena, len + 1);
-	if (!val)
-		return NULL;
-	memcpy(val, p, len);
-	val[len] = '\0';
-	return val;
 }
 
 /* Build a simple JSON response with a single string field. */
@@ -415,13 +377,13 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 		return SSO_OK;
 	}
 
-	char* grant_type	= json_str_value((arena_t*)&req->arena, req->body, "grant_type");
-	char* code			= json_str_value((arena_t*)&req->arena, req->body, "code");
-	char* redirect_uri	= json_str_value((arena_t*)&req->arena, req->body, "redirect_uri");
-	char* client_id		= json_str_value((arena_t*)&req->arena, req->body, "client_id");
-	char* client_secret = json_str_value((arena_t*)&req->arena, req->body, "client_secret");
-	char* refresh_token = json_str_value((arena_t*)&req->arena, req->body, "refresh_token");
-	char* scope			= json_str_value((arena_t*)&req->arena, req->body, "scope");
+	char* grant_type	= req_json_str_value(req, "grant_type");
+	char* code			= req_json_str_value(req, "code");
+	char* redirect_uri	= req_json_str_value(req, "redirect_uri");
+	char* client_id		= req_json_str_value(req, "client_id");
+	char* client_secret = req_json_str_value(req, "client_secret");
+	char* refresh_token = req_json_str_value(req, "refresh_token");
+	char* scope			= req_json_str_value(req, "scope");
 
 	sso_error_t		   result = SSO_OK;
 	token_manager_t*   tmgr	  = get_token_mgr(ctx);
@@ -483,7 +445,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 
 		/* Verify PKCE if a challenge was saved for this code */
 		if (ac.code_challenge[0] != '\0') {
-			char* code_verifier = json_str_value((arena_t*)&req->arena, req->body, "code_verifier");
+			char* code_verifier = req_json_str_value(req, "code_verifier");
 			if (!verify_pkce(code_verifier, ac.code_challenge, ac.code_challenge_method)) {
 				json_error_response(resp, 400, "invalid_grant");
 				/* free(code_verifier); */
@@ -727,7 +689,7 @@ sso_error_t handle_oauth_introspect(sso_context_t* ctx, const http_request_t* re
 		return SSO_OK;
 	}
 
-	char* token_str = json_str_value((arena_t*)&req->arena, req->body, "token");
+	char* token_str = req_json_str_value(req, "token");
 	if (!token_str) {
 		json_error_response(resp, 400, "invalid_request");
 		return SSO_OK;
@@ -782,7 +744,7 @@ sso_error_t handle_oauth_revoke(sso_context_t* ctx, const http_request_t* req, h
 		return SSO_OK;
 	}
 
-	char* token_str = json_str_value((arena_t*)&req->arena, req->body, "token");
+	char* token_str = req_json_str_value(req, "token");
 	if (!token_str) {
 		json_error_response(resp, 400, "invalid_request");
 		return SSO_OK;

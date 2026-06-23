@@ -44,14 +44,14 @@ sso_error_t handle_check_permission(sso_context_t* ctx, const http_request_t* re
 	eval_context_init(&ectx, &user);
 
 	/* Populate the context with all available parameters from the JSON body */
-	char* function_code = json_str_value((arena_t*)&req->arena, req->body, "function_code");
+	char* function_code = req_json_str_value(req, "function_code");
 	if (function_code) {
 		sso_strlcpy(ectx.params.functional.function_code, function_code, sizeof(ectx.params.functional.function_code));
 		/* free(function_code); */
 	}
 
-	char* api_method = json_str_value((arena_t*)&req->arena, req->body, "api_method");
-	char* api_path	 = json_str_value((arena_t*)&req->arena, req->body, "api_path");
+	char* api_method = req_json_str_value(req, "api_method");
+	char* api_path	 = req_json_str_value(req, "api_path");
 	if (api_method && api_path) {
 		sso_strlcpy(ectx.params.api.http_method, api_method, sizeof(ectx.params.api.http_method));
 		sso_strlcpy(ectx.params.api.request_path, api_path, sizeof(ectx.params.api.request_path));
@@ -59,31 +59,31 @@ sso_error_t handle_check_permission(sso_context_t* ctx, const http_request_t* re
 		/* free(api_path); */
 	}
 
-	char* resource_type = json_str_value((arena_t*)&req->arena, req->body, "resource_type");
+	char* resource_type = req_json_str_value(req, "resource_type");
 	if (resource_type) {
 		sso_strlcpy(ectx.params.data.resource_type, resource_type, sizeof(ectx.params.data.resource_type));
 		/* free(resource_type); */
 
-		char* record = json_str_value((arena_t*)&req->arena, req->body, "record");
+		char* record = req_json_str_value(req, "record");
 		if (record) {
 			ectx.params.data.record = record; /* Must be freed later */
 		}
 	}
 
-	char* role_name = json_str_value((arena_t*)&req->arena, req->body, "role_name");
+	char* role_name = req_json_str_value(req, "role_name");
 	if (role_name) {
 		sso_strlcpy(ectx.params.rbac.role_name, role_name, sizeof(ectx.params.rbac.role_name));
 		/* free(role_name); */
 	}
 
-	char* source_ip = json_str_value((arena_t*)&req->arena, req->body, "source_ip");
+	char* source_ip = req_json_str_value(req, "source_ip");
 	if (source_ip) {
 		sso_strlcpy(ectx.params.location.source_ip, source_ip, sizeof(ectx.params.location.source_ip));
 		/* free(source_ip); */
 	}
 
-	char* lbac_user_labels	  = json_str_value((arena_t*)&req->arena, req->body, "lbac_user_labels");
-	char* lbac_resource_label = json_str_value((arena_t*)&req->arena, req->body, "lbac_resource_label");
+	char* lbac_user_labels	  = req_json_str_value(req, "lbac_user_labels");
+	char* lbac_resource_label = req_json_str_value(req, "lbac_resource_label");
 	if (lbac_user_labels && lbac_resource_label) {
 		sso_strlcpy(ectx.params.lbac.user_labels, lbac_user_labels, sizeof(ectx.params.lbac.user_labels));
 		sso_strlcpy(ectx.params.lbac.resource_label, lbac_resource_label, sizeof(ectx.params.lbac.resource_label));
@@ -91,9 +91,9 @@ sso_error_t handle_check_permission(sso_context_t* ctx, const http_request_t* re
 		/* free(lbac_resource_label); */
 	}
 
-	char* abac_subject_attrs  = json_str_value((arena_t*)&req->arena, req->body, "abac_subject_attrs");
-	char* abac_resource_attrs = json_str_value((arena_t*)&req->arena, req->body, "abac_resource_attrs");
-	char* abac_action		  = json_str_value((arena_t*)&req->arena, req->body, "abac_action");
+	char* abac_subject_attrs  = req_json_str_value(req, "abac_subject_attrs");
+	char* abac_resource_attrs = req_json_str_value(req, "abac_resource_attrs");
+	char* abac_action		  = req_json_str_value(req, "abac_action");
 	if (abac_subject_attrs) {
 		sso_strlcpy(ectx.params.abac.subject_attrs, abac_subject_attrs, sizeof(ectx.params.abac.subject_attrs));
 		/* free(abac_subject_attrs); */
@@ -107,7 +107,7 @@ sso_error_t handle_check_permission(sso_context_t* ctx, const http_request_t* re
 		/* free(abac_action); */
 	}
 
-	char* env_attrs = json_str_value((arena_t*)&req->arena, req->body, "environment");
+	char* env_attrs = req_json_str_value(req, "environment");
 	if (env_attrs) {
 		sso_strlcpy(ectx.environment, env_attrs, sizeof(ectx.environment));
 		/* free(env_attrs); */
@@ -205,7 +205,7 @@ sso_error_t handle_check_functional(sso_context_t* ctx, const http_request_t* re
 		return SSO_OK;
 	}
 
-	char* function_code = json_str_value((arena_t*)&req->arena, req->body, "function_code");
+	char* function_code = req_json_str_value(req, "function_code");
 	if (!function_code) {
 		sso_response_error(resp, 400, "function_code required");
 		return SSO_OK;
@@ -249,8 +249,8 @@ sso_error_t handle_check_api(sso_context_t* ctx, const http_request_t* req, http
 		return SSO_OK;
 	}
 
-	char* method = json_str_value((arena_t*)&req->arena, req->body, "method");
-	char* path	 = json_str_value((arena_t*)&req->arena, req->body, "path");
+	char* method = req_json_str_value(req, "method");
+	char* path	 = req_json_str_value(req, "path");
 	if (!method || !path) {
 		/* free(method); */
 		/* free(path); */
@@ -295,8 +295,8 @@ sso_error_t handle_check_data(sso_context_t* ctx, const http_request_t* req, htt
 		return SSO_OK;
 	}
 
-	char* resource_type = json_str_value((arena_t*)&req->arena, req->body, "resource_type");
-	char* record_json	= json_str_value((arena_t*)&req->arena, req->body, "record");
+	char* resource_type = req_json_str_value(req, "resource_type");
+	char* record_json	= req_json_str_value(req, "record");
 	if (!resource_type) {
 		/* free(resource_type); */
 		/* free(record_json); */
@@ -355,7 +355,7 @@ sso_error_t handle_check_rbac(sso_context_t* ctx, const http_request_t* req, htt
 		return SSO_OK;
 	}
 
-	char* role_name = json_str_value((arena_t*)&req->arena, req->body, "role_name");
+	char* role_name = req_json_str_value(req, "role_name");
 	if (!role_name) {
 		sso_response_error(resp, 400, "role_name required");
 		return SSO_OK;
@@ -397,8 +397,8 @@ sso_error_t handle_check_location(sso_context_t* ctx, const http_request_t* req,
 		return SSO_OK;
 	}
 
-	char* source_ip	  = json_str_value((arena_t*)&req->arena, req->body, "source_ip");
-	char* geo_country = json_str_value((arena_t*)&req->arena, req->body, "geo_country");
+	char* source_ip	  = req_json_str_value(req, "source_ip");
+	char* geo_country = req_json_str_value(req, "geo_country");
 	if (!source_ip) {
 		/* free(source_ip); */
 		/* free(geo_country); */
@@ -444,8 +444,8 @@ sso_error_t handle_check_lbac(sso_context_t* ctx, const http_request_t* req, htt
 		return SSO_OK;
 	}
 
-	char* user_labels	 = json_str_value((arena_t*)&req->arena, req->body, "user_labels");
-	char* resource_label = json_str_value((arena_t*)&req->arena, req->body, "resource_label");
+	char* user_labels	 = req_json_str_value(req, "user_labels");
+	char* resource_label = req_json_str_value(req, "resource_label");
 	if (!user_labels || !resource_label) {
 		/* free(user_labels); */
 		/* free(resource_label); */
@@ -491,9 +491,9 @@ sso_error_t handle_check_abac(sso_context_t* ctx, const http_request_t* req, htt
 		return SSO_OK;
 	}
 
-	char* subject_attrs	 = json_str_value((arena_t*)&req->arena, req->body, "subject_attrs");
-	char* resource_attrs = json_str_value((arena_t*)&req->arena, req->body, "resource_attrs");
-	char* action_str	 = json_str_value((arena_t*)&req->arena, req->body, "action");
+	char* subject_attrs	 = req_json_str_value(req, "subject_attrs");
+	char* resource_attrs = req_json_str_value(req, "resource_attrs");
+	char* action_str	 = req_json_str_value(req, "action");
 
 	sso_id_t user_id = (sso_id_t)json_int_value(req->body, "user_id", 0);
 	if (user_id == 0) {

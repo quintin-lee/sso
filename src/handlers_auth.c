@@ -45,8 +45,8 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		}
 	}
 
-	char* username = json_str_value((arena_t*)&req->arena, req->body, "username");
-	char* password = json_str_value((arena_t*)&req->arena, req->body, "password");
+	char* username = req_json_str_value(req, "username");
+	char* password = req_json_str_value(req, "password");
 	if (!username || !password) {
 		/* free(username); */
 		/* free(password); */
@@ -222,8 +222,8 @@ sso_error_t handle_mfa_enable(sso_context_t* ctx, const http_request_t* req, htt
 		return SSO_OK;
 	}
 
-	char* secret = json_str_value((arena_t*)&req->arena, req->body, "secret");
-	char* code	 = json_str_value((arena_t*)&req->arena, req->body, "code");
+	char* secret = req_json_str_value(req, "secret");
+	char* code	 = req_json_str_value(req, "code");
 
 	if (!secret || !code) {
 		/* free(secret); */
@@ -263,8 +263,8 @@ sso_error_t handle_mfa_verify(sso_context_t* ctx, const http_request_t* req, htt
 		return SSO_OK;
 	}
 
-	char* mfa_token_str = json_str_value((arena_t*)&req->arena, req->body, "mfa_token");
-	char* code			= json_str_value((arena_t*)&req->arena, req->body, "code");
+	char* mfa_token_str = req_json_str_value(req, "mfa_token");
+	char* code			= req_json_str_value(req, "code");
 
 	if (!mfa_token_str || !code) {
 		/* free(mfa_token_str); */
@@ -355,7 +355,7 @@ sso_error_t handle_send_sms(sso_context_t* ctx, const http_request_t* req, http_
 		return SSO_OK;
 	}
 
-	char* phone = json_str_value((arena_t*)&req->arena, req->body, "phone");
+	char* phone = req_json_str_value(req, "phone");
 	if (!phone) {
 		sso_response_error(resp, 400, "phone required");
 		return SSO_OK;
@@ -416,8 +416,8 @@ sso_error_t handle_login_by_sms(sso_context_t* ctx, const http_request_t* req, h
 		}
 	}
 
-	char* phone = json_str_value((arena_t*)&req->arena, req->body, "phone");
-	char* code	= json_str_value((arena_t*)&req->arena, req->body, "code");
+	char* phone = req_json_str_value(req, "phone");
+	char* code	= req_json_str_value(req, "code");
 
 	if (!phone || !code) {
 		if (phone)
@@ -521,10 +521,10 @@ sso_error_t handle_register(sso_context_t* ctx, const http_request_t* req, http_
 		return SSO_OK;
 	}
 
-	char* username = json_str_value((arena_t*)&req->arena, req->body, "username");
-	char* password = json_str_value((arena_t*)&req->arena, req->body, "password");
-	char* email	   = json_str_value((arena_t*)&req->arena, req->body, "email");
-	char* display  = json_str_value((arena_t*)&req->arena, req->body, "display_name");
+	char* username = req_json_str_value(req, "username");
+	char* password = req_json_str_value(req, "password");
+	char* email	   = req_json_str_value(req, "email");
+	char* display  = req_json_str_value(req, "display_name");
 
 	if (!username || !password) {
 		/* free(username); */
@@ -587,7 +587,7 @@ sso_error_t handle_register(sso_context_t* ctx, const http_request_t* req, http_
 sso_error_t handle_verify(sso_context_t* ctx, const http_request_t* req, http_response_t* resp) {
 	const char* token_str = NULL;
 	if (req->body) {
-		const char* t = json_str_value((arena_t*)&req->arena, req->body, "token");
+		const char* t = req_json_str_value(req, "token");
 		if (t) {
 			token_str = t;
 		}
@@ -706,7 +706,7 @@ sso_error_t handle_refresh(sso_context_t* ctx, const http_request_t* req, http_r
 		return SSO_OK;
 	}
 
-	char* refresh_token_str = json_str_value((arena_t*)&req->arena, req->body, "refresh_token");
+	char* refresh_token_str = req_json_str_value(req, "refresh_token");
 	if (!refresh_token_str) {
 		sso_response_error(resp, 400, "refresh_token required");
 		return SSO_OK;
@@ -823,7 +823,7 @@ sso_error_t handle_change_password(sso_context_t* ctx, const http_request_t* req
 		return SSO_OK;
 	}
 
-	char*		new_pass = json_str_value((arena_t*)&req->arena, req->body, "password");
+	char*		new_pass = req_json_str_value(req, "password");
 	const char* pw_err	 = validate_password(new_pass, NULL);
 	if (pw_err) {
 		if (new_pass)

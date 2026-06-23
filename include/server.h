@@ -80,6 +80,7 @@ typedef struct {
 	char		  request_id[64];	/* Unique trace ID for this request    */
 	char		  user_agent[512];	/* User-Agent header                   */
 	void*		  userdata;			/* connection-specific data */
+	void*		  json_doc;			/* yyjson parsed document */
 } http_request_t;
 
 typedef struct {
@@ -117,15 +118,15 @@ struct sso_server {
 	route_t**	   method_routes[6]; /* per-method pointer arrays into routes[] */
 	size_t		   method_route_count[6];
 	sso_context_t* sso_ctx;
-	
+
 	/* Multi-Tenant contexts (optional) */
 	sso_context_t** tenant_ctxs;
-	char**          tenant_hosts;
-	size_t          tenant_count;
+	char**			tenant_hosts;
+	size_t			tenant_count;
 
-	void*		   server_data;				  /* platform-specific (socket, ctx)     */
-	SSL_CTX*	   ssl_ctx;					  /* TLS context, NULL if disabled      */
-	char		   config_path[SSO_MAX_PATH]; /* config file path for SIGHUP reload */
+	void*	 server_data;				/* platform-specific (socket, ctx)     */
+	SSL_CTX* ssl_ctx;					/* TLS context, NULL if disabled      */
+	char	 config_path[SSO_MAX_PATH]; /* config file path for SIGHUP reload */
 };
 
 /* -----------------------------------------------------------------------

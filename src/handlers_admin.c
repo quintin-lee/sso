@@ -31,10 +31,10 @@ sso_error_t handle_create_user(sso_context_t* ctx, const http_request_t* req, ht
 		return SSO_OK;
 	}
 
-	char* username = json_str_value((arena_t*)&req->arena, req->body, "username");
-	char* password = json_str_value((arena_t*)&req->arena, req->body, "password");
-	char* email	   = json_str_value((arena_t*)&req->arena, req->body, "email");
-	char* display  = json_str_value((arena_t*)&req->arena, req->body, "display_name");
+	char* username = req_json_str_value(req, "username");
+	char* password = req_json_str_value(req, "password");
+	char* email	   = req_json_str_value(req, "email");
+	char* display  = req_json_str_value(req, "display_name");
 
 	if (!username || !password) {
 		/* free(username); */
@@ -85,12 +85,12 @@ sso_error_t handle_create_role(sso_context_t* ctx, const http_request_t* req, ht
 		return SSO_OK;
 	}
 
-	char* name = json_str_value((arena_t*)&req->arena, req->body, "name");
+	char* name = req_json_str_value(req, "name");
 	if (!name) {
 		sso_response_error(resp, 400, "name required");
 		return SSO_OK;
 	}
-	char*	 desc	   = json_str_value((arena_t*)&req->arena, req->body, "description");
+	char*	 desc	   = req_json_str_value(req, "description");
 	sso_id_t parent_id = (sso_id_t)json_int_value(req->body, "parent_role_id", 0);
 
 	role_manager_t* rmgr = (role_manager_t*)ctx->role_mgr;
@@ -590,7 +590,7 @@ sso_error_t handle_create_policy(sso_context_t* ctx, const http_request_t* req, 
 		return SSO_OK;
 	}
 
-	char* name = json_str_value((arena_t*)&req->arena, req->body, "name");
+	char* name = req_json_str_value(req, "name");
 	if (!name) {
 		sso_response_error(resp, 400, "name required");
 		return SSO_OK;
@@ -599,7 +599,7 @@ sso_error_t handle_create_policy(sso_context_t* ctx, const http_request_t* req, 
 	int	  strategy_type = (int)json_int_value(req->body, "strategy_type", 1);
 	int	  effect		= (int)json_int_value(req->body, "effect", 1);
 	int	  priority		= (int)json_int_value(req->body, "priority", 50);
-	char* rules			= json_str_value((arena_t*)&req->arena, req->body, "rules");
+	char* rules			= req_json_str_value(req, "rules");
 
 	policy_manager_t* pmgr = (policy_manager_t*)ctx->policy_mgr;
 	policy_t		  policy;
@@ -677,12 +677,12 @@ sso_error_t handle_create_group(sso_context_t* ctx, const http_request_t* req, h
 		return SSO_OK;
 	}
 
-	char* name = json_str_value((arena_t*)&req->arena, req->body, "name");
+	char* name = req_json_str_value(req, "name");
 	if (!name) {
 		sso_response_error(resp, 400, "name required");
 		return SSO_OK;
 	}
-	char*	 desc	   = json_str_value((arena_t*)&req->arena, req->body, "description");
+	char*	 desc	   = req_json_str_value(req, "description");
 	sso_id_t parent_id = (sso_id_t)json_int_value(req->body, "parent_group_id", 0);
 
 	group_manager_t* gmgr = (group_manager_t*)ctx->group_mgr;
@@ -733,8 +733,8 @@ sso_error_t handle_update_user(sso_context_t* ctx, const http_request_t* req, ht
 		return SSO_OK;
 	}
 
-	char* email	  = json_str_value((arena_t*)&req->arena, req->body, "email");
-	char* display = json_str_value((arena_t*)&req->arena, req->body, "display_name");
+	char* email	  = req_json_str_value(req, "email");
+	char* display = req_json_str_value(req, "display_name");
 	int	  status  = (int)json_int_value(req->body, "status", -1);
 
 	if (email) {
@@ -806,8 +806,8 @@ sso_error_t handle_update_role(sso_context_t* ctx, const http_request_t* req, ht
 		return SSO_OK;
 	}
 
-	char*	 name	= json_str_value((arena_t*)&req->arena, req->body, "name");
-	char*	 desc	= json_str_value((arena_t*)&req->arena, req->body, "description");
+	char*	 name	= req_json_str_value(req, "name");
+	char*	 desc	= req_json_str_value(req, "description");
 	sso_id_t parent = (sso_id_t)json_int_value(req->body, "parent_role_id", -1);
 	int		 status = (int)json_int_value(req->body, "status", -1);
 
@@ -921,8 +921,8 @@ sso_error_t handle_update_group(sso_context_t* ctx, const http_request_t* req, h
 		return SSO_OK;
 	}
 
-	char*	 name	= json_str_value((arena_t*)&req->arena, req->body, "name");
-	char*	 desc	= json_str_value((arena_t*)&req->arena, req->body, "description");
+	char*	 name	= req_json_str_value(req, "name");
+	char*	 desc	= req_json_str_value(req, "description");
 	sso_id_t parent = (sso_id_t)json_int_value(req->body, "parent_group_id", -1);
 	int		 status = (int)json_int_value(req->body, "status", -1);
 
@@ -999,8 +999,8 @@ sso_error_t handle_update_policy(sso_context_t* ctx, const http_request_t* req, 
 		return SSO_OK;
 	}
 
-	char* name	   = json_str_value((arena_t*)&req->arena, req->body, "name");
-	char* rules	   = json_str_value((arena_t*)&req->arena, req->body, "rules");
+	char* name	   = req_json_str_value(req, "name");
+	char* rules	   = req_json_str_value(req, "rules");
 	int	  effect   = (int)json_int_value(req->body, "effect", -1);
 	int	  priority = (int)json_int_value(req->body, "priority", -1);
 	int	  status   = (int)json_int_value(req->body, "status", -1);
@@ -1361,14 +1361,14 @@ sso_error_t handle_create_client(sso_context_t* ctx, const http_request_t* req, 
 		return SSO_OK;
 	}
 
-	char* client_id			  = json_str_value((arena_t*)&req->arena, req->body, "client_id");
-	char* client_secret		  = json_str_value((arena_t*)&req->arena, req->body, "client_secret");
-	char* redirect_uris		  = json_str_value((arena_t*)&req->arena, req->body, "redirect_uris");
-	char* app_name			  = json_str_value((arena_t*)&req->arena, req->body, "app_name");
-	char* app_description	  = json_str_value((arena_t*)&req->arena, req->body, "app_description");
-	char* app_logo_url		  = json_str_value((arena_t*)&req->arena, req->body, "app_logo_url");
-	char* allowed_scopes	  = json_str_value((arena_t*)&req->arena, req->body, "allowed_scopes");
-	char* allowed_grant_types = json_str_value((arena_t*)&req->arena, req->body, "allowed_grant_types");
+	char* client_id			  = req_json_str_value(req, "client_id");
+	char* client_secret		  = req_json_str_value(req, "client_secret");
+	char* redirect_uris		  = req_json_str_value(req, "redirect_uris");
+	char* app_name			  = req_json_str_value(req, "app_name");
+	char* app_description	  = req_json_str_value(req, "app_description");
+	char* app_logo_url		  = req_json_str_value(req, "app_logo_url");
+	char* allowed_scopes	  = req_json_str_value(req, "allowed_scopes");
+	char* allowed_grant_types = req_json_str_value(req, "allowed_grant_types");
 	long  token_ttl_ms		  = (long)json_int_value(req->body, "token_ttl_ms", 3600000);
 	int	  status			  = (int)json_int_value(req->body, "status", 1);
 
@@ -1502,13 +1502,13 @@ sso_error_t handle_update_client(sso_context_t* ctx, const http_request_t* req, 
 		return SSO_OK;
 	}
 
-	char* redirect_uris		  = json_str_value((arena_t*)&req->arena, req->body, "redirect_uris");
-	char* app_name			  = json_str_value((arena_t*)&req->arena, req->body, "app_name");
-	char* app_description	  = json_str_value((arena_t*)&req->arena, req->body, "app_description");
-	char* app_logo_url		  = json_str_value((arena_t*)&req->arena, req->body, "app_logo_url");
-	char* allowed_scopes	  = json_str_value((arena_t*)&req->arena, req->body, "allowed_scopes");
-	char* allowed_grant_types = json_str_value((arena_t*)&req->arena, req->body, "allowed_grant_types");
-	char* client_secret		  = json_str_value((arena_t*)&req->arena, req->body, "client_secret");
+	char* redirect_uris		  = req_json_str_value(req, "redirect_uris");
+	char* app_name			  = req_json_str_value(req, "app_name");
+	char* app_description	  = req_json_str_value(req, "app_description");
+	char* app_logo_url		  = req_json_str_value(req, "app_logo_url");
+	char* allowed_scopes	  = req_json_str_value(req, "allowed_scopes");
+	char* allowed_grant_types = req_json_str_value(req, "allowed_grant_types");
+	char* client_secret		  = req_json_str_value(req, "client_secret");
 	int	  status			  = (int)json_int_value(req->body, "status", -1);
 	long  token_ttl_ms		  = (long)json_int_value(req->body, "token_ttl_ms", -1);
 
