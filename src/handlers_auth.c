@@ -604,8 +604,9 @@ sso_error_t handle_verify(sso_context_t* ctx, const http_request_t* req, http_re
 	token_manager_t* tmgr = (token_manager_t*)ctx->token_mgr;
 	token_t			 tok;
 	sso_error_t		 err = token_verify(tmgr, token_str, &tok);
-	if (token_str != req->auth_token)
-		free((void*)token_str);
+	if (token_str != req->auth_token) {
+		/* free((void*)token_str); removed for arena allocator */
+	}
 
 	if (err != SSO_OK) {
 		LOG_WARN("[verify] Token verification failed: %s", sso_strerror(err));
