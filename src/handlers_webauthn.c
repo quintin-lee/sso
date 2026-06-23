@@ -52,9 +52,9 @@ sso_error_t handle_webauthn_register_challenge(sso_context_t* ctx, const http_re
 
 	char* json = yyjson_mut_write(doc, 0, NULL);
 	sso_response_ok(resp, json);
-	free(json);
+	/* free(json); */
 	yyjson_mut_doc_free(doc);
-	free(challenge);
+	/* free(challenge); */
 	return SSO_OK;
 }
 
@@ -128,14 +128,14 @@ sso_error_t handle_webauthn_register(sso_context_t* ctx, const http_request_t* r
 
 		const char* json_str = yyjson_mut_write(mdoc, 0, NULL);
 		sso_strlcpy(user.attributes, json_str, sizeof(user.attributes));
-		free((void*)json_str);
+		/* free((void*)json_str); */
 		yyjson_mut_doc_free(mdoc);
 
 		user_update(umgr, &user);
 	}
 
-	free(cred_id);
-	free(pub_key);
+	/* free(cred_id); */
+	/* free(pub_key); */
 
 	yyjson_mut_doc* doc	  = yyjson_mut_doc_new(NULL);
 	yyjson_mut_val* mroot = yyjson_mut_obj(doc);
@@ -143,7 +143,7 @@ sso_error_t handle_webauthn_register(sso_context_t* ctx, const http_request_t* r
 	yyjson_mut_obj_add_str(doc, mroot, "message", "WebAuthn credentials registered successfully");
 	char* json = yyjson_mut_write(doc, 0, NULL);
 	sso_response_ok(resp, json);
-	free(json);
+	/* free(json); */
 	yyjson_mut_doc_free(doc);
 	return SSO_OK;
 }
@@ -199,9 +199,9 @@ sso_error_t handle_webauthn_login_challenge(sso_context_t* ctx, const http_reque
 
 	char* json = yyjson_mut_write(doc, 0, NULL);
 	sso_response_ok(resp, json);
-	free(json);
+	/* free(json); */
 	yyjson_mut_doc_free(doc);
-	free(challenge);
+	/* free(challenge); */
 	if (attr_doc)
 		yyjson_doc_free(attr_doc);
 	return SSO_OK;
@@ -309,7 +309,7 @@ sso_error_t handle_webauthn_login(sso_context_t* ctx, const http_request_t* req,
 
 	char* json = yyjson_mut_write(doc, 0, NULL);
 	sso_response_ok(resp, json);
-	free(json);
+	/* free(json); */
 	yyjson_mut_doc_free(doc);
 	return SSO_OK;
 }

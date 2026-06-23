@@ -119,10 +119,10 @@ sso_error_t handle_check_permission(sso_context_t* ctx, const http_request_t* re
 
 	if (err != SSO_OK) {
 		if (ectx.params.data.record)
-			free((void*)ectx.params.data.record);
-		if (trace)
-			/* free(trace); */
-			eval_context_destroy(&ectx);
+			/* free((void*)ectx.params.data.record); */
+			if (trace)
+				/* free(trace); */
+				eval_context_destroy(&ectx);
 		sso_response_error(resp, 500, "Permission evaluation failed");
 		return SSO_OK;
 	}
@@ -136,10 +136,10 @@ sso_error_t handle_check_permission(sso_context_t* ctx, const http_request_t* re
 		/* free(escaped_trace); */
 		/* free(fields_buf); */
 		if (ectx.params.data.record)
-			free((void*)ectx.params.data.record);
-		if (trace)
-			/* free(trace); */
-			eval_context_destroy(&ectx);
+			/* free((void*)ectx.params.data.record); */
+			if (trace)
+				/* free(trace); */
+				eval_context_destroy(&ectx);
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
