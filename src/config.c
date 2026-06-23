@@ -42,6 +42,7 @@ void sso_config_default(sso_config_t* cfg) {
 	cfg->audit_log_max_size_mb	= 10; /* default 10MB */
 	cfg->audit_log_max_backups	= 5;  /* default 5 backups */
 	cfg->audit_log_rotate_daily = false;
+	memset(cfg->audit_log_secret, 0, sizeof(cfg->audit_log_secret));
 
 	/* [ratelimit] defaults */
 	cfg->max_ips = 10000;
@@ -222,6 +223,7 @@ sso_error_t sso_config_load(const char* filename, sso_config_t* cfg) {
 		get_int(logging, "audit_log_max_size_mb", &cfg->audit_log_max_size_mb);
 		get_int(logging, "audit_log_max_backups", &cfg->audit_log_max_backups);
 		get_bool(logging, "audit_log_rotate_daily", &cfg->audit_log_rotate_daily);
+		get_string(logging, "audit_log_secret", cfg->audit_log_secret, sizeof(cfg->audit_log_secret));
 	}
 
 	/* [ratelimit] */

@@ -63,6 +63,7 @@ typedef struct {
 	int	 audit_log_max_size_mb;	 /**< Max size in MB before rotation (0 = no limit) */
 	int	 audit_log_max_backups;	 /**< Max backups to keep */
 	bool audit_log_rotate_daily; /**< Whether to rotate log files daily */
+	char audit_log_secret[128];	 /**< Secret key for HMAC signature chain */
 
 	/* -------- [oauth] -------- */
 	char oauth_client_id[64];	   /**< Default OAuth 2.0 client ID */

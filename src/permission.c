@@ -27,13 +27,21 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <sys/stat.h>
+#include <openssl/hmac.h>
+#include <openssl/sha.h>
+#include <stdio.h>
+#include <pthread.h>
+#include <stdatomic.h>
+#include <sys/stat.h>
 
 /* Audit log path — set from sso_config_t during engine creation. */
-static char s_audit_log_path[256]	 = "audit.log";
-static int	s_audit_log_max_size_mb	 = 10;
-static int	s_audit_log_max_backups	 = 5;
-static bool s_audit_log_rotate_daily = false;
-static int	s_audit_log_last_yday	 = -1;
+static char			 s_audit_log_path[256]	  = "audit.log";
+static int			 s_audit_log_max_size_mb  = 10;
+static int			 s_audit_log_max_backups  = 5;
+static bool			 s_audit_log_rotate_daily = false;
+static int			 s_audit_log_last_yday	  = -1;
+static char			 s_audit_log_secret[128]  = {0};
+static unsigned char s_audit_hmac_prev[32]	  = {0};
 
 /* ========================================================================
  * Built-in strategy declarations (defined in strategies/ dir)
@@ -179,6 +187,7 @@ sso_error_t perm_engine_create(permission_engine_t** engine, sso_context_t* ctx)
 		s_audit_log_max_size_mb	 = cfg->audit_log_max_size_mb;
 		s_audit_log_max_backups	 = cfg->audit_log_max_backups;
 		s_audit_log_rotate_daily = cfg->audit_log_rotate_daily;
+		snprintf(s_audit_log_secret, sizeof(s_audit_log_secret), "%s", cfg->audit_log_secret);
 
 		time_t	   now	   = time(NULL);
 		struct tm* tm_info = localtime(&now);
@@ -597,6 +606,27 @@ static void rotate_audit_log(void) {
 	/* Reopen will happen lazily on next write via audit_log_open(). */
 }
 
+static void write_audit_entry_with_hmac(FILE* f, const char* json_payload) {
+	if (s_audit_log_secret[0] != '\0') {
+		/* Compute HMAC = HMAC-SHA256(secret, prev_hmac + json_payload) */
+		HMAC_CTX* hctx = HMAC_CTX_new();
+		HMAC_Init_ex(hctx, s_audit_log_secret, strlen(s_audit_log_secret), EVP_sha256(), NULL);
+		HMAC_Update(hctx, s_audit_hmac_prev, sizeof(s_audit_hmac_prev));
+		HMAC_Update(hctx, (const unsigned char*)json_payload, strlen(json_payload));
+		unsigned int len = 0;
+		HMAC_Final(hctx, s_audit_hmac_prev, &len);
+		HMAC_CTX_free(hctx);
+
+		char hex_sig[65];
+		for (int i = 0; i < 32; i++) {
+			sprintf(hex_sig + (i * 2), "%02x", s_audit_hmac_prev[i]);
+		}
+		fprintf(f, "%s,\"signature\":\"%s\"}\n", json_payload, hex_sig);
+	} else {
+		fprintf(f, "%s}\n", json_payload);
+	}
+}
+
 static void audit_log_decision(sso_context_t* sso_ctx, const eval_context_t* ctx, bool allowed, const char* trace,
 							   uint64_t duration_ms, bool cache_hit) {
 	if (sso_ctx && sso_ctx->storage_backend) {
@@ -646,17 +676,21 @@ static void audit_log_decision(sso_context_t* sso_ctx, const eval_context_t* ctx
 		}
 	}
 
-	fprintf(f,
-			"{"
-			"\"timestamp_ms\":%llu,"
-			"\"user_id\":%llu,"
-			"\"decision\":\"%s\","
-			"\"duration_ms\":%llu,"
-			"\"cache_hit\":%s,"
-			"\"trace\":\"%s\""
-			"}\n",
-			(unsigned long long)get_time_ms(), (unsigned long long)ctx->user_id, allowed ? "ALLOW" : "DENY",
-			(unsigned long long)duration_ms, cache_hit ? "true" : "false", escaped_trace);
+	char* entry_buf = (char*)malloc(8192 + 1024);
+	if (entry_buf) {
+		snprintf(entry_buf, 8192 + 1024,
+				 "{"
+				 "\"timestamp_ms\":%llu,"
+				 "\"user_id\":%llu,"
+				 "\"decision\":\"%s\","
+				 "\"duration_ms\":%llu,"
+				 "\"cache_hit\":%s,"
+				 "\"trace\":\"%s\"",
+				 (unsigned long long)get_time_ms(), (unsigned long long)ctx->user_id, allowed ? "ALLOW" : "DENY",
+				 (unsigned long long)duration_ms, cache_hit ? "true" : "false", escaped_trace);
+		write_audit_entry_with_hmac(f, entry_buf);
+		free(entry_buf);
+	}
 
 	pthread_mutex_unlock(&audit_log_lock);
 	free(escaped_trace);
@@ -776,21 +810,25 @@ void admin_audit_log(sso_context_t* ctx, sso_id_t actor_user_id, const char* act
 		}
 	}
 
-	fprintf(f,
-			"{"
-			"\"action\":\"admin\","
-			"\"timestamp_ms\":%llu,"
-			"\"user_id\":%llu,"
-			"\"username\":\"%s\","
-			"\"ip_address\":\"%s\","
-			"\"operation\":\"%s\","
-			"\"resource\":\"%s\","
-			"\"resource_id\":%llu,"
-			"\"status\":\"%s\","
-			"\"details\":\"%s\""
-			"}\n",
-			(unsigned long long)get_time_ms(), (unsigned long long)actor_user_id, esc_user, esc_ip, esc_op, esc_res,
-			(unsigned long long)resource_id, esc_st, esc_det);
+	char* entry_buf = (char*)malloc(4096 + 1024);
+	if (entry_buf) {
+		snprintf(entry_buf, 4096 + 1024,
+				 "{"
+				 "\"action\":\"admin\","
+				 "\"timestamp_ms\":%llu,"
+				 "\"user_id\":%llu,"
+				 "\"username\":\"%s\","
+				 "\"ip_address\":\"%s\","
+				 "\"operation\":\"%s\","
+				 "\"resource\":\"%s\","
+				 "\"resource_id\":%llu,"
+				 "\"status\":\"%s\","
+				 "\"details\":\"%s\"",
+				 (unsigned long long)get_time_ms(), (unsigned long long)actor_user_id, esc_user, esc_ip, esc_op,
+				 esc_res, (unsigned long long)resource_id, esc_st, esc_det);
+		write_audit_entry_with_hmac(f, entry_buf);
+		free(entry_buf);
+	}
 
 	if (!use_persistent)
 		fclose(f);
