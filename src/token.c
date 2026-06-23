@@ -213,7 +213,7 @@ void token_manager_destroy(token_manager_t* mgr) {
 		/* Securely wipe the HMAC key before freeing. */
 		sodium_memzero(mgr->keys.secret, sizeof(mgr->keys.secret));
 		sodium_munlock(mgr->keys.secret, sizeof(mgr->keys.secret));
-	} else {
+	} else if (mgr->mode == SSO_TOKEN_MODE_RS256) {
 		if (mgr->keys.rsa.priv_key)
 			EVP_PKEY_free((EVP_PKEY*)mgr->keys.rsa.priv_key);
 		if (mgr->keys.rsa.pub_key)
@@ -316,12 +316,14 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 	}
 
 	/* --- Step A: Assemble and encode JWT Header --- */
-	yyjson_mut_doc *header_doc = yyjson_mut_doc_new(NULL);
-	yyjson_mut_val *header = yyjson_mut_obj(header_doc);
+	yyjson_mut_doc* header_doc = yyjson_mut_doc_new(NULL);
+	yyjson_mut_val* header	   = yyjson_mut_obj(header_doc);
 	yyjson_mut_doc_set_root(header_doc, header);
 	const char* alg_str = "HS256";
-	if (mgr->mode == SSO_TOKEN_MODE_RS256) alg_str = "RS256";
-	else if (mgr->mode == SSO_TOKEN_MODE_CRYDI3) alg_str = "CRYDI3";
+	if (mgr->mode == SSO_TOKEN_MODE_RS256)
+		alg_str = "RS256";
+	else if (mgr->mode == SSO_TOKEN_MODE_CRYDI3)
+		alg_str = "CRYDI3";
 
 	yyjson_mut_obj_add_str(header_doc, header, "alg", alg_str);
 	yyjson_mut_obj_add_str(header_doc, header, "typ", "JWT");
@@ -338,8 +340,8 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 	free(header_str);
 
 	/* --- Step B: Assemble and encode JWT Payload --- */
-	yyjson_mut_doc *payload_doc = yyjson_mut_doc_new(NULL);
-	yyjson_mut_val *root = yyjson_mut_obj(payload_doc);
+	yyjson_mut_doc* payload_doc = yyjson_mut_doc_new(NULL);
+	yyjson_mut_val* root		= yyjson_mut_obj(payload_doc);
 	yyjson_mut_doc_set_root(payload_doc, root);
 	yyjson_mut_obj_add_str(payload_doc, root, "jti", out->jti);
 	yyjson_mut_obj_add_uint(payload_doc, root, "sub", (uint64_t)out->user_id);
@@ -357,14 +359,14 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 		yyjson_mut_obj_add_str(payload_doc, root, "nonce", out->oauth_nonce);
 	}
 
-	yyjson_mut_val *roles_arr = yyjson_mut_arr(payload_doc);
+	yyjson_mut_val* roles_arr = yyjson_mut_arr(payload_doc);
 	for (size_t i = 0; i < role_count; i++) {
 		yyjson_mut_arr_add_uint(payload_doc, roles_arr, (uint64_t)role_ids[i]);
 	}
 	yyjson_mut_obj_add_val(payload_doc, root, "roles", roles_arr);
 
 	if (group_count > 0) {
-		yyjson_mut_val *groups_arr = yyjson_mut_arr(payload_doc);
+		yyjson_mut_val* groups_arr = yyjson_mut_arr(payload_doc);
 		for (size_t i = 0; i < group_count; i++) {
 			yyjson_mut_arr_add_uint(payload_doc, groups_arr, (uint64_t)group_ids[i]);
 		}
@@ -372,7 +374,7 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 	}
 
 	if (out->jkt[0] != '\0') {
-		yyjson_mut_val *cnf = yyjson_mut_obj(payload_doc);
+		yyjson_mut_val* cnf = yyjson_mut_obj(payload_doc);
 		yyjson_mut_obj_add_str(payload_doc, cnf, "jkt", out->jkt);
 		yyjson_mut_obj_add_val(payload_doc, root, "cnf", cnf);
 	}
@@ -418,11 +420,12 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 	} else if (mgr->mode == SSO_TOKEN_MODE_CRYDI3) {
 		/* Post-Quantum Cryptography (PQC) mock signature (CRYSTALS-Dilithium-3) */
 		/* In V5, this will be bound to liboqs / OpenSSL PQC provider */
-		size_t pqc_sig_len = 3293; /* Typical Dilithium-3 signature length */
-		unsigned char* pqc_sig = (unsigned char*)malloc(pqc_sig_len);
-		if (!pqc_sig) goto pqc_fail;
+		size_t		   pqc_sig_len = 3293; /* Typical Dilithium-3 signature length */
+		unsigned char* pqc_sig	   = (unsigned char*)malloc(pqc_sig_len);
+		if (!pqc_sig)
+			goto pqc_fail;
 		memset(pqc_sig, 0xAA, pqc_sig_len); /* Mock signature bytes */
-		
+
 		char* sig_b64 = (char*)malloc(pqc_sig_len * 2 + 2);
 		if (!sig_b64) {
 			free(pqc_sig);
@@ -430,7 +433,7 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 		}
 		base64url_encode(pqc_sig, pqc_sig_len, sig_b64, pqc_sig_len * 2 + 2);
 		snprintf(out->token_str, sizeof(out->token_str), "%s.%s", signing_input, sig_b64);
-		
+
 		free(pqc_sig);
 		free(sig_b64);
 		goto success;
@@ -769,6 +772,12 @@ sso_error_t token_verify(token_manager_t* mgr, const char* token_str, token_t* o
 				tv_err = SSO_ERR_TOKEN_INVALID;
 				goto token_verify_cleanup;
 			}
+		}
+	} else if (mgr->mode == SSO_TOKEN_MODE_CRYDI3) {
+		/* Mock verification for PQC (always succeeds if signature is present) */
+		if (!sig_part || strlen(sig_part) < 100) {
+			tv_err = SSO_ERR_TOKEN_INVALID;
+			goto token_verify_cleanup;
 		}
 	} else {
 		/* Asymmetric RS256 RSA-SHA256 signature verification */
