@@ -486,8 +486,10 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 			char* code_verifier = json_str_value(req->body, "code_verifier");
 			if (!verify_pkce(code_verifier, ac.code_challenge, ac.code_challenge_method)) {
 				json_error_response(resp, 400, "invalid_grant");
+				free(code_verifier);
 				goto cleanup;
 			}
+			free(code_verifier);
 		}
 
 		/* Mark code as used (prevent replay) */
