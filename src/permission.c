@@ -606,6 +606,10 @@ static void rotate_audit_log(void) {
 	/* Reopen will happen lazily on next write via audit_log_open(). */
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 static void write_audit_entry_with_hmac(FILE* f, const char* json_payload) {
 	if (s_audit_log_secret[0] != '\0') {
 		/* Compute HMAC = HMAC-SHA256(secret, prev_hmac + json_payload) */
@@ -626,6 +630,9 @@ static void write_audit_entry_with_hmac(FILE* f, const char* json_payload) {
 		fprintf(f, "%s}\n", json_payload);
 	}
 }
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 static void audit_log_decision(sso_context_t* sso_ctx, const eval_context_t* ctx, bool allowed, const char* trace,
 							   uint64_t duration_ms, bool cache_hit) {
