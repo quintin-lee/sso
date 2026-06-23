@@ -84,7 +84,7 @@ static user_manager_t* get_user_mgr(sso_context_t* ctx) {
 
 /* Extract string value from a JSON body for a given key.
  * Caller must free the returned string. */
-static char* json_str_value(const char* json, const char* key) {
+static char* json_str_value(arena_t* arena, const char* json, const char* key) {
 	if (!json || !key)
 		return NULL;
 	char search[128];
@@ -113,7 +113,7 @@ static char* json_str_value(const char* json, const char* key) {
 			end++;
 	}
 	size_t len = (size_t)(end - p);
-	char*  val = (char*)malloc(len + 1);
+	char*  val = (char*)arena_alloc(arena, len + 1);
 	if (!val)
 		return NULL;
 	memcpy(val, p, len);
@@ -359,7 +359,7 @@ sso_error_t handle_oauth_authorize(sso_context_t* ctx, const http_request_t* req
 	}
 
 	/* Build redirect URL with code and state */
-	char* location = (char*)malloc(2048);
+	char* location = (char*)arena_alloc((arena_t*)&req->arena, 2048);
 	if (!location) {
 		json_error_response(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -375,7 +375,7 @@ sso_error_t handle_oauth_authorize(sso_context_t* ctx, const http_request_t* req
 	resp->body_len	  = resp->body ? strlen(location) : 0;
 	strcpy(resp->content_type, "text/plain");
 	snprintf(resp->extra_headers, sizeof(resp->extra_headers), "Location: %s\r\n", location);
-	free(location);
+	/* free(location); */
 	return SSO_OK;
 }
 
@@ -415,13 +415,13 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 		return SSO_OK;
 	}
 
-	char* grant_type	= json_str_value(req->body, "grant_type");
-	char* code			= json_str_value(req->body, "code");
-	char* redirect_uri	= json_str_value(req->body, "redirect_uri");
-	char* client_id		= json_str_value(req->body, "client_id");
-	char* client_secret = json_str_value(req->body, "client_secret");
-	char* refresh_token = json_str_value(req->body, "refresh_token");
-	char* scope			= json_str_value(req->body, "scope");
+	char* grant_type	= json_str_value((arena_t*)&req->arena, req->body, "grant_type");
+	char* code			= json_str_value((arena_t*)&req->arena, req->body, "code");
+	char* redirect_uri	= json_str_value((arena_t*)&req->arena, req->body, "redirect_uri");
+	char* client_id		= json_str_value((arena_t*)&req->arena, req->body, "client_id");
+	char* client_secret = json_str_value((arena_t*)&req->arena, req->body, "client_secret");
+	char* refresh_token = json_str_value((arena_t*)&req->arena, req->body, "refresh_token");
+	char* scope			= json_str_value((arena_t*)&req->arena, req->body, "scope");
 
 	sso_error_t		   result = SSO_OK;
 	token_manager_t*   tmgr	  = get_token_mgr(ctx);
@@ -483,13 +483,13 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 
 		/* Verify PKCE if a challenge was saved for this code */
 		if (ac.code_challenge[0] != '\0') {
-			char* code_verifier = json_str_value(req->body, "code_verifier");
+			char* code_verifier = json_str_value((arena_t*)&req->arena, req->body, "code_verifier");
 			if (!verify_pkce(code_verifier, ac.code_challenge, ac.code_challenge_method)) {
 				json_error_response(resp, 400, "invalid_grant");
-				free(code_verifier);
+				/* free(code_verifier); */
 				goto cleanup;
 			}
-			free(code_verifier);
+			/* free(code_verifier); */
 		}
 
 		/* Mark code as used (prevent replay) */
@@ -523,7 +523,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 		store_refresh_token(sb, user.id, ac.client_id, access_token.raw_refresh_token);
 
 		/* Build JSON response */
-		buf = (char*)malloc(16384);
+		buf = (char*)arena_alloc((arena_t*)&req->arena, 16384);
 		if (!buf) {
 			json_error_response(resp, 500, "Out of memory");
 			result = SSO_OK;
@@ -609,7 +609,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 			goto cleanup;
 		}
 
-		buf = (char*)malloc(8192);
+		buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
 		if (!buf) {
 			json_error_response(resp, 500, "Out of memory");
 			result = SSO_OK;
@@ -683,7 +683,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 		/* Store new refresh token */
 		store_refresh_token(sb, user.id, rt_record.client_id, access_token.raw_refresh_token);
 
-		buf = (char*)malloc(8192);
+		buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
 		if (!buf) {
 			json_error_response(resp, 500, "Out of memory");
 			result = SSO_OK;
@@ -704,14 +704,14 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 	}
 
 cleanup:
-	free(buf);
-	free(grant_type);
-	free(code);
-	free(redirect_uri);
-	free(client_id);
-	free(client_secret);
-	free(refresh_token);
-	free(scope);
+	/* free(buf); */
+	/* free(grant_type); */
+	/* free(code); */
+	/* free(redirect_uri); */
+	/* free(client_id); */
+	/* free(client_secret); */
+	/* free(refresh_token); */
+	/* free(scope); */
 	token_destroy(&access_token);
 	return result;
 }
@@ -727,7 +727,7 @@ sso_error_t handle_oauth_introspect(sso_context_t* ctx, const http_request_t* re
 		return SSO_OK;
 	}
 
-	char* token_str = json_str_value(req->body, "token");
+	char* token_str = json_str_value((arena_t*)&req->arena, req->body, "token");
 	if (!token_str) {
 		json_error_response(resp, 400, "invalid_request");
 		return SSO_OK;
@@ -737,9 +737,9 @@ sso_error_t handle_oauth_introspect(sso_context_t* ctx, const http_request_t* re
 	token_t			 decoded;
 	sso_error_t		 verr = token_verify(tmgr, token_str, &decoded);
 
-	char* buf = (char*)malloc(4096);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 4096);
 	if (!buf) {
-		free(token_str);
+		/* free(token_str); */
 		token_destroy(&decoded);
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -763,8 +763,8 @@ sso_error_t handle_oauth_introspect(sso_context_t* ctx, const http_request_t* re
 	}
 
 	sso_response_ok(resp, buf);
-	free(buf);
-	free(token_str);
+	/* free(buf); */
+	/* free(token_str); */
 	token_destroy(&decoded);
 	return SSO_OK;
 }
@@ -782,7 +782,7 @@ sso_error_t handle_oauth_revoke(sso_context_t* ctx, const http_request_t* req, h
 		return SSO_OK;
 	}
 
-	char* token_str = json_str_value(req->body, "token");
+	char* token_str = json_str_value((arena_t*)&req->arena, req->body, "token");
 	if (!token_str) {
 		json_error_response(resp, 400, "invalid_request");
 		return SSO_OK;
@@ -798,7 +798,7 @@ sso_error_t handle_oauth_revoke(sso_context_t* ctx, const http_request_t* req, h
 
 	/* Always return 200 to prevent token enumeration */
 	sso_response_ok(resp, "{\"status\":\"ok\"}");
-	free(token_str);
+	/* free(token_str); */
 	token_destroy(&decoded);
 	return SSO_OK;
 }
@@ -813,7 +813,7 @@ sso_error_t handle_well_known_openid_config(sso_context_t* ctx, const http_reque
 	sso_config_t* cfg	 = get_cfg(ctx);
 	const char*	  issuer = cfg && cfg->oauth_issuer[0] ? cfg->oauth_issuer : "http://localhost:8080";
 
-	char* buf = (char*)malloc(4096);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 4096);
 	if (!buf) {
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -837,7 +837,7 @@ sso_error_t handle_well_known_openid_config(sso_context_t* ctx, const http_reque
 			 "}",
 			 issuer, issuer, issuer, issuer, issuer, issuer, issuer, issuer);
 	sso_response_ok(resp, buf);
-	free(buf);
+	/* free(buf); */
 	return SSO_OK;
 }
 
@@ -881,11 +881,11 @@ sso_error_t handle_jwks(sso_context_t* ctx, const http_request_t* req, http_resp
 		return SSO_OK;
 	}
 
-	unsigned char* n_bytes = malloc(BN_num_bytes(n_bn));
-	unsigned char* e_bytes = malloc(BN_num_bytes(e_bn));
+	unsigned char* n_bytes = arena_alloc((arena_t*)&req->arena, BN_num_bytes(n_bn));
+	unsigned char* e_bytes = arena_alloc((arena_t*)&req->arena, BN_num_bytes(e_bn));
 	if (!n_bytes || !e_bytes) {
-		free(n_bytes);
-		free(e_bytes);
+		/* free(n_bytes); */
+		/* free(e_bytes); */
 		RSA_free(rsa);
 		json_error_response(resp, 500, "server_error");
 		return SSO_OK;
@@ -895,13 +895,13 @@ sso_error_t handle_jwks(sso_context_t* ctx, const http_request_t* req, http_resp
 	int e_len = BN_bn2bin(e_bn, e_bytes);
 
 	/* Allocate buffer for base64url encoding (around 2x binary size is safe) */
-	char* n_b64 = malloc(n_len * 2 + 10);
-	char* e_b64 = malloc(e_len * 2 + 10);
+	char* n_b64 = arena_alloc((arena_t*)&req->arena, n_len * 2 + 10);
+	char* e_b64 = arena_alloc((arena_t*)&req->arena, e_len * 2 + 10);
 	if (!n_b64 || !e_b64) {
-		free(n_bytes);
-		free(e_bytes);
-		free(n_b64);
-		free(e_b64);
+		/* free(n_bytes); */
+		/* free(e_bytes); */
+		/* free(n_b64); */
+		/* free(e_b64); */
 		RSA_free(rsa);
 		json_error_response(resp, 500, "server_error");
 		return SSO_OK;
@@ -910,12 +910,12 @@ sso_error_t handle_jwks(sso_context_t* ctx, const http_request_t* req, http_resp
 	base64url_encode(n_bytes, n_len, n_b64, n_len * 2 + 10);
 	base64url_encode(e_bytes, e_len, e_b64, e_len * 2 + 10);
 
-	char* buf = (char*)malloc(4096);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 4096);
 	if (!buf) {
-		free(n_bytes);
-		free(e_bytes);
-		free(n_b64);
-		free(e_b64);
+		/* free(n_bytes); */
+		/* free(e_bytes); */
+		/* free(n_b64); */
+		/* free(e_b64); */
 		RSA_free(rsa);
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -933,14 +933,14 @@ sso_error_t handle_jwks(sso_context_t* ctx, const http_request_t* req, http_resp
 			 "}",
 			 n_b64, e_b64);
 
-	free(n_bytes);
-	free(e_bytes);
-	free(n_b64);
-	free(e_b64);
+	/* free(n_bytes); */
+	/* free(e_bytes); */
+	/* free(n_b64); */
+	/* free(e_b64); */
 	RSA_free(rsa);
 
 	sso_response_ok(resp, buf);
-	free(buf);
+	/* free(buf); */
 	return SSO_OK;
 }
 #if defined(__GNUC__) || defined(__clang__)
@@ -962,7 +962,7 @@ sso_error_t handle_userinfo(sso_context_t* ctx, const http_request_t* req, http_
 	const auth_context_t* auth = (const auth_context_t*)req->userdata;
 	const user_t*		  user = &auth->user;
 
-	char* buf = (char*)malloc(4096);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 4096);
 	if (!buf) {
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -976,7 +976,7 @@ sso_error_t handle_userinfo(sso_context_t* ctx, const http_request_t* req, http_
 			 "}",
 			 (unsigned long long)user->id, user->username, user->email, user->display_name);
 	sso_response_ok(resp, buf);
-	free(buf);
+	/* free(buf); */
 	return SSO_OK;
 }
 
@@ -1040,7 +1040,7 @@ sso_error_t handle_oauth_end_session(sso_context_t* ctx, const http_request_t* r
 	}
 
 	if (redirect_allowed && post_logout_redirect_uri) {
-		char* redirect_url = (char*)malloc(1024);
+		char* redirect_url = (char*)arena_alloc((arena_t*)&req->arena, 1024);
 		if (!redirect_url) {
 			sso_response_error(resp, 500, "Out of memory");
 			return SSO_OK;
@@ -1053,7 +1053,7 @@ sso_error_t handle_oauth_end_session(sso_context_t* ctx, const http_request_t* r
 		}
 		resp->status_code = 302;
 		snprintf(resp->extra_headers, sizeof(resp->extra_headers), "Location: %s\r\n", redirect_url);
-		free(redirect_url);
+		/* free(redirect_url); */
 		resp->body	   = strdup("");
 		resp->body_len = 0;
 	} else {

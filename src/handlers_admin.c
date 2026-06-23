@@ -31,16 +31,16 @@ sso_error_t handle_create_user(sso_context_t* ctx, const http_request_t* req, ht
 		return SSO_OK;
 	}
 
-	char* username = json_str_value(req->body, "username");
-	char* password = json_str_value(req->body, "password");
-	char* email	   = json_str_value(req->body, "email");
-	char* display  = json_str_value(req->body, "display_name");
+	char* username = json_str_value((arena_t*)&req->arena, req->body, "username");
+	char* password = json_str_value((arena_t*)&req->arena, req->body, "password");
+	char* email	   = json_str_value((arena_t*)&req->arena, req->body, "email");
+	char* display  = json_str_value((arena_t*)&req->arena, req->body, "display_name");
 
 	if (!username || !password) {
-		free(username);
-		free(password);
-		free(email);
-		free(display);
+		/* free(username); */
+		/* free(password); */
+		/* free(email); */
+		/* free(display); */
 		sso_response_error(resp, 400, "username and password required");
 		return SSO_OK;
 	}
@@ -48,10 +48,10 @@ sso_error_t handle_create_user(sso_context_t* ctx, const http_request_t* req, ht
 	user_manager_t* umgr = (user_manager_t*)ctx->user_mgr;
 	user_t			user;
 	sso_error_t err = user_create(umgr, username, password, email ? email : "", display ? display : username, &user);
-	free(username);
-	free(password);
-	free(email);
-	free(display);
+	/* free(username); */
+	/* free(password); */
+	/* free(email); */
+	/* free(display); */
 
 	if (err == SSO_ERR_ALREADY_EXISTS) {
 		sso_response_error(resp, 409, "Username already exists");
@@ -85,19 +85,19 @@ sso_error_t handle_create_role(sso_context_t* ctx, const http_request_t* req, ht
 		return SSO_OK;
 	}
 
-	char* name = json_str_value(req->body, "name");
+	char* name = json_str_value((arena_t*)&req->arena, req->body, "name");
 	if (!name) {
 		sso_response_error(resp, 400, "name required");
 		return SSO_OK;
 	}
-	char*	 desc	   = json_str_value(req->body, "description");
+	char*	 desc	   = json_str_value((arena_t*)&req->arena, req->body, "description");
 	sso_id_t parent_id = (sso_id_t)json_int_value(req->body, "parent_role_id", 0);
 
 	role_manager_t* rmgr = (role_manager_t*)ctx->role_mgr;
 	role_t			role;
 	sso_error_t		err = role_create(rmgr, name, desc ? desc : "", parent_id, &role);
-	free(name);
-	free(desc);
+	/* free(name); */
+	/* free(desc); */
 	if (err == SSO_OK) {
 		int status = (int)json_int_value(req->body, "status", -1);
 		if (status >= 0) {
@@ -206,7 +206,7 @@ sso_error_t handle_list_users(sso_context_t* ctx, const http_request_t* req, htt
 	for (size_t i = 0; i < count; i++)
 		total_json_len += 3072;
 
-	char* json = (char*)calloc(1, total_json_len + 1);
+	char* json = (char*)arena_alloc((arena_t*)&req->arena, (1) * (total_json_len + 1));
 	if (!json) {
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -214,9 +214,9 @@ sso_error_t handle_list_users(sso_context_t* ctx, const http_request_t* req, htt
 
 	snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
 
-	char* buf = (char*)malloc(4096);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 4096);
 	if (!buf) {
-		free(json);
+		/* free(json); */
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
@@ -283,10 +283,10 @@ sso_error_t handle_list_users(sso_context_t* ctx, const http_request_t* req, htt
 		strcat(json, buf);
 	}
 	strcat(json, "]}");
-	free(buf);
+	/* free(buf); */
 
 	sso_response_ok(resp, json);
-	free(json);
+	/* free(json); */
 	return SSO_OK;
 }
 
@@ -344,7 +344,7 @@ sso_error_t handle_get_user(sso_context_t* ctx, const http_request_t* req, http_
 	}
 	strcat(groups_json, "]");
 
-	char* json = (char*)malloc(4096);
+	char* json = (char*)arena_alloc((arena_t*)&req->arena, 4096);
 	if (!json) {
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -365,7 +365,7 @@ sso_error_t handle_get_user(sso_context_t* ctx, const http_request_t* req, http_
 			 groups_json, (long long)u.created_at);
 
 	sso_response_ok(resp, json);
-	free(json);
+	/* free(json); */
 	return SSO_OK;
 }
 
@@ -391,7 +391,7 @@ sso_error_t handle_list_roles(sso_context_t* ctx, const http_request_t* req, htt
 	for (size_t i = 0; i < count; i++)
 		total_json_len += 2048;
 
-	char* json = (char*)calloc(1, total_json_len + 1);
+	char* json = (char*)arena_alloc((arena_t*)&req->arena, (1) * (total_json_len + 1));
 	if (!json) {
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -399,9 +399,9 @@ sso_error_t handle_list_roles(sso_context_t* ctx, const http_request_t* req, htt
 
 	snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
 
-	char* buf = (char*)malloc(4096);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 4096);
 	if (!buf) {
-		free(json);
+		/* free(json); */
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
@@ -436,10 +436,10 @@ sso_error_t handle_list_roles(sso_context_t* ctx, const http_request_t* req, htt
 		strcat(json, buf);
 	}
 	strcat(json, "]}");
-	free(buf);
+	/* free(buf); */
 
 	sso_response_ok(resp, json);
-	free(json);
+	/* free(json); */
 	return SSO_OK;
 }
 
@@ -465,7 +465,7 @@ sso_error_t handle_list_policies(sso_context_t* ctx, const http_request_t* req, 
 	for (size_t i = 0; i < count; i++)
 		total_json_len += 8192;
 
-	char* json = (char*)calloc(1, total_json_len + 1);
+	char* json = (char*)arena_alloc((arena_t*)&req->arena, (1) * (total_json_len + 1));
 	if (!json) {
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -473,9 +473,9 @@ sso_error_t handle_list_policies(sso_context_t* ctx, const http_request_t* req, 
 
 	snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
 
-	char* buf = (char*)malloc(10240);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 10240);
 	if (!buf) {
-		free(json);
+		/* free(json); */
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
@@ -504,10 +504,10 @@ sso_error_t handle_list_policies(sso_context_t* ctx, const http_request_t* req, 
 		strcat(json, buf);
 	}
 	strcat(json, "]}");
-	free(buf);
+	/* free(buf); */
 
 	sso_response_ok(resp, json);
-	free(json);
+	/* free(json); */
 	return SSO_OK;
 }
 
@@ -533,7 +533,7 @@ sso_error_t handle_list_groups(sso_context_t* ctx, const http_request_t* req, ht
 	for (size_t i = 0; i < count; i++)
 		total_json_len += 2048;
 
-	char* json = (char*)calloc(1, total_json_len + 1);
+	char* json = (char*)arena_alloc((arena_t*)&req->arena, (1) * (total_json_len + 1));
 	if (!json) {
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -541,9 +541,9 @@ sso_error_t handle_list_groups(sso_context_t* ctx, const http_request_t* req, ht
 
 	snprintf(json, total_json_len, "{\"total\":%zu,\"page\":%d,\"limit\":%d,\"items\":[", total_count, page, limit);
 
-	char* buf = (char*)malloc(4096);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 4096);
 	if (!buf) {
-		free(json);
+		/* free(json); */
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
@@ -577,10 +577,10 @@ sso_error_t handle_list_groups(sso_context_t* ctx, const http_request_t* req, ht
 		strcat(json, buf);
 	}
 	strcat(json, "]}");
-	free(buf);
+	/* free(buf); */
 
 	sso_response_ok(resp, json);
-	free(json);
+	/* free(json); */
 	return SSO_OK;
 }
 
@@ -590,7 +590,7 @@ sso_error_t handle_create_policy(sso_context_t* ctx, const http_request_t* req, 
 		return SSO_OK;
 	}
 
-	char* name = json_str_value(req->body, "name");
+	char* name = json_str_value((arena_t*)&req->arena, req->body, "name");
 	if (!name) {
 		sso_response_error(resp, 400, "name required");
 		return SSO_OK;
@@ -599,14 +599,14 @@ sso_error_t handle_create_policy(sso_context_t* ctx, const http_request_t* req, 
 	int	  strategy_type = (int)json_int_value(req->body, "strategy_type", 1);
 	int	  effect		= (int)json_int_value(req->body, "effect", 1);
 	int	  priority		= (int)json_int_value(req->body, "priority", 50);
-	char* rules			= json_str_value(req->body, "rules");
+	char* rules			= json_str_value((arena_t*)&req->arena, req->body, "rules");
 
 	policy_manager_t* pmgr = (policy_manager_t*)ctx->policy_mgr;
 	policy_t		  policy;
 	sso_error_t err = policy_create(pmgr, name, (perm_strategy_type_t)strategy_type, (policy_effect_t)effect, priority,
 									rules ? rules : "{}", &policy);
-	free(name);
-	free(rules);
+	/* free(name); */
+	/* free(rules); */
 
 	if (err == SSO_ERR_ALREADY_EXISTS) {
 		sso_response_error(resp, 409, "Policy already exists");
@@ -677,19 +677,19 @@ sso_error_t handle_create_group(sso_context_t* ctx, const http_request_t* req, h
 		return SSO_OK;
 	}
 
-	char* name = json_str_value(req->body, "name");
+	char* name = json_str_value((arena_t*)&req->arena, req->body, "name");
 	if (!name) {
 		sso_response_error(resp, 400, "name required");
 		return SSO_OK;
 	}
-	char*	 desc	   = json_str_value(req->body, "description");
+	char*	 desc	   = json_str_value((arena_t*)&req->arena, req->body, "description");
 	sso_id_t parent_id = (sso_id_t)json_int_value(req->body, "parent_group_id", 0);
 
 	group_manager_t* gmgr = (group_manager_t*)ctx->group_mgr;
 	group_t			 group;
 	sso_error_t		 err = group_create(gmgr, name, desc ? desc : "", parent_id, &group);
-	free(name);
-	free(desc);
+	/* free(name); */
+	/* free(desc); */
 	if (err == SSO_OK) {
 		int status = (int)json_int_value(req->body, "status", -1);
 		if (status >= 0) {
@@ -733,17 +733,17 @@ sso_error_t handle_update_user(sso_context_t* ctx, const http_request_t* req, ht
 		return SSO_OK;
 	}
 
-	char* email	  = json_str_value(req->body, "email");
-	char* display = json_str_value(req->body, "display_name");
+	char* email	  = json_str_value((arena_t*)&req->arena, req->body, "email");
+	char* display = json_str_value((arena_t*)&req->arena, req->body, "display_name");
 	int	  status  = (int)json_int_value(req->body, "status", -1);
 
 	if (email) {
 		sso_strlcpy(user.email, email, SSO_MAX_EMAIL);
-		free(email);
+		/* free(email); */
 	}
 	if (display) {
 		sso_strlcpy(user.display_name, display, SSO_MAX_DISPLAY_NAME);
-		free(display);
+		/* free(display); */
 	}
 	if (status >= 0) {
 		user.status = (user_status_t)status;
@@ -806,18 +806,18 @@ sso_error_t handle_update_role(sso_context_t* ctx, const http_request_t* req, ht
 		return SSO_OK;
 	}
 
-	char*	 name	= json_str_value(req->body, "name");
-	char*	 desc	= json_str_value(req->body, "description");
+	char*	 name	= json_str_value((arena_t*)&req->arena, req->body, "name");
+	char*	 desc	= json_str_value((arena_t*)&req->arena, req->body, "description");
 	sso_id_t parent = (sso_id_t)json_int_value(req->body, "parent_role_id", -1);
 	int		 status = (int)json_int_value(req->body, "status", -1);
 
 	if (name) {
 		sso_strlcpy(role.name, name, SSO_MAX_ROLE_NAME);
-		free(name);
+		/* free(name); */
 	}
 	if (desc) {
 		sso_strlcpy(role.description, desc, SSO_MAX_DESCRIPTION);
-		free(desc);
+		/* free(desc); */
 	}
 	if (parent != (sso_id_t)-1) {
 		role.parent_role_id = parent;
@@ -921,18 +921,18 @@ sso_error_t handle_update_group(sso_context_t* ctx, const http_request_t* req, h
 		return SSO_OK;
 	}
 
-	char*	 name	= json_str_value(req->body, "name");
-	char*	 desc	= json_str_value(req->body, "description");
+	char*	 name	= json_str_value((arena_t*)&req->arena, req->body, "name");
+	char*	 desc	= json_str_value((arena_t*)&req->arena, req->body, "description");
 	sso_id_t parent = (sso_id_t)json_int_value(req->body, "parent_group_id", -1);
 	int		 status = (int)json_int_value(req->body, "status", -1);
 
 	if (name) {
 		sso_strlcpy(group.name, name, SSO_MAX_GROUP_NAME);
-		free(name);
+		/* free(name); */
 	}
 	if (desc) {
 		sso_strlcpy(group.description, desc, SSO_MAX_DESCRIPTION);
-		free(desc);
+		/* free(desc); */
 	}
 	if (parent != (sso_id_t)-1) {
 		group.parent_group_id = parent;
@@ -999,19 +999,19 @@ sso_error_t handle_update_policy(sso_context_t* ctx, const http_request_t* req, 
 		return SSO_OK;
 	}
 
-	char* name	   = json_str_value(req->body, "name");
-	char* rules	   = json_str_value(req->body, "rules");
+	char* name	   = json_str_value((arena_t*)&req->arena, req->body, "name");
+	char* rules	   = json_str_value((arena_t*)&req->arena, req->body, "rules");
 	int	  effect   = (int)json_int_value(req->body, "effect", -1);
 	int	  priority = (int)json_int_value(req->body, "priority", -1);
 	int	  status   = (int)json_int_value(req->body, "status", -1);
 
 	if (name) {
 		sso_strlcpy(policy.name, name, SSO_MAX_POLICY_NAME);
-		free(name);
+		/* free(name); */
 	}
 	if (rules) {
 		sso_strlcpy(policy.rules, rules, SSO_MAX_RULES_JSON);
-		free(rules);
+		/* free(rules); */
 	}
 	if (effect >= 0)
 		policy.effect = (policy_effect_t)effect;
@@ -1175,11 +1175,11 @@ sso_error_t handle_get_user_policies(sso_context_t* ctx, const http_request_t* r
 		return SSO_OK;
 	}
 
-	char* arr  = (char*)malloc(3072);
-	char* json = (char*)malloc(4096);
+	char* arr  = (char*)arena_alloc((arena_t*)&req->arena, 3072);
+	char* json = (char*)arena_alloc((arena_t*)&req->arena, 4096);
 	if (!arr || !json) {
-		free(arr);
-		free(json);
+		/* free(arr); */
+		/* free(json); */
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
@@ -1195,8 +1195,8 @@ sso_error_t handle_get_user_policies(sso_context_t* ctx, const http_request_t* r
 
 	snprintf(json, 4096, "{\"policies\":%s}", arr);
 	sso_response_ok(resp, json);
-	free(arr);
-	free(json);
+	/* free(arr); */
+	/* free(json); */
 	return SSO_OK;
 }
 
@@ -1265,14 +1265,14 @@ sso_error_t handle_get_policy_targets(sso_context_t* ctx, const http_request_t* 
 		}
 	}
 
-	char* json = (char*)malloc(4096);
+	char* json = (char*)arena_alloc((arena_t*)&req->arena, 4096);
 	if (!json) {
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
 	snprintf(json, 4096, "{\"user_ids\":%s,\"role_ids\":%s,\"group_ids\":%s}", users_json, roles_json, groups_json);
 	sso_response_ok(resp, json);
-	free(json);
+	/* free(json); */
 	return SSO_OK;
 }
 
@@ -1282,7 +1282,7 @@ sso_error_t handle_list_clients(sso_context_t* ctx, const http_request_t* req, h
 	parse_query_params(req, q, &status, &page, &limit);
 	int offset = (page - 1) * limit;
 
-	oauth_client_t* clients = (oauth_client_t*)calloc(64, sizeof(oauth_client_t));
+	oauth_client_t* clients = (oauth_client_t*)arena_alloc((arena_t*)&req->arena, (64) * (sizeof(oauth_client_t)));
 	if (!clients) {
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -1292,23 +1292,23 @@ sso_error_t handle_list_clients(sso_context_t* ctx, const http_request_t* req, h
 	storage_backend_t* sb = (storage_backend_t*)ctx->storage_backend;
 	if (!sb || !sb->oauth_client_list) {
 		sso_response_error(resp, 500, "OAuth client storage unavailable");
-		free(clients);
+		/* free(clients); */
 		return SSO_OK;
 	}
 
 	sso_error_t err = sb->oauth_client_list(sb, offset, limit, clients, &count, 64);
 	if (err != SSO_OK) {
 		sso_response_error(resp, 500, "Failed to list OAuth clients");
-		free(clients);
+		/* free(clients); */
 		return SSO_OK;
 	}
 
 	// Build JSON output dynamically
 	size_t total_json_len = 2048 + count * 1536;
-	char*  json			  = (char*)calloc(1, total_json_len);
+	char*  json			  = (char*)arena_alloc((arena_t*)&req->arena, (1) * (total_json_len));
 	if (!json) {
 		sso_response_error(resp, 500, "Out of memory");
-		free(clients);
+		/* free(clients); */
 		return SSO_OK;
 	}
 
@@ -1350,8 +1350,8 @@ sso_error_t handle_list_clients(sso_context_t* ctx, const http_request_t* req, h
 	strcat(json, "]}");
 
 	sso_response_ok(resp, json);
-	free(json);
-	free(clients);
+	/* free(json); */
+	/* free(clients); */
 	return SSO_OK;
 }
 
@@ -1361,40 +1361,40 @@ sso_error_t handle_create_client(sso_context_t* ctx, const http_request_t* req, 
 		return SSO_OK;
 	}
 
-	char* client_id			  = json_str_value(req->body, "client_id");
-	char* client_secret		  = json_str_value(req->body, "client_secret");
-	char* redirect_uris		  = json_str_value(req->body, "redirect_uris");
-	char* app_name			  = json_str_value(req->body, "app_name");
-	char* app_description	  = json_str_value(req->body, "app_description");
-	char* app_logo_url		  = json_str_value(req->body, "app_logo_url");
-	char* allowed_scopes	  = json_str_value(req->body, "allowed_scopes");
-	char* allowed_grant_types = json_str_value(req->body, "allowed_grant_types");
+	char* client_id			  = json_str_value((arena_t*)&req->arena, req->body, "client_id");
+	char* client_secret		  = json_str_value((arena_t*)&req->arena, req->body, "client_secret");
+	char* redirect_uris		  = json_str_value((arena_t*)&req->arena, req->body, "redirect_uris");
+	char* app_name			  = json_str_value((arena_t*)&req->arena, req->body, "app_name");
+	char* app_description	  = json_str_value((arena_t*)&req->arena, req->body, "app_description");
+	char* app_logo_url		  = json_str_value((arena_t*)&req->arena, req->body, "app_logo_url");
+	char* allowed_scopes	  = json_str_value((arena_t*)&req->arena, req->body, "allowed_scopes");
+	char* allowed_grant_types = json_str_value((arena_t*)&req->arena, req->body, "allowed_grant_types");
 	long  token_ttl_ms		  = (long)json_int_value(req->body, "token_ttl_ms", 3600000);
 	int	  status			  = (int)json_int_value(req->body, "status", 1);
 
 	if (!client_id || !client_secret || !redirect_uris) {
-		free(client_id);
-		free(client_secret);
-		free(redirect_uris);
-		free(app_name);
-		free(app_description);
-		free(app_logo_url);
-		free(allowed_scopes);
-		free(allowed_grant_types);
+		/* free(client_id); */
+		/* free(client_secret); */
+		/* free(redirect_uris); */
+		/* free(app_name); */
+		/* free(app_description); */
+		/* free(app_logo_url); */
+		/* free(allowed_scopes); */
+		/* free(allowed_grant_types); */
 		sso_response_error(resp, 400, "client_id, client_secret, and redirect_uris required");
 		return SSO_OK;
 	}
 
 	storage_backend_t* sb = (storage_backend_t*)ctx->storage_backend;
 	if (!sb || !sb->oauth_client_create) {
-		free(client_id);
-		free(client_secret);
-		free(redirect_uris);
-		free(app_name);
-		free(app_description);
-		free(app_logo_url);
-		free(allowed_scopes);
-		free(allowed_grant_types);
+		/* free(client_id); */
+		/* free(client_secret); */
+		/* free(redirect_uris); */
+		/* free(app_name); */
+		/* free(app_description); */
+		/* free(app_logo_url); */
+		/* free(allowed_scopes); */
+		/* free(allowed_grant_types); */
 		sso_response_error(resp, 500, "OAuth client storage unavailable");
 		return SSO_OK;
 	}
@@ -1422,27 +1422,27 @@ sso_error_t handle_create_client(sso_context_t* ctx, const http_request_t* req, 
 	// Hash the client secret using libsodium crypto_pwhash_str
 	if (crypto_pwhash_str(client.client_secret_hash, client_secret, strlen(client_secret),
 						  crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE) != 0) {
-		free(client_id);
-		free(client_secret);
-		free(redirect_uris);
-		free(app_name);
-		free(app_description);
-		free(app_logo_url);
-		free(allowed_scopes);
-		free(allowed_grant_types);
+		/* free(client_id); */
+		/* free(client_secret); */
+		/* free(redirect_uris); */
+		/* free(app_name); */
+		/* free(app_description); */
+		/* free(app_logo_url); */
+		/* free(allowed_scopes); */
+		/* free(allowed_grant_types); */
 		sso_response_error(resp, 500, "Failed to hash client secret");
 		return SSO_OK;
 	}
 
 	sso_error_t err = sb->oauth_client_create(sb, &client);
-	free(client_id);
-	free(client_secret);
-	free(redirect_uris);
-	free(app_name);
-	free(app_description);
-	free(app_logo_url);
-	free(allowed_scopes);
-	free(allowed_grant_types);
+	/* free(client_id); */
+	/* free(client_secret); */
+	/* free(redirect_uris); */
+	/* free(app_name); */
+	/* free(app_description); */
+	/* free(app_logo_url); */
+	/* free(allowed_scopes); */
+	/* free(allowed_grant_types); */
 
 	if (err == SSO_ERR_ALREADY_EXISTS) {
 		sso_response_error(resp, 409, "Client ID already exists");
@@ -1502,39 +1502,39 @@ sso_error_t handle_update_client(sso_context_t* ctx, const http_request_t* req, 
 		return SSO_OK;
 	}
 
-	char* redirect_uris		  = json_str_value(req->body, "redirect_uris");
-	char* app_name			  = json_str_value(req->body, "app_name");
-	char* app_description	  = json_str_value(req->body, "app_description");
-	char* app_logo_url		  = json_str_value(req->body, "app_logo_url");
-	char* allowed_scopes	  = json_str_value(req->body, "allowed_scopes");
-	char* allowed_grant_types = json_str_value(req->body, "allowed_grant_types");
-	char* client_secret		  = json_str_value(req->body, "client_secret");
+	char* redirect_uris		  = json_str_value((arena_t*)&req->arena, req->body, "redirect_uris");
+	char* app_name			  = json_str_value((arena_t*)&req->arena, req->body, "app_name");
+	char* app_description	  = json_str_value((arena_t*)&req->arena, req->body, "app_description");
+	char* app_logo_url		  = json_str_value((arena_t*)&req->arena, req->body, "app_logo_url");
+	char* allowed_scopes	  = json_str_value((arena_t*)&req->arena, req->body, "allowed_scopes");
+	char* allowed_grant_types = json_str_value((arena_t*)&req->arena, req->body, "allowed_grant_types");
+	char* client_secret		  = json_str_value((arena_t*)&req->arena, req->body, "client_secret");
 	int	  status			  = (int)json_int_value(req->body, "status", -1);
 	long  token_ttl_ms		  = (long)json_int_value(req->body, "token_ttl_ms", -1);
 
 	if (redirect_uris) {
 		sso_strlcpy(client.redirect_uris, redirect_uris, sizeof(client.redirect_uris));
-		free(redirect_uris);
+		/* free(redirect_uris); */
 	}
 	if (app_name) {
 		sso_strlcpy(client.app_name, app_name, sizeof(client.app_name));
-		free(app_name);
+		/* free(app_name); */
 	}
 	if (app_description) {
 		sso_strlcpy(client.app_description, app_description, sizeof(client.app_description));
-		free(app_description);
+		/* free(app_description); */
 	}
 	if (app_logo_url) {
 		sso_strlcpy(client.app_logo_url, app_logo_url, sizeof(client.app_logo_url));
-		free(app_logo_url);
+		/* free(app_logo_url); */
 	}
 	if (allowed_scopes) {
 		sso_strlcpy(client.allowed_scopes, allowed_scopes, sizeof(client.allowed_scopes));
-		free(allowed_scopes);
+		/* free(allowed_scopes); */
 	}
 	if (allowed_grant_types) {
 		sso_strlcpy(client.allowed_grant_types, allowed_grant_types, sizeof(client.allowed_grant_types));
-		free(allowed_grant_types);
+		/* free(allowed_grant_types); */
 	}
 	if (status >= 0) {
 		client.status = status;
@@ -1545,12 +1545,12 @@ sso_error_t handle_update_client(sso_context_t* ctx, const http_request_t* req, 
 	if (client_secret && strlen(client_secret) > 0) {
 		if (crypto_pwhash_str(client.client_secret_hash, client_secret, strlen(client_secret),
 							  crypto_pwhash_OPSLIMIT_MODERATE, crypto_pwhash_MEMLIMIT_MODERATE) != 0) {
-			free(client_secret);
+			/* free(client_secret); */
 			sso_response_error(resp, 500, "Failed to hash client secret");
 			return SSO_OK;
 		}
 	}
-	free(client_secret);
+	/* free(client_secret); */
 
 	client.updated_at = get_time_ms();
 

@@ -53,17 +53,17 @@ sso_error_t handle_health(sso_context_t* ctx, const http_request_t* req, http_re
 
 sso_error_t handle_metrics(sso_context_t* ctx, const http_request_t* req, http_response_t* resp) {
 	(void)req;
-	char* perm_buf = (char*)malloc(2048);
-	char* buf	   = (char*)malloc(8192);
+	char* perm_buf = (char*)arena_alloc((arena_t*)&req->arena, 2048);
+	char* buf	   = (char*)arena_alloc((arena_t*)&req->arena, 8192);
 	if (!perm_buf || !buf) {
-		free(perm_buf);
-		free(buf);
+		/* free(perm_buf); */
+		/* free(buf); */
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
 	if (perm_engine_get_metrics((permission_engine_t*)ctx->perm_engine, perm_buf, 2048) != SSO_OK) {
-		free(perm_buf);
-		free(buf);
+		/* free(perm_buf); */
+		/* free(buf); */
 		sso_response_error(resp, 500, "Failed to retrieve metrics");
 		return SSO_OK;
 	}
@@ -118,8 +118,8 @@ sso_error_t handle_metrics(sso_context_t* ctx, const http_request_t* req, http_r
 	resp->body		  = strdup(buf);
 	resp->body_len	  = strlen(buf);
 	strcpy(resp->content_type, "text/plain; version=0.0.4; charset=utf-8");
-	free(perm_buf);
-	free(buf);
+	/* free(perm_buf); */
+	/* free(buf); */
 	return SSO_OK;
 }
 
@@ -130,7 +130,7 @@ sso_error_t handle_admin_status(sso_context_t* ctx, const http_request_t* req, h
 	sso_id_t		ids[1];
 	user_list(umgr, NULL, -1, 0, 0, ids, &user_count, &user_count);
 
-	char* buf = (char*)malloc(2048);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 2048);
 	if (!buf) {
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -144,7 +144,7 @@ sso_error_t handle_admin_status(sso_context_t* ctx, const http_request_t* req, h
 			 "}",
 			 user_count, (unsigned long long)get_time_ms());
 	sso_response_ok(resp, buf);
-	free(buf);
+	/* free(buf); */
 	return SSO_OK;
 }
 
@@ -181,7 +181,7 @@ sso_error_t handle_list_audit_logs(sso_context_t* ctx, const http_request_t* req
 			size_t total_count = 0;
 			if (sb->audit_log_list(sb, filter_uid, offset_local, limit, &json, &total_count) == SSO_OK && json) {
 				sso_response_ok(resp, json);
-				free(json);
+				/* free(json); */
 				return SSO_OK;
 			}
 		}
@@ -203,7 +203,7 @@ sso_error_t handle_list_audit_logs(sso_context_t* ctx, const http_request_t* req
 
 	/* Read matching lines into a growing buffer */
 	size_t cap = 4096, total = 0, match_idx = 0;
-	char*  json = (char*)malloc(cap);
+	char*  json = (char*)arena_alloc((arena_t*)&req->arena, cap);
 	if (!json) {
 		fclose(f);
 		sso_response_error(resp, 500, "Out of memory");
@@ -212,9 +212,9 @@ sso_error_t handle_list_audit_logs(sso_context_t* ctx, const http_request_t* req
 	json[0]		 = '[';
 	total		 = 1;
 	bool  first	 = true;
-	char* buffer = (char*)malloc(10240);
+	char* buffer = (char*)arena_alloc((arena_t*)&req->arena, 10240);
 	if (!buffer) {
-		free(json);
+		/* free(json); */
 		fclose(f);
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
@@ -241,8 +241,8 @@ sso_error_t handle_list_audit_logs(sso_context_t* ctx, const http_request_t* req
 			cap			   = needed * 2;
 			char* new_json = (char*)realloc(json, cap);
 			if (!new_json) {
-				free(json);
-				free(buffer);
+				/* free(json); */
+				/* free(buffer); */
 				fclose(f);
 				sso_response_error(resp, 500, "Out of memory");
 				return SSO_OK;
@@ -264,8 +264,8 @@ sso_error_t handle_list_audit_logs(sso_context_t* ctx, const http_request_t* req
 	json[total]	  = '\0';
 
 	sso_response_ok(resp, json);
-	free(json);
-	free(buffer);
+	/* free(json); */
+	/* free(buffer); */
 	return SSO_OK;
 }
 
@@ -281,7 +281,7 @@ sso_error_t handle_swagger_ui(sso_context_t* ctx, const http_request_t* req, htt
 	long fsize = ftell(f);
 	fseek(f, 0, SEEK_SET);
 
-	char* buf = (char*)malloc(fsize + 1);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, fsize + 1);
 	if (!buf) {
 		fclose(f);
 		sso_response_error(resp, 500, "Out of memory");
@@ -310,7 +310,7 @@ sso_error_t handle_openapi_yaml(sso_context_t* ctx, const http_request_t* req, h
 	long fsize = ftell(f);
 	fseek(f, 0, SEEK_SET);
 
-	char* buf = (char*)malloc(fsize + 1);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, fsize + 1);
 	if (!buf) {
 		fclose(f);
 		sso_response_error(resp, 500, "Out of memory");

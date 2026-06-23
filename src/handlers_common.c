@@ -68,7 +68,7 @@ void parse_query_params(const http_request_t* req, char* q, int* status, int* pa
 					*limit = 100;
 			}
 		}
-		free(param);
+		/* free(param); */
 	}
 }
 
@@ -138,7 +138,7 @@ sso_error_t send_real_sms(const char* phone, const char* code) {
 	return err;
 }
 
-char* json_str_value(const char* json, const char* key) {
+char* json_str_value(arena_t* arena, const char* json, const char* key) {
 	if (!json || !key)
 		return NULL;
 	char search[128];
@@ -171,7 +171,7 @@ char* json_str_value(const char* json, const char* key) {
 	}
 
 	size_t len = (size_t)(end - p);
-	char*  val = (char*)malloc(len + 1);
+	char*  val = (char*)arena_alloc(arena, len + 1);
 	if (!val)
 		return NULL;
 	/* Copy and unescape */

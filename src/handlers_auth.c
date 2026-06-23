@@ -45,11 +45,11 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		}
 	}
 
-	char* username = json_str_value(req->body, "username");
-	char* password = json_str_value(req->body, "password");
+	char* username = json_str_value((arena_t*)&req->arena, req->body, "username");
+	char* password = json_str_value((arena_t*)&req->arena, req->body, "password");
 	if (!username || !password) {
-		free(username);
-		free(password);
+		/* free(username); */
+		/* free(password); */
 		sso_response_error(resp, 400, "username and password required");
 		otlp_span_end(&span, true);
 		return SSO_OK;
@@ -58,8 +58,8 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 	user_manager_t* umgr = (user_manager_t*)ctx->user_mgr;
 	user_t			user;
 	sso_error_t		err = user_authenticate(umgr, username, password, &user);
-	free(username);
-	free(password);
+	/* free(username); */
+	/* free(password); */
 
 	if (err != SSO_OK) {
 		risk_record_login_attempt(0, req->client_ip, 0);
@@ -118,7 +118,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		token_issue(tmgr, &user, NULL, 0, NULL, 0, "mfa", 300000, NULL, &mfa_token);
 
 		/* Success: return MFA requirement */
-		char* buf = (char*)malloc(8192);
+		char* buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
 		if (!buf) {
 			token_destroy(&mfa_token);
 			sso_response_error(resp, 500, "Out of memory");
@@ -133,7 +133,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 				 mfa_token.token_str);
 		token_destroy(&mfa_token);
 		sso_response_ok(resp, buf);
-		free(buf);
+		/* free(buf); */
 		otlp_span_end(&span, false);
 		return SSO_OK;
 	}
@@ -165,7 +165,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 			 "X-SSO-Refresh-Token: %s\r\n",
 			 access_token.token_str, access_token.token_str, refresh_token.token_str);
 
-	char* buf = (char*)malloc(8192);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
 	if (!buf) {
 		token_destroy(&access_token);
 		token_destroy(&refresh_token);
@@ -188,7 +188,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 	token_destroy(&access_token);
 	token_destroy(&refresh_token);
 	sso_response_ok(resp, buf);
-	free(buf);
+	/* free(buf); */
 	otlp_span_end(&span, false);
 	return SSO_OK;
 }
@@ -222,19 +222,19 @@ sso_error_t handle_mfa_enable(sso_context_t* ctx, const http_request_t* req, htt
 		return SSO_OK;
 	}
 
-	char* secret = json_str_value(req->body, "secret");
-	char* code	 = json_str_value(req->body, "code");
+	char* secret = json_str_value((arena_t*)&req->arena, req->body, "secret");
+	char* code	 = json_str_value((arena_t*)&req->arena, req->body, "code");
 
 	if (!secret || !code) {
-		free(secret);
-		free(code);
+		/* free(secret); */
+		/* free(code); */
 		sso_response_error(resp, 400, "secret and code required");
 		return SSO_OK;
 	}
 
 	if (!mfa_verify_totp(secret, code)) {
-		free(secret);
-		free(code);
+		/* free(secret); */
+		/* free(code); */
 		sso_response_error(resp, 400, "Invalid TOTP code");
 		return SSO_OK;
 	}
@@ -245,8 +245,8 @@ sso_error_t handle_mfa_enable(sso_context_t* ctx, const http_request_t* req, htt
 	sso_strlcpy(user.mfa_secret, secret, sizeof(user.mfa_secret));
 
 	sso_error_t err = user_update(umgr, &user);
-	free(secret);
-	free(code);
+	/* free(secret); */
+	/* free(code); */
 
 	if (err != SSO_OK) {
 		sso_response_error(resp, 500, "Failed to update user");
@@ -263,12 +263,12 @@ sso_error_t handle_mfa_verify(sso_context_t* ctx, const http_request_t* req, htt
 		return SSO_OK;
 	}
 
-	char* mfa_token_str = json_str_value(req->body, "mfa_token");
-	char* code			= json_str_value(req->body, "code");
+	char* mfa_token_str = json_str_value((arena_t*)&req->arena, req->body, "mfa_token");
+	char* code			= json_str_value((arena_t*)&req->arena, req->body, "code");
 
 	if (!mfa_token_str || !code) {
-		free(mfa_token_str);
-		free(code);
+		/* free(mfa_token_str); */
+		/* free(code); */
 		sso_response_error(resp, 400, "mfa_token and code required");
 		return SSO_OK;
 	}
@@ -276,10 +276,10 @@ sso_error_t handle_mfa_verify(sso_context_t* ctx, const http_request_t* req, htt
 	token_manager_t* tmgr = (token_manager_t*)ctx->token_mgr;
 	token_t			 mfa_token;
 	sso_error_t		 err = token_verify(tmgr, mfa_token_str, &mfa_token);
-	free(mfa_token_str);
+	/* free(mfa_token_str); */
 
 	if (err != SSO_OK) {
-		free(code);
+		/* free(code); */
 		sso_response_error(resp, 401, "Invalid or expired MFA token");
 		return SSO_OK;
 	}
@@ -290,18 +290,18 @@ sso_error_t handle_mfa_verify(sso_context_t* ctx, const http_request_t* req, htt
 	token_destroy(&mfa_token);
 
 	if (err != SSO_OK) {
-		free(code);
+		/* free(code); */
 		sso_response_error(resp, 401, "User not found");
 		return SSO_OK;
 	}
 
 	if (!mfa_verify_totp(user.mfa_secret, code)) {
-		free(code);
+		/* free(code); */
 		atomic_fetch_add(&g_metric_mfa_failure, 1);
 		sso_response_error(resp, 401, "Invalid TOTP code");
 		return SSO_OK;
 	}
-	free(code);
+	/* free(code); */
 	atomic_fetch_add(&g_metric_mfa_success, 1);
 
 	/* MFA verified: issue final tokens */
@@ -327,7 +327,7 @@ sso_error_t handle_mfa_verify(sso_context_t* ctx, const http_request_t* req, htt
 			 "X-SSO-Refresh-Token: %s\r\n",
 			 access_token.token_str, refresh_token.token_str);
 
-	char* buf = (char*)malloc(8192);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
 	if (!buf) {
 		token_destroy(&access_token);
 		token_destroy(&refresh_token);
@@ -345,7 +345,7 @@ sso_error_t handle_mfa_verify(sso_context_t* ctx, const http_request_t* req, htt
 	token_destroy(&access_token);
 	token_destroy(&refresh_token);
 	sso_response_ok(resp, buf);
-	free(buf);
+	/* free(buf); */
 	return SSO_OK;
 }
 
@@ -355,7 +355,7 @@ sso_error_t handle_send_sms(sso_context_t* ctx, const http_request_t* req, http_
 		return SSO_OK;
 	}
 
-	char* phone = json_str_value(req->body, "phone");
+	char* phone = json_str_value((arena_t*)&req->arena, req->body, "phone");
 	if (!phone) {
 		sso_response_error(resp, 400, "phone required");
 		return SSO_OK;
@@ -365,7 +365,7 @@ sso_error_t handle_send_sms(sso_context_t* ctx, const http_request_t* req, http_
 	if (ctx->rate_limiter) {
 		sso_error_t rerr = rate_limiter_check((rate_limiter_t*)ctx->rate_limiter, req->client_ip, 60000, 1);
 		if (rerr != SSO_OK) {
-			free(phone);
+			/* free(phone); */
 			sso_response_error(resp, 429, "Too many SMS requests. Please wait 1 minute.");
 			return SSO_OK;
 		}
@@ -383,7 +383,7 @@ sso_error_t handle_send_sms(sso_context_t* ctx, const http_request_t* req, http_
 	}
 
 	if (err != SSO_OK) {
-		free(phone);
+		/* free(phone); */
 		sso_response_error(resp, 500, "Failed to generate SMS code");
 		return SSO_OK;
 	}
@@ -391,12 +391,12 @@ sso_error_t handle_send_sms(sso_context_t* ctx, const http_request_t* req, http_
 	/* 4. 调用真实发送逻辑 (libcurl) */
 	err = send_real_sms(phone, code);
 	if (err != SSO_OK) {
-		free(phone);
+		/* free(phone); */
 		sso_response_error(resp, 500, "SMS gateway error");
 		return SSO_OK;
 	}
 
-	free(phone);
+	/* free(phone); */
 	sso_response_ok(resp, "{\"status\":\"sent\"}");
 	return SSO_OK;
 }
@@ -416,15 +416,15 @@ sso_error_t handle_login_by_sms(sso_context_t* ctx, const http_request_t* req, h
 		}
 	}
 
-	char* phone = json_str_value(req->body, "phone");
-	char* code	= json_str_value(req->body, "code");
+	char* phone = json_str_value((arena_t*)&req->arena, req->body, "phone");
+	char* code	= json_str_value((arena_t*)&req->arena, req->body, "code");
 
 	if (!phone || !code) {
 		if (phone)
-			free(phone);
-		if (code)
-			free(code);
-		sso_response_error(resp, 400, "phone and code required");
+			/* free(phone); */
+			if (code)
+				/* free(code); */
+				sso_response_error(resp, 400, "phone and code required");
 		return SSO_OK;
 	}
 
@@ -434,8 +434,8 @@ sso_error_t handle_login_by_sms(sso_context_t* ctx, const http_request_t* req, h
 		snprintf(phone_key, sizeof(phone_key), "sms_login:%s", phone);
 		sso_error_t rerr = rate_limiter_check((rate_limiter_t*)ctx->rate_limiter, phone_key, 60000, 3);
 		if (rerr != SSO_OK) {
-			free(phone);
-			free(code);
+			/* free(phone); */
+			/* free(code); */
 			sso_response_error(resp, 429, "Too many attempts for this phone number. Please wait.");
 			return SSO_OK;
 		}
@@ -443,8 +443,8 @@ sso_error_t handle_login_by_sms(sso_context_t* ctx, const http_request_t* req, h
 
 	storage_backend_t* sb = (storage_backend_t*)ctx->storage_backend;
 	if (!sb || !sb->get_sms_code || !sb->delete_sms_code) {
-		free(phone);
-		free(code);
+		/* free(phone); */
+		/* free(code); */
 		sso_response_error(resp, 500, "SMS feature not enabled in storage backend");
 		return SSO_OK;
 	}
@@ -453,15 +453,15 @@ sso_error_t handle_login_by_sms(sso_context_t* ctx, const http_request_t* req, h
 	char		expected_code[16];
 	sso_error_t err = sb->get_sms_code(sb, phone, expected_code);
 	if (err != SSO_OK || strcmp(code, expected_code) != 0) {
-		free(phone);
-		free(code);
+		/* free(phone); */
+		/* free(code); */
 		sso_response_error(resp, 401, "Invalid or expired verification code");
 		return SSO_OK;
 	}
 
 	/* 验证成功即销毁，防重放 */
 	sb->delete_sms_code(sb, phone);
-	free(code);
+	/* free(code); */
 
 	/* 2. 获取用户 (如果不存在则自动注册) */
 	user_manager_t* umgr = (user_manager_t*)ctx->user_mgr;
@@ -473,11 +473,11 @@ sso_error_t handle_login_by_sms(sso_context_t* ctx, const http_request_t* req, h
 	}
 
 	if (err != SSO_OK || user.status != USER_STATUS_ACTIVE) {
-		free(phone);
+		/* free(phone); */
 		sso_response_error(resp, 403, "Account disabled or error");
 		return SSO_OK;
 	}
-	free(phone);
+	/* free(phone); */
 
 	/* 3. 签发 JWT Token (复用现有的 token_issue) */
 	sso_id_t roles[16], groups[16];
@@ -495,7 +495,7 @@ sso_error_t handle_login_by_sms(sso_context_t* ctx, const http_request_t* req, h
 	}
 
 	/* 4. 返回标准 Token */
-	char* buf = (char*)malloc(8192);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
 	if (!buf) {
 		token_destroy(&token);
 		sso_response_error(resp, 500, "Out of memory");
@@ -510,7 +510,7 @@ sso_error_t handle_login_by_sms(sso_context_t* ctx, const http_request_t* req, h
 			 "}",
 			 token.token_str, (unsigned long long)user.id, user.username, user.phone);
 	sso_response_ok(resp, buf);
-	free(buf);
+	/* free(buf); */
 	token_destroy(&token);
 	return SSO_OK;
 }
@@ -521,26 +521,26 @@ sso_error_t handle_register(sso_context_t* ctx, const http_request_t* req, http_
 		return SSO_OK;
 	}
 
-	char* username = json_str_value(req->body, "username");
-	char* password = json_str_value(req->body, "password");
-	char* email	   = json_str_value(req->body, "email");
-	char* display  = json_str_value(req->body, "display_name");
+	char* username = json_str_value((arena_t*)&req->arena, req->body, "username");
+	char* password = json_str_value((arena_t*)&req->arena, req->body, "password");
+	char* email	   = json_str_value((arena_t*)&req->arena, req->body, "email");
+	char* display  = json_str_value((arena_t*)&req->arena, req->body, "display_name");
 
 	if (!username || !password) {
-		free(username);
-		free(password);
-		free(email);
-		free(display);
+		/* free(username); */
+		/* free(password); */
+		/* free(email); */
+		/* free(display); */
 		sso_response_error(resp, 400, "username and password required");
 		return SSO_OK;
 	}
 
 	const char* pw_err = validate_password(password, NULL);
 	if (pw_err) {
-		free(username);
-		free(password);
-		free(email);
-		free(display);
+		/* free(username); */
+		/* free(password); */
+		/* free(email); */
+		/* free(display); */
 		sso_response_error(resp, 400, pw_err);
 		return SSO_OK;
 	}
@@ -563,10 +563,10 @@ sso_error_t handle_register(sso_context_t* ctx, const http_request_t* req, http_
 		}
 	}
 
-	free(username);
-	free(password);
-	free(email);
-	free(display);
+	/* free(username); */
+	/* free(password); */
+	/* free(email); */
+	/* free(display); */
 
 	if (err == SSO_ERR_ALREADY_EXISTS) {
 		sso_response_error(resp, 409, "Username already exists");
@@ -587,7 +587,7 @@ sso_error_t handle_register(sso_context_t* ctx, const http_request_t* req, http_
 sso_error_t handle_verify(sso_context_t* ctx, const http_request_t* req, http_response_t* resp) {
 	const char* token_str = NULL;
 	if (req->body) {
-		const char* t = json_str_value(req->body, "token");
+		const char* t = json_str_value((arena_t*)&req->arena, req->body, "token");
 		if (t) {
 			token_str = t;
 		}
@@ -677,7 +677,7 @@ sso_error_t handle_verify(sso_context_t* ctx, const http_request_t* req, http_re
 			 "%s",
 			 user.username, user.email, rotation_header);
 
-	char* buf = (char*)malloc(8192);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
 	if (!buf) {
 		token_destroy(&tok);
 		sso_response_error(resp, 500, "Out of memory");
@@ -694,7 +694,7 @@ sso_error_t handle_verify(sso_context_t* ctx, const http_request_t* req, http_re
 			 "}",
 			 (unsigned long long)user.id, user.username, user.email, user.display_name, (long long)tok.expires_at);
 	sso_response_ok(resp, buf);
-	free(buf);
+	/* free(buf); */
 	token_destroy(&tok);
 	return SSO_OK;
 }
@@ -705,7 +705,7 @@ sso_error_t handle_refresh(sso_context_t* ctx, const http_request_t* req, http_r
 		return SSO_OK;
 	}
 
-	char* refresh_token_str = json_str_value(req->body, "refresh_token");
+	char* refresh_token_str = json_str_value((arena_t*)&req->arena, req->body, "refresh_token");
 	if (!refresh_token_str) {
 		sso_response_error(resp, 400, "refresh_token required");
 		return SSO_OK;
@@ -714,7 +714,7 @@ sso_error_t handle_refresh(sso_context_t* ctx, const http_request_t* req, http_r
 	token_manager_t* tmgr = (token_manager_t*)ctx->token_mgr;
 	token_t			 old_token;
 	sso_error_t		 err = token_verify(tmgr, refresh_token_str, &old_token);
-	free(refresh_token_str);
+	/* free(refresh_token_str); */
 	if (err != SSO_OK) {
 		const char* msg = (err == SSO_ERR_TOKEN_EXPIRED) ? "Refresh token expired" : "Invalid refresh token";
 		sso_response_error(resp, 401, msg);
@@ -756,7 +756,7 @@ sso_error_t handle_refresh(sso_context_t* ctx, const http_request_t* req, http_r
 			 "X-SSO-Refresh-Token: %s\r\n",
 			 access_token.token_str, refresh_token.token_str);
 
-	char* buf = (char*)malloc(8192);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
 	if (!buf) {
 		token_destroy(&access_token);
 		token_destroy(&refresh_token);
@@ -770,7 +770,7 @@ sso_error_t handle_refresh(sso_context_t* ctx, const http_request_t* req, http_r
 	token_destroy(&access_token);
 	token_destroy(&refresh_token);
 	sso_response_ok(resp, buf);
-	free(buf);
+	/* free(buf); */
 	return SSO_OK;
 }
 
@@ -822,18 +822,18 @@ sso_error_t handle_change_password(sso_context_t* ctx, const http_request_t* req
 		return SSO_OK;
 	}
 
-	char*		new_pass = json_str_value(req->body, "password");
+	char*		new_pass = json_str_value((arena_t*)&req->arena, req->body, "password");
 	const char* pw_err	 = validate_password(new_pass, NULL);
 	if (pw_err) {
 		if (new_pass)
-			free(new_pass);
-		sso_response_error(resp, 400, pw_err);
+			/* free(new_pass); */
+			sso_response_error(resp, 400, pw_err);
 		return SSO_OK;
 	}
 
 	user_manager_t* umgr = (user_manager_t*)ctx->user_mgr;
 	sso_error_t		err	 = user_set_password(umgr, auth->user.id, new_pass);
-	free(new_pass);
+	/* free(new_pass); */
 
 	if (err != SSO_OK) {
 		sso_response_error(resp, 500, "Failed to update password");
@@ -893,9 +893,9 @@ sso_error_t handle_certs(sso_context_t* ctx, const http_request_t* req, http_res
 	char* json = yyjson_mut_write(doc, 0, NULL);
 	sso_response_ok(resp, json);
 
-	free(json);
+	/* free(json); */
 	yyjson_mut_doc_free(doc);
-	free(pem);
+	/* free(pem); */
 	return SSO_OK;
 }
 
