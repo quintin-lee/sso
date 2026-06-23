@@ -57,9 +57,12 @@ typedef struct {
 	char sms_api_key[128];	   /**< SMS provider API key */
 
 	/* -------- [logging] -------- */
-	int	 log_level;			  /**< 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR */
-	int	 log_format;		  /**< 0=text (default), 1=JSON (ELK-friendly) */
-	char audit_log_path[256]; /**< File path for structured permission audit log */
+	int	 log_level;				 /**< 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR */
+	int	 log_format;			 /**< 0=text (default), 1=JSON (ELK-friendly) */
+	char audit_log_path[256];	 /**< File path for structured permission audit log */
+	int	 audit_log_max_size_mb;	 /**< Max size in MB before rotation (0 = no limit) */
+	int	 audit_log_max_backups;	 /**< Max backups to keep */
+	bool audit_log_rotate_daily; /**< Whether to rotate log files daily */
 
 	/* -------- [oauth] -------- */
 	char oauth_client_id[64];	   /**< Default OAuth 2.0 client ID */
