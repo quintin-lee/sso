@@ -55,6 +55,7 @@ Comprehensive documentation is available under the [`docs/`](docs/) directory:
 - **JWT-style Tokens**: HMAC-SHA256 signed tokens with roles, groups embedded in claims
 - **Token Revocation**: O(log N) binary search on revocation lists for instant invalidation
 - **Token Refresh and Rotation**: Long-lived sessions with refresh token rotation
+- **Dual-Key Rotation**: Zero-downtime key switching with active/idle slots, JWKS exposes both keys
 - **OAuth 2.0 / OpenID Connect**: Authorization code flow, token introspection (RFC 7662), token revocation (RFC 7009), OIDC discovery, JWKS (RFC 7517), `/userinfo` endpoint
 
 ### Authorization — 7 Permission Strategies

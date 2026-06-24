@@ -536,6 +536,26 @@ base64({
 - 存储于后端数据库（哈希存储 `SHA-256(token)`）
 - 旋转策略：每次刷新时旧刷新令牌立即撤销，签发新令牌和新刷新令牌
 
+### 8.5 零停机密钥轮换
+
+```
+     key slot 0 (active)     key slot 1 (standby)
+     ┌─────────────────┐   ┌─────────────────┐
+     │ kid: sso-key-1  │   │ kid: sso-key-2  │
+     │ secret: ***     │   │ secret: ***     │
+     └─────────▲───────┘   └───────▲─────────┘
+               │                  │
+               └────── atomic ─────┘
+               active_slot (0/1)
+```
+
+- **SIGNING** 总使用 `slots[active_slot]` 签发新令牌
+- **VERIFICATION** 接受两个 slot 中的任一个 — 确保旧令牌在轮换后保持有效
+- **ROTATION**：新密钥写入 inactive slot → 原子翻转 `active_slot` → 旧 active 变为 standby（仍存活）
+- **JWKS** `/api/v1/auth/jwks` 同时暴露两个 key，客户端可缓存并按需更新
+
+**环境变量支持**：启动时可设置 `SSO_TOKEN_SECRET_2`、`SSO_PRIVATE_KEY_2`、`SSO_PUBLIC_KEY_2` 预加载备用密钥。
+
 ---
 
 ## 9. HTTP 服务器与线程模型

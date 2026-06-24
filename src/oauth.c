@@ -816,6 +816,7 @@ sso_error_t handle_well_known_openid_config(sso_context_t* ctx, const http_reque
 #endif
 static bool append_jwk_entry(token_manager_t* tmgr, const key_slot_t* slot, arena_t* arena, char* buf, size_t buf_size,
 							 size_t* pos, bool first_entry) {
+	(void)tmgr;
 	if (!slot->populated || slot->mode != SSO_TOKEN_MODE_RS256 || !slot->key.rsa.pub_key)
 		return false;
 

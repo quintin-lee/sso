@@ -1,7 +1,5 @@
 # SSO 系统设计文档
 
-## 目录
-
 1. [设计原则](#1-设计原则)
 2. [设计模式](#2-设计模式)
 3. [数据结构设计](#3-数据结构设计)
@@ -292,6 +290,27 @@ struct token {
   - 超过限制时自动撤销最旧会话的 JTI
   - 通过 session_track_t 结构追踪
 ```
+
+### 4.6 零停机密钥轮换（Dual-Key Rotation）
+
+```c
+struct token_manager {
+    // ...
+    key_slot_t    slots[SSO_MAX_KEY_SLOTS];  // [0]: active, [1]: standby
+    atomic_int    active_slot;                // 0 或 1 — 原子，指向 signing slot
+    atomic_uint   rotation_counter;           // KID 计数器，递增确保唯一性
+    // ...
+}
+```
+
+- **SIGNING**: 仅使用 `slots[active_slot]` 签发新令牌
+- **VERIFICATION**: 接受两个 slot 中的任一个 — 确保旧令牌在轮换后仍有效
+
+**轮换流程**:
+1. 使用 `token_manager_rotate_key()` 或 `token_manager_rotate_key_rs256()`
+2. 新密钥写入 `inactive` slot（[1 - active_slot]）
+3. 原子翻转 `active_slot` → 旧 active 成为 standby（仍用于验证）
+4. JWKS `/api/v1/auth/jwks` 同时暴露两个 slot 的公钥
 
 ---
 

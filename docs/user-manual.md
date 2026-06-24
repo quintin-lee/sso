@@ -264,9 +264,40 @@ openssl genrsa -out private.pem 2048
 openssl rsa -in private.pem -pubout -out public.pem
 export SSO_PRIVATE_KEY="$(cat private.pem)"
 export SSO_PUBLIC_KEY="$(cat public.pem)"
-```
 
 > 设置了 `SSO_PRIVATE_KEY` 后系统自动使用 RS256 模式。公钥可通过 `GET /api/v1/auth/certs` 和 `GET /api/v1/auth/jwks` 获取。
+
+#### 密钥轮换环境变量
+
+用于启动时预加载双密钥（无缝热替换）：
+
+| 变量 | 说明 |
+|------|------|
+| `SSO_TOKEN_SECRET_2` | 备用 HS256 密钥（32 字节） |
+| `SSO_PRIVATE_KEY_2` | 备用 RSA 私钥 PEM |
+| `SSO_PUBLIC_KEY_2` | 备用 RSA 公钥 PEM |
+
+启动时设置备用密钥后，系统将同时加载两个 key slot。活跃 slot 用于签发新令牌，两个 slot 均可用于验证，确保轮换期间旧令牌不失效。
+
+---
+
+### 手动密钥轮换 API
+
+```bash
+# HS256 模式轮换
+curl -X POST http://localhost:8080/api/v1/auth/rotate-keys \
+  -H 'Authorization: Bearer <admin-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"secret": "'$(openssl rand -hex 32)'"}'
+
+# RS256 模式轮换
+curl -X POST http://localhost:8080/api/v1/auth/rotate-keys \
+  -H 'Authorization: Bearer <admin-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"private_key_pem": "'$(cat new-private.pem)'", "public_key_pem": "'$(cat new-public.pem)'"}'
+```
+
+响应包含新旧活跃 KID（Key ID），用于审计和 JWK 缓存刷新。
 
 ---
 

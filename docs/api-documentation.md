@@ -466,6 +466,8 @@ JWKS (JSON Web Key Set) endpoint — RFC 7517.
 
 - **Auth**: None
 
+Returns all populated key slots. When dual-key rotation is active, both keys are exposed so clients can verify tokens signed before rotation.
+
 **Response `200`:**
 
 ```json
@@ -474,12 +476,55 @@ JWKS (JSON Web Key Set) endpoint — RFC 7517.
     {
       "kty": "RSA",
       "use": "sig",
-      "kid": "...",
+      "kid": "sso-key-1",
+      "n": "...",
+      "e": "AQAB",
+      "alg": "RS256"
+    },
+    {
+      "kty": "RSA",
+      "use": "sig",
+      "kid": "sso-key-2",
       "n": "...",
       "e": "AQAB",
       "alg": "RS256"
     }
   ]
+}
+```
+
+---
+
+### POST `/api/v1/auth/rotate-keys`
+
+Rotate signing keys with zero-downtime. New tokens are signed with the fresh key; tokens signed before rotation remain verifiable until they expire.
+
+- **Auth**: Bearer token required (admin)
+
+**Request Body:** (either HMAC or RSA payload)
+
+```json
+{
+  "secret": "64-hex-char-new-secret"
+}
+```
+
+or
+
+```json
+{
+  "private_key_pem": "-----BEGIN RSA PRIVATE KEY-----\n...",
+  "public_key_pem": "-----BEGIN PUBLIC KEY-----\n..."
+}
+```
+
+**Response `200`:**
+
+```json
+{
+  "rotated": true,
+  "active_kid": "sso-key-2",
+  "standby_kid": "sso-key-1"
 }
 ```
 
