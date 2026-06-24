@@ -815,7 +815,7 @@ sso_error_t handle_well_known_openid_config(sso_context_t* ctx, const http_reque
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 static bool append_jwk_entry(token_manager_t* tmgr, const key_slot_t* slot, arena_t* arena, char* buf, size_t buf_size,
-							 size_t* pos) {
+							 size_t* pos, bool first_entry) {
 	if (!slot->populated || slot->mode != SSO_TOKEN_MODE_RS256 || !slot->key.rsa.pub_key)
 		return false;
 
@@ -856,7 +856,7 @@ static bool append_jwk_entry(token_manager_t* tmgr, const key_slot_t* slot, aren
 	int	   written	 = snprintf(buf + *pos, remaining,
 								"%s{\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\","
 								"\"kid\":\"%s\",\"n\":\"%s\",\"e\":\"%s\"}",
-								(*pos > 1) ? "," : "", slot->kid, n_b64, e_b64);
+								first_entry ? "" : ",", slot->kid, n_b64, e_b64);
 
 	RSA_free(rsa);
 
@@ -895,21 +895,18 @@ sso_error_t handle_jwks(sso_context_t* ctx, const http_request_t* req, http_resp
 	memcpy(buf + pos, "\"keys\":[", 8);
 	pos += 8;
 
+	bool first = true;
 	for (size_t i = 0; i < SSO_MAX_KEY_SLOTS; i++) {
 		const key_slot_t* slot = token_manager_get_slot(tmgr, i);
 		if (slot) {
-			append_jwk_entry(tmgr, slot, (arena_t*)&req->arena, buf, 4096, &pos);
+			if (append_jwk_entry(tmgr, slot, (arena_t*)&req->arena, buf, 4096, &pos, first)) {
+				first = false;
+			}
 		}
 	}
 
-	if (pos >= 2 && buf[pos - 1] == '[') {
-		/* No keys were appended */
-		memcpy(buf + pos, "]}", 2);
-		pos += 2;
-	} else {
-		memcpy(buf + pos, "]}", 2);
-		pos += 2;
-	}
+	memcpy(buf + pos, "]}", 2);
+	pos += 2;
 	buf[pos] = '\0';
 
 	sso_response_ok(resp, buf);
