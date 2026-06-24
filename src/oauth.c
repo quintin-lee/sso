@@ -485,7 +485,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 		store_refresh_token(sb, user.id, ac.client_id, access_token.raw_refresh_token);
 
 		/* Build JSON response */
-		buf = (char*)arena_alloc((arena_t*)&req->arena, 16384);
+		buf = (char*)arena_alloc((arena_t*)&req->arena, 32768);
 		if (!buf) {
 			json_error_response(resp, 500, "Out of memory");
 			result = SSO_OK;
@@ -493,7 +493,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 		}
 		bool is_openid = (strstr(ac.scope, "openid") != NULL);
 		if (is_openid) {
-			snprintf(buf, 16384,
+			snprintf(buf, 32768,
 					 "{"
 					 "\"access_token\":\"%s\","
 					 "\"token_type\":\"Bearer\","
@@ -505,7 +505,7 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 					 access_token.token_str, (long long)(access_token.expires_at - access_token.issued_at) / 1000,
 					 access_token.raw_refresh_token, access_token.token_str, (unsigned long long)user.id);
 		} else {
-			snprintf(buf, 16384,
+			snprintf(buf, 32768,
 					 "{"
 					 "\"access_token\":\"%s\","
 					 "\"token_type\":\"Bearer\","
@@ -571,13 +571,13 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 			goto cleanup;
 		}
 
-		buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
+		buf = (char*)arena_alloc((arena_t*)&req->arena, 32768);
 		if (!buf) {
 			json_error_response(resp, 500, "Out of memory");
 			result = SSO_OK;
 			goto cleanup;
 		}
-		snprintf(buf, 8192,
+		snprintf(buf, 32768,
 				 "{"
 				 "\"access_token\":\"%s\","
 				 "\"token_type\":\"Bearer\","
@@ -645,13 +645,13 @@ sso_error_t handle_oauth_token(sso_context_t* ctx, const http_request_t* req, ht
 		/* Store new refresh token */
 		store_refresh_token(sb, user.id, rt_record.client_id, access_token.raw_refresh_token);
 
-		buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
+		buf = (char*)arena_alloc((arena_t*)&req->arena, 32768);
 		if (!buf) {
 			json_error_response(resp, 500, "Out of memory");
 			result = SSO_OK;
 			goto cleanup;
 		}
-		snprintf(buf, 8192,
+		snprintf(buf, 32768,
 				 "{"
 				 "\"access_token\":\"%s\","
 				 "\"token_type\":\"Bearer\","

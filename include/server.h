@@ -88,7 +88,7 @@ typedef struct {
 	char*  body;		/* response body (JSON)                 */
 	size_t body_len;
 	char   content_type[64];	 /* e.g. "application/json"              */
-	char   extra_headers[16384]; /* Custom headers: "Key: Value\r\n..." */
+	char   extra_headers[32768]; /* Custom headers: "Key: Value\r\n..." */
 	char   cors_origin[256];	 /* Echo-back origin for CORS (per spec) */
 } http_response_t;
 

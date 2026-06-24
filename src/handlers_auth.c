@@ -118,14 +118,14 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		token_issue(tmgr, &user, NULL, 0, NULL, 0, "mfa", 300000, NULL, &mfa_token);
 
 		/* Success: return MFA requirement */
-		char* buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
+		char* buf = (char*)arena_alloc((arena_t*)&req->arena, 32768);
 		if (!buf) {
 			token_destroy(&mfa_token);
 			sso_response_error(resp, 500, "Out of memory");
 			otlp_span_end(&span, true);
 			return SSO_OK;
 		}
-		snprintf(buf, 8192,
+		snprintf(buf, 32768,
 				 "{"
 				 "\"mfa_required\":true,"
 				 "\"mfa_token\":\"%s\""
@@ -165,7 +165,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 			 "X-SSO-Refresh-Token: %s\r\n",
 			 access_token.token_str, access_token.token_str, refresh_token.token_str);
 
-	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 32768);
 	if (!buf) {
 		token_destroy(&access_token);
 		token_destroy(&refresh_token);
@@ -173,7 +173,7 @@ sso_error_t handle_login(sso_context_t* ctx, const http_request_t* req, http_res
 		otlp_span_end(&span, true);
 		return SSO_OK;
 	}
-	snprintf(buf, 8192,
+	snprintf(buf, 32768,
 			 "{"
 			 "\"expires_in\":%lld,"
 			 "\"user_id\":%llu,"
@@ -327,14 +327,14 @@ sso_error_t handle_mfa_verify(sso_context_t* ctx, const http_request_t* req, htt
 			 "X-SSO-Refresh-Token: %s\r\n",
 			 access_token.token_str, refresh_token.token_str);
 
-	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 32768);
 	if (!buf) {
 		token_destroy(&access_token);
 		token_destroy(&refresh_token);
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
-	snprintf(buf, 8192,
+	snprintf(buf, 32768,
 			 "{"
 			 "\"expires_in\":%lld,"
 			 "\"user_id\":%llu,"
@@ -495,13 +495,13 @@ sso_error_t handle_login_by_sms(sso_context_t* ctx, const http_request_t* req, h
 	}
 
 	/* 4. 返回标准 Token */
-	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 32768);
 	if (!buf) {
 		token_destroy(&token);
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
-	snprintf(buf, 8192,
+	snprintf(buf, 32768,
 			 "{"
 			 "\"token\":\"%s\","
 			 "\"user_id\":%llu,"
@@ -678,13 +678,13 @@ sso_error_t handle_verify(sso_context_t* ctx, const http_request_t* req, http_re
 			 "%s",
 			 user.username, user.email, rotation_header);
 
-	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 32768);
 	if (!buf) {
 		token_destroy(&tok);
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
-	snprintf(buf, 8192,
+	snprintf(buf, 32768,
 			 "{"
 			 "\"valid\":true,"
 			 "\"user_id\":%llu,"
@@ -757,14 +757,14 @@ sso_error_t handle_refresh(sso_context_t* ctx, const http_request_t* req, http_r
 			 "X-SSO-Refresh-Token: %s\r\n",
 			 access_token.token_str, refresh_token.token_str);
 
-	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 8192);
+	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 32768);
 	if (!buf) {
 		token_destroy(&access_token);
 		token_destroy(&refresh_token);
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
-	snprintf(buf, 8192,
+	snprintf(buf, 32768,
 			 "{"
 			 "\"status\":\"refreshed\""
 			 "}");
