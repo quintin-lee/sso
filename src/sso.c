@@ -294,11 +294,40 @@ sso_error_t sso_init(sso_context_t* ctx, storage_backend_t* storage, void* confi
 		sodium_memzero(secret, SSO_SECRET_BYTES);
 	}
 
-	/* P0: wipe token_secret in config now that token_manager has a copy */
+	/* Initialize second key slot from config if provided (pre-loaded rotation) */
+	if (config && config->private_key_pem_2[0] != '\0') {
+		/* RS256 standby slot */
+		sso_error_t slot2_err = token_manager_init_rs256_standby(
+				tmgr, config->private_key_pem_2, config->public_key_pem_2[0] ? config->public_key_pem_2 : NULL);
+		if (slot2_err != SSO_OK) {
+			LOG_WARN("[sso] Failed to init RS256 standby key: %s", sso_strerror(slot2_err));
+		} else {
+			LOG_INFO("[sso] RS256 standby key loaded (dual-buffer ready).");
+		}
+	} else if (config && config->token_secret_2[0] != '\0') {
+		/* HS256 standby slot */
+		unsigned char secret2[SSO_SECRET_BYTES];
+		size_t		  slen2 = strlen(config->token_secret_2);
+		size_t		  copy2 = slen2 < SSO_SECRET_BYTES ? slen2 : SSO_SECRET_BYTES;
+		memcpy(secret2, config->token_secret_2, copy2);
+		if (copy2 < SSO_SECRET_BYTES)
+			memset(secret2 + copy2, 0, SSO_SECRET_BYTES - copy2);
+
+		sso_error_t slot2_err = token_manager_init_standby(tmgr, secret2, SSO_SECRET_BYTES);
+		sodium_memzero(secret2, sizeof(secret2));
+		if (slot2_err != SSO_OK) {
+			LOG_WARN("[sso] Failed to init HS256 standby key: %s", sso_strerror(slot2_err));
+		} else {
+			LOG_INFO("[sso] HS256 standby key loaded (dual-buffer ready).");
+		}
+	}
+
+	/* P0: wipe keys from config now that token_manager has a copy */
 	if (config) {
 		sodium_memzero(config->token_secret, sizeof(config->token_secret));
-		/* Also wipe private_key_pem after token_manager consumed it */
+		sodium_memzero(config->token_secret_2, sizeof(config->token_secret_2));
 		sodium_memzero(config->private_key_pem, sizeof(config->private_key_pem));
+		sodium_memzero(config->private_key_pem_2, sizeof(config->private_key_pem_2));
 	}
 
 	tmgr->storage  = ctx->storage_backend;

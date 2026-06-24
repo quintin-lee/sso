@@ -23,6 +23,7 @@
 
 #include "sso.h"
 #include <pthread.h>
+#include <stdatomic.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -54,10 +55,35 @@ struct token {
  * @brief Token signing mode (Symmetric or Asymmetric).
  */
 typedef enum {
-	SSO_TOKEN_MODE_HS256,   /**< Symmetric HS256 (shared secret) signing */
-	SSO_TOKEN_MODE_RS256,   /**< Asymmetric RS256 (RSA private/public pair) signing */
-	SSO_TOKEN_MODE_CRYDI3   /**< Asymmetric Post-Quantum Crystals-Dilithium-3 signing */
+	SSO_TOKEN_MODE_HS256, /**< Symmetric HS256 (shared secret) signing */
+	SSO_TOKEN_MODE_RS256, /**< Asymmetric RS256 (RSA private/public pair) signing */
+	SSO_TOKEN_MODE_CRYDI3 /**< Asymmetric Post-Quantum Crystals-Dilithium-3 signing */
 } sso_token_mode_t;
+
+/** Maximum number of key slots for dual-buffer rotation. */
+#define SSO_MAX_KEY_SLOTS 2
+/** Maximum KID (Key ID) string length including NUL. */
+#define SSO_KEY_ID_MAX 32
+
+/**
+ * @struct key_slot_t
+ * @brief One key slot — either HS256 secret or RS256 key pair.
+ *
+ * Signing always uses the "active" slot; verification accepts
+ * any populated slot so tokens signed before a rotation remain valid.
+ */
+typedef struct {
+	char			 kid[SSO_KEY_ID_MAX]; /**< Key identifier (e.g. "sso-key-1") */
+	bool			 populated;			  /**< Slot has been initialized */
+	sso_token_mode_t mode;				  /**< HS256 or RS256 */
+	union {
+		unsigned char secret[32]; /**< HS256 — HMAC secret */
+		struct {
+			void* priv_key; /**< RS256 — EVP_PKEY private */
+			void* pub_key;	/**< RS256 — EVP_PKEY public */
+		} rsa;
+	} key;
+} key_slot_t;
 
 /**
  * @struct nonce_pair_t
@@ -83,15 +109,30 @@ typedef struct {
 	size_t	 oldest_idx;
 } session_track_t;
 
+/**
+ * @brief Token manager with dual-buffer key support for seamless rotation.
+ *
+ * Key slots[0..1] hold the active and standby keys.  The active slot
+ * (selected by atomic active_slot) is used for SIGNING new tokens;
+ * both slots are accepted during VERIFICATION so tokens signed before
+ * a rotation stay valid until they expire.
+ *
+ * Rotation is atomic: set a new key into the inactive slot, then
+ * atomically flip active_slot.  The newly inactive slot keeps its
+ * old key so existing tokens can still be verified.
+ */
 struct token_manager {
 	sso_token_mode_t mode; /**< Signing mode (HS256 or RS256) */
-	union {
-		unsigned char secret[32]; /**< HMAC-SHA256 secret key */
-		struct {
-			void* priv_key; /**< RSA private key object (EVP_PKEY) */
-			void* pub_key;	/**< RSA public key object (EVP_PKEY) */
-		} rsa;
-	} keys;
+
+	/**
+	 * Dual key slots.
+	 * slots[active_slot] is used for signing new tokens.
+	 * Both slots are usable for verification.
+	 */
+	key_slot_t	slots[SSO_MAX_KEY_SLOTS];
+	atomic_int	active_slot;	  /**< 0 or 1 — atomic, index of the signing slot */
+	atomic_uint rotation_counter; /**< Monotonically increasing KID counter */
+
 	sso_timestamp_t default_ttl_ms; /**< Default token duration */
 	nonce_pair_t*	nonces;			/**< Array of user nonces */
 	size_t			nonce_count;	/**< Active count of nonces */
@@ -286,6 +327,69 @@ bool token_is_revoked(token_manager_t* mgr, const char* jti);
  * @brief Registers a new session for a user. Revokes oldest session if limit exceeded.
  */
 void token_register_session(token_manager_t* mgr, sso_id_t user_id, const char* jti);
+
+/* -----------------------------------------------------------------------
+ * Dual-buffer key rotation API
+ * ----------------------------------------------------------------------- */
+
+/**
+ * @brief Populate the standby slot (index 1) with an HS256 key without affecting the active slot.
+ *
+ * Used at startup when config provides both current and next keys.
+ * The active slot remains slot[0]; both slots are usable for verification.
+ */
+sso_error_t token_manager_init_standby(token_manager_t* mgr, const unsigned char* secret, size_t secret_len);
+
+/**
+ * @brief Populate the standby slot (index 1) with an RS256 key pair without affecting the active slot.
+ */
+sso_error_t token_manager_init_rs256_standby(token_manager_t* mgr, const char* priv_key_pem, const char* pub_key_pem);
+
+/**
+ * @brief Set a new HS256 secret into the inactive slot and atomically activate it.
+ *
+ * The current active slot becomes the standby (still usable for verification).
+ * The old standby's key is overwritten with the new key.
+ *
+ * @param mgr Token manager.
+ * @param new_secret New HMAC secret (32 bytes).
+ * @param secret_len Length of new_secret.
+ * @return SSO_OK on success.
+ */
+sso_error_t token_manager_rotate_key(token_manager_t* mgr, const unsigned char* new_secret, size_t secret_len);
+
+/**
+ * @brief Set a new RSA key pair into the inactive slot and atomically activate it.
+ *
+ * Same semantics as token_manager_rotate_key() but for RS256 mode.
+ *
+ * @param mgr Token manager.
+ * @param priv_key_pem PEM-encoded RSA private key.
+ * @param pub_key_pem PEM-encoded RSA public key (NULL = derive from private key).
+ * @return SSO_OK on success.
+ */
+sso_error_t token_manager_rotate_key_rs256(token_manager_t* mgr, const char* priv_key_pem, const char* pub_key_pem);
+
+/**
+ * @brief Return the KID string of the currently active signing slot.
+ *
+ * The returned pointer is valid until the next rotation.  Do not free.
+ */
+const char* token_manager_get_active_kid(token_manager_t* mgr);
+
+/**
+ * @brief Return the number of populated slots (0, 1, or 2).
+ *
+ * Useful for JWKS enumeration.
+ */
+size_t token_manager_get_slot_count(token_manager_t* mgr);
+
+/**
+ * @brief Retrieve a pointer to the key slot by index.
+ *
+ * Returns NULL if index is out of range or the slot is not populated.
+ */
+const key_slot_t* token_manager_get_slot(token_manager_t* mgr, size_t idx);
 
 #ifdef __cplusplus
 }

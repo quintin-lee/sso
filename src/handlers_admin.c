@@ -17,6 +17,7 @@
 #include "policy.h"
 #include "storage.h"
 #include "permission.h"
+#include "token.h"
 
 #include <sodium.h>
 #include <string.h>
@@ -1617,5 +1618,83 @@ sso_error_t handle_delete_client(sso_context_t* ctx, const http_request_t* req, 
 		admin_audit_log((sso_config_t*)ctx->config, a->user.id, a->user.username, req->client_ip, "delete_client",
 						"clients", 0, "success", det);
 	}
+	return SSO_OK;
+}
+
+/* ========================================================================
+ * POST /api/v1/auth/rotate-keys
+ *
+ * Online JWT signing key rotation with dual-buffer semantics:
+ *   1. Read new key material from JSON body.
+ *   2. Set into the inactive (standby) slot.
+ *   3. Atomically flip active_slot so new tokens use the new key.
+ *      The previously active key stays in standby for verification.
+ *
+ * HS256 body: {"secret":"<32-byte-key>"}
+ * RS256 body: {"private_key":"<PEM>", "public_key":"<PEM>"}
+ * Response:   {"status":"ok","active_kid":"...","previous_kid":"..."}
+ * ======================================================================== */
+sso_error_t handle_rotate_keys(sso_context_t* ctx, const http_request_t* req, http_response_t* resp) {
+	(void)ctx;
+	token_manager_t* tmgr = (token_manager_t*)ctx->token_mgr;
+	if (!tmgr) {
+		sso_response_error(resp, 500, "Token manager unavailable");
+		return SSO_OK;
+	}
+
+	if (!req->body) {
+		sso_response_error(resp, 400, "Request body required");
+		return SSO_OK;
+	}
+
+	const char* old_kid = token_manager_get_active_kid(tmgr);
+
+	if (tmgr->mode == SSO_TOKEN_MODE_HS256) {
+		const char* secret_str = req_json_str_value(req, "secret");
+		if (!secret_str) {
+			sso_response_error(resp, 400, "\"secret\" required for HS256 rotation");
+			return SSO_OK;
+		}
+
+		size_t		  slen = strlen(secret_str);
+		unsigned char secret[32];
+		memset(secret, 0, sizeof(secret));
+		size_t copy_len = slen < sizeof(secret) ? slen : sizeof(secret);
+		memcpy(secret, secret_str, copy_len);
+		if (slen < 32) {
+			LOG_WARN("[rotate-keys] HS256 secret is only %zu bytes; padding to 32", slen);
+		}
+
+		sso_error_t err = token_manager_rotate_key(tmgr, secret, sizeof(secret));
+		sodium_memzero(secret, sizeof(secret));
+		if (err != SSO_OK) {
+			sso_response_error(resp, 500, sso_strerror(err));
+			return SSO_OK;
+		}
+	} else if (tmgr->mode == SSO_TOKEN_MODE_RS256) {
+		const char* priv_pem = req_json_str_value(req, "private_key");
+		if (!priv_pem) {
+			sso_response_error(resp, 400, "\"private_key\" required for RS256 rotation");
+			return SSO_OK;
+		}
+
+		const char* pub_pem = req_json_str_value(req, "public_key");
+		sso_error_t err		= token_manager_rotate_key_rs256(tmgr, priv_pem, pub_pem);
+		if (err != SSO_OK) {
+			sso_response_error(resp, 500, sso_strerror(err));
+			return SSO_OK;
+		}
+	} else {
+		sso_response_error(resp, 400, "Rotation not supported for current signing mode");
+		return SSO_OK;
+	}
+
+	const char* new_kid = token_manager_get_active_kid(tmgr);
+	char		resp_buf[256];
+	snprintf(resp_buf, sizeof(resp_buf), "{\"status\":\"ok\",\"active_kid\":\"%s\",\"previous_kid\":\"%s\"}",
+			 new_kid ? new_kid : "", old_kid ? old_kid : "");
+	sso_response_ok(resp, resp_buf);
+
+	LOG_INFO("[rotate-keys] Key rotated: %s -> %s", old_kid ? old_kid : "?", new_kid ? new_kid : "?");
 	return SSO_OK;
 }

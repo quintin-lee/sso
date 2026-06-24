@@ -41,16 +41,19 @@ typedef struct {
 	char database_url[SSO_MAX_PATH]; /**< PostgreSQL connection URI */
 
 	/* -------- [security] -------- */
-	char		  token_secret[128];	 /**< HMAC-SHA256 signing key for HS256 tokens */
-	char		  private_key_pem[4096]; /**< RSA private key PEM for RS256 tokens */
-	char		  public_key_pem[4096];	 /**< RSA public key PEM for RS256 tokens */
-	char		  admin_password[128];	 /**< Bootstrap admin password (cleared after init) */
-	long		  token_ttl_ms;			 /**< Default token lifetime in milliseconds */
-	unsigned long password_opslimit;	 /**< Argon2id CPU cost (3 = moderate, 4 = sensitive) */
-	unsigned long password_memlimit;	 /**< Argon2id memory cost in bytes (default 256 MiB) */
-	bool		  tls_enabled;			 /**< Enable HTTPS via TLS */
-	char		  tls_cert_file[512];	 /**< Path to TLS certificate PEM file */
-	char		  tls_key_file[512];	 /**< Path to TLS private key PEM file */
+	char		  token_secret[128];	   /**< HMAC-SHA256 signing key for HS256 tokens */
+	char		  token_secret_2[128];	   /**< Secondary HS256 key (standby slot, for pre-loaded rotation) */
+	char		  private_key_pem[4096];   /**< RSA private key PEM for RS256 tokens */
+	char		  public_key_pem[4096];	   /**< RSA public key PEM for RS256 tokens */
+	char		  private_key_pem_2[4096]; /**< Secondary RSA private key PEM (standby slot) */
+	char		  public_key_pem_2[4096];  /**< Secondary RSA public key PEM (standby slot) */
+	char		  admin_password[128];	   /**< Bootstrap admin password (cleared after init) */
+	long		  token_ttl_ms;			   /**< Default token lifetime in milliseconds */
+	unsigned long password_opslimit;	   /**< Argon2id CPU cost (3 = moderate, 4 = sensitive) */
+	unsigned long password_memlimit;	   /**< Argon2id memory cost in bytes (default 256 MiB) */
+	bool		  tls_enabled;			   /**< Enable HTTPS via TLS */
+	char		  tls_cert_file[512];	   /**< Path to TLS certificate PEM file */
+	char		  tls_key_file[512];	   /**< Path to TLS private key PEM file */
 
 	/* -------- [sms] -------- */
 	char sms_gateway_url[256]; /**< SMS provider HTTP endpoint (NULL = mock mode) */

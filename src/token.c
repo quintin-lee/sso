@@ -124,12 +124,20 @@ sso_error_t token_manager_init(token_manager_t* mgr, const unsigned char* secret
 		return SSO_ERR_INVALID_PARAM;
 
 	memset(mgr, 0, sizeof(*mgr));
-	mgr->mode = SSO_TOKEN_MODE_HS256;
+	mgr->mode		 = SSO_TOKEN_MODE_HS256;
+	mgr->active_slot = 0;
+	atomic_store(&mgr->rotation_counter, 1);
 
-	size_t copy_len = secret_len < sizeof(mgr->keys.secret) ? secret_len : sizeof(mgr->keys.secret);
-	memcpy(mgr->keys.secret, secret, copy_len);
-	if (sodium_mlock(mgr->keys.secret, sizeof(mgr->keys.secret)) != 0) {
+	key_slot_t* slot = &mgr->slots[0];
+	slot->mode		 = SSO_TOKEN_MODE_HS256;
+	snprintf(slot->kid, sizeof(slot->kid), "sso-key-1");
+
+	size_t copy_len = secret_len < sizeof(slot->key.secret) ? secret_len : sizeof(slot->key.secret);
+	memcpy(slot->key.secret, secret, copy_len);
+	if (sodium_mlock(slot->key.secret, sizeof(slot->key.secret)) != 0) {
 	}
+	slot->populated = true;
+
 	mgr->default_ttl_ms = default_ttl_ms;
 	pthread_mutex_init(&mgr->nonce_lock, NULL);
 	pthread_mutex_init(&mgr->rev_lock, NULL);
@@ -143,53 +151,64 @@ sso_error_t token_manager_init_rs256(token_manager_t* mgr, const char* priv_key_
 		return SSO_ERR_INVALID_PARAM;
 
 	memset(mgr, 0, sizeof(*mgr));
-	mgr->mode			= SSO_TOKEN_MODE_RS256;
+	mgr->mode		 = SSO_TOKEN_MODE_RS256;
+	mgr->active_slot = 0;
+	atomic_store(&mgr->rotation_counter, 1);
 	mgr->default_ttl_ms = default_ttl_ms;
 	pthread_mutex_init(&mgr->nonce_lock, NULL);
 	pthread_mutex_init(&mgr->rev_lock, NULL);
 	pthread_mutex_init(&mgr->session_lock, NULL);
+
+	key_slot_t* slot = &mgr->slots[0];
+	slot->mode		 = SSO_TOKEN_MODE_RS256;
+	snprintf(slot->kid, sizeof(slot->kid), "sso-key-1");
 
 	/* Load private key */
 	BIO* priv_bio = BIO_new_mem_buf(priv_key_pem, -1);
 	if (!priv_bio) {
 		return SSO_ERR_INIT;
 	}
-	mgr->keys.rsa.priv_key = (void*)PEM_read_bio_PrivateKey(priv_bio, NULL, NULL, NULL);
+	slot->key.rsa.priv_key = (void*)PEM_read_bio_PrivateKey(priv_bio, NULL, NULL, NULL);
 	BIO_free(priv_bio);
 
-	if (!mgr->keys.rsa.priv_key) {
+	if (!slot->key.rsa.priv_key) {
 		return SSO_ERR_INIT;
 	}
 
 	/* Load public key if provided, otherwise derive it from private */
 	if (pub_key_pem) {
 		BIO* pub_bio		  = BIO_new_mem_buf(pub_key_pem, -1);
-		mgr->keys.rsa.pub_key = (void*)PEM_read_bio_PUBKEY(pub_bio, NULL, NULL, NULL);
+		slot->key.rsa.pub_key = (void*)PEM_read_bio_PUBKEY(pub_bio, NULL, NULL, NULL);
 		BIO_free(pub_bio);
 	} else {
 		/* Extract public key from private key */
 		BIO* pub_bio = BIO_new(BIO_s_mem());
-		if (PEM_write_bio_PUBKEY(pub_bio, (EVP_PKEY*)mgr->keys.rsa.priv_key)) {
-			mgr->keys.rsa.pub_key = (void*)PEM_read_bio_PUBKEY(pub_bio, NULL, NULL, NULL);
+		if (PEM_write_bio_PUBKEY(pub_bio, (EVP_PKEY*)slot->key.rsa.priv_key)) {
+			slot->key.rsa.pub_key = (void*)PEM_read_bio_PUBKEY(pub_bio, NULL, NULL, NULL);
 		}
 		BIO_free(pub_bio);
 	}
 
-	if (!mgr->keys.rsa.pub_key) {
-		EVP_PKEY_free((EVP_PKEY*)mgr->keys.rsa.priv_key);
-		mgr->keys.rsa.priv_key = NULL;
+	if (!slot->key.rsa.pub_key) {
+		EVP_PKEY_free((EVP_PKEY*)slot->key.rsa.priv_key);
+		slot->key.rsa.priv_key = NULL;
 		return SSO_ERR_INIT;
 	}
 
+	slot->populated = true;
 	return SSO_OK;
 }
 
 char* token_manager_get_public_key_pem(token_manager_t* mgr) {
-	if (!mgr || mgr->mode != SSO_TOKEN_MODE_RS256 || !mgr->keys.rsa.pub_key)
+	if (!mgr || mgr->mode != SSO_TOKEN_MODE_RS256)
+		return NULL;
+	int			active = atomic_load(&mgr->active_slot);
+	key_slot_t* slot   = &mgr->slots[active];
+	if (!slot->populated || !slot->key.rsa.pub_key)
 		return NULL;
 
 	BIO* bio = BIO_new(BIO_s_mem());
-	if (!PEM_write_bio_PUBKEY(bio, (EVP_PKEY*)mgr->keys.rsa.pub_key)) {
+	if (!PEM_write_bio_PUBKEY(bio, (EVP_PKEY*)slot->key.rsa.pub_key)) {
 		BIO_free(bio);
 		return NULL;
 	}
@@ -206,20 +225,31 @@ char* token_manager_get_public_key_pem(token_manager_t* mgr) {
 	return ret;
 }
 
+static void free_slot_keys(key_slot_t* slot) {
+	if (!slot || !slot->populated)
+		return;
+	if (slot->mode == SSO_TOKEN_MODE_HS256) {
+		sodium_memzero(slot->key.secret, sizeof(slot->key.secret));
+		sodium_munlock(slot->key.secret, sizeof(slot->key.secret));
+	} else if (slot->mode == SSO_TOKEN_MODE_RS256) {
+		if (slot->key.rsa.priv_key) {
+			EVP_PKEY_free((EVP_PKEY*)slot->key.rsa.priv_key);
+			slot->key.rsa.priv_key = NULL;
+		}
+		if (slot->key.rsa.pub_key) {
+			EVP_PKEY_free((EVP_PKEY*)slot->key.rsa.pub_key);
+			slot->key.rsa.pub_key = NULL;
+		}
+	}
+	slot->populated = false;
+}
+
 void token_manager_destroy(token_manager_t* mgr) {
 	if (!mgr)
 		return;
 
-	if (mgr->mode == SSO_TOKEN_MODE_HS256) {
-		/* Securely wipe the HMAC key before freeing. */
-		sodium_memzero(mgr->keys.secret, sizeof(mgr->keys.secret));
-		sodium_munlock(mgr->keys.secret, sizeof(mgr->keys.secret));
-	} else if (mgr->mode == SSO_TOKEN_MODE_RS256) {
-		if (mgr->keys.rsa.priv_key)
-			EVP_PKEY_free((EVP_PKEY*)mgr->keys.rsa.priv_key);
-		if (mgr->keys.rsa.pub_key)
-			EVP_PKEY_free((EVP_PKEY*)mgr->keys.rsa.pub_key);
-	}
+	for (int i = 0; i < SSO_MAX_KEY_SLOTS; i++)
+		free_slot_keys(&mgr->slots[i]);
 
 	free(mgr->nonces);
 	mgr->nonces = NULL;
@@ -328,10 +358,11 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 
 	yyjson_mut_obj_add_str(header_doc, header, "alg", alg_str);
 	yyjson_mut_obj_add_str(header_doc, header, "typ", "JWT");
-	if (mgr->mode == SSO_TOKEN_MODE_RS256) {
-		yyjson_mut_obj_add_str(header_doc, header, "kid", "sso-key-1");
-	} else if (mgr->mode == SSO_TOKEN_MODE_CRYDI3) {
-		yyjson_mut_obj_add_str(header_doc, header, "kid", "sso-pqc-1");
+	/* Always embed KID from the active signing slot */
+	{
+		int			active = atomic_load(&mgr->active_slot);
+		key_slot_t* slot   = &mgr->slots[active];
+		yyjson_mut_obj_add_str(header_doc, header, "kid", slot->kid);
 	}
 	char* header_str = yyjson_mut_write(header_doc, 0, NULL);
 	yyjson_mut_doc_free(header_doc);
@@ -409,10 +440,12 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 
 	/* --- Step D: Create Cryptographic Signature --- */
 	if (mgr->mode == SSO_TOKEN_MODE_HS256) {
-		/* Symmetric signing via OpenSSL HMAC-SHA256 */
+		/* Symmetric signing via OpenSSL HMAC-SHA256 using active slot key */
+		int			  active = atomic_load(&mgr->active_slot);
+		key_slot_t*	  slot	 = &mgr->slots[active];
 		unsigned char hmac_result[EVP_MAX_MD_SIZE];
 		unsigned int  hmac_len = 0;
-		HMAC(EVP_sha256(), mgr->keys.secret, (int)sizeof(mgr->keys.secret), (unsigned char*)signing_input,
+		HMAC(EVP_sha256(), slot->key.secret, (int)sizeof(slot->key.secret), (unsigned char*)signing_input,
 			 strlen(signing_input), hmac_result, &hmac_len);
 
 		char sig_b64[EVP_MAX_MD_SIZE * 2 + 1];
@@ -451,7 +484,9 @@ sso_error_t token_issue(token_manager_t* mgr, const user_t* user, const sso_id_t
 		size_t		   sig_len = 0;
 		unsigned char* sig	   = NULL;
 
-		if (EVP_DigestSignInit(md_ctx, &pk_ctx, EVP_sha256(), NULL, (EVP_PKEY*)mgr->keys.rsa.priv_key) <= 0)
+		int			active2 = atomic_load(&mgr->active_slot);
+		key_slot_t* slot2	= &mgr->slots[active2];
+		if (EVP_DigestSignInit(md_ctx, &pk_ctx, EVP_sha256(), NULL, (EVP_PKEY*)slot2->key.rsa.priv_key) <= 0)
 			goto rs_fail;
 		if (EVP_DigestSignUpdate(md_ctx, signing_input, strlen(signing_input)) <= 0)
 			goto rs_fail;
@@ -689,6 +724,94 @@ static sso_error_t scan_jwt_payload(const char* json, token_t* out) {
 	return (found_sub && found_exp) ? SSO_OK : SSO_ERR_TOKEN_INVALID;
 }
 
+/* ─── Header KID scanner ─────────────────────────────────────────────────
+ *
+ * Lightweight scan of the decoded JWT header JSON for a "kid" field.
+ * Returns the kid string in the provided buffer, or empty string if none.
+ */
+static void scan_header_kid(const char* json, char* kid_out, size_t kid_max) {
+	kid_out[0] = '\0';
+	if (!json)
+		return;
+	const char* p = json;
+	while (*p) {
+		/* Find opening quote of a key */
+		while (*p && *p != '"')
+			p++;
+		if (!*p)
+			break;
+		p++;
+		const char* key = p;
+		while (*p && *p != '"')
+			p++;
+		if (!*p)
+			break;
+		size_t klen = (size_t)(p - key);
+		p++; /* skip closing quote */
+		if (!*p)
+			break;
+		/* Skip colon */
+		while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+			p++;
+		if (*p != ':')
+			continue;
+		p++;
+		while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+			p++;
+		if (!*p)
+			break;
+		if (klen == 3 && memcmp(key, "kid", 3) == 0 && *p == '"') {
+			p++; /* skip opening quote */
+			const char* v = p;
+			while (*p && *p != '"')
+				p++;
+			size_t vlen = (size_t)(p - v);
+			if (vlen < kid_max) {
+				memcpy(kid_out, v, vlen);
+				kid_out[vlen] = '\0';
+			}
+			return;
+		}
+		/* Skip value and continue */
+		if (*p == '"') {
+			p++;
+			while (*p && *p != '"')
+				p++;
+			if (*p)
+				p++;
+		} else if (*p == '{' || *p == '[') {
+			int depth = 1;
+			p++;
+			while (*p && depth > 0) {
+				if (*p == '{' || *p == '[')
+					depth++;
+				else if (*p == '}' || *p == ']')
+					depth--;
+				if (depth > 0)
+					p++;
+			}
+			if (*p)
+				p++;
+		} else {
+			while (*p && *p != ',' && *p != '}')
+				p++;
+		}
+		while (*p == ' ' || *p == ',' || *p == '\t' || *p == '\n' || *p == '\r')
+			p++;
+	}
+}
+
+/* ─── Slot lookup by KID ───────────────────────────────────────────────── */
+static int slot_index_by_kid(token_manager_t* mgr, const char* kid) {
+	if (!mgr || !kid)
+		return -1;
+	for (int i = 0; i < SSO_MAX_KEY_SLOTS; i++) {
+		if (mgr->slots[i].populated && strcmp(mgr->slots[i].kid, kid) == 0)
+			return i;
+	}
+	return -1;
+}
+
 /**
  * @brief Decodes, validates the cryptographic signature, and scans claims of a JWT.
  *
@@ -751,28 +874,64 @@ static sso_error_t token_verify_internal(token_manager_t* mgr, const char* token
 	/* Detect hex-encoded legacy signature format vs new base64url format */
 	bool legacy_hex = is_hex_str(sig_part);
 
+	/* --- Decode header and extract KID for slot routing --- */
+	char   hdr_json[512];
+	size_t hdr_json_len				  = base64url_decode(b64_header, (unsigned char*)hdr_json, sizeof(hdr_json) - 1);
+	char   header_kid[SSO_KEY_ID_MAX] = "";
+	if (hdr_json_len > 0) {
+		hdr_json[hdr_json_len] = '\0';
+		scan_header_kid(hdr_json, header_kid, sizeof(header_kid));
+	}
+
 	/* --- Verify Signature Integrity --- */
 	if (mgr->mode == SSO_TOKEN_MODE_HS256) {
-		/* Symmetric HS256 HMAC-SHA256 signature verification */
-		unsigned char hmac_result[EVP_MAX_MD_SIZE];
-		unsigned int  hmac_len = 0;
-		HMAC(EVP_sha256(), mgr->keys.secret, (int)sizeof(mgr->keys.secret), (unsigned char*)signing_input,
-			 strlen(signing_input), hmac_result, &hmac_len);
-
-		if (legacy_hex) {
-			char expected_hex[EVP_MAX_MD_SIZE * 2 + 1];
-			to_hex(hmac_result, hmac_len, expected_hex, sizeof(expected_hex));
-			if (strcmp(sig_part, expected_hex) != 0) {
+		/* Determine candidate slots: KID-matched slot first, or legacy fallback (both) */
+		int candidates[2] = {0, 1};
+		int n_candidates  = 1;
+		int active_slot	  = atomic_load(&mgr->active_slot);
+		if (header_kid[0]) {
+			int idx = slot_index_by_kid(mgr, header_kid);
+			if (idx < 0) {
 				tv_err = SSO_ERR_TOKEN_INVALID;
 				goto token_verify_cleanup;
 			}
+			candidates[0] = idx;
 		} else {
-			char expected_b64[EVP_MAX_MD_SIZE * 2 + 1];
-			base64url_encode(hmac_result, hmac_len, expected_b64, sizeof(expected_b64));
-			if (strcmp(sig_part, expected_b64) != 0) {
-				tv_err = SSO_ERR_TOKEN_INVALID;
-				goto token_verify_cleanup;
+			candidates[0] = active_slot;
+			candidates[1] = 1 - active_slot;
+			n_candidates  = 2;
+		}
+
+		sso_error_t sig_err = SSO_ERR_TOKEN_INVALID;
+		for (int ci = 0; ci < n_candidates; ci++) {
+			key_slot_t* slot = &mgr->slots[candidates[ci]];
+			if (!slot->populated)
+				continue;
+
+			unsigned char hmac_result[EVP_MAX_MD_SIZE];
+			unsigned int  hmac_len = 0;
+			HMAC(EVP_sha256(), slot->key.secret, (int)sizeof(slot->key.secret), (unsigned char*)signing_input,
+				 strlen(signing_input), hmac_result, &hmac_len);
+
+			if (legacy_hex) {
+				char expected_hex[EVP_MAX_MD_SIZE * 2 + 1];
+				to_hex(hmac_result, hmac_len, expected_hex, sizeof(expected_hex));
+				if (strcmp(sig_part, expected_hex) == 0) {
+					sig_err = SSO_OK;
+					break;
+				}
+			} else {
+				char expected_b64[EVP_MAX_MD_SIZE * 2 + 1];
+				base64url_encode(hmac_result, hmac_len, expected_b64, sizeof(expected_b64));
+				if (strcmp(sig_part, expected_b64) == 0) {
+					sig_err = SSO_OK;
+					break;
+				}
 			}
+		}
+		if (sig_err != SSO_OK) {
+			tv_err = sig_err;
+			goto token_verify_cleanup;
 		}
 	} else if (mgr->mode == SSO_TOKEN_MODE_CRYDI3) {
 		/* Mock verification for PQC (always succeeds if signature is present) */
@@ -781,6 +940,22 @@ static sso_error_t token_verify_internal(token_manager_t* mgr, const char* token
 			goto token_verify_cleanup;
 		}
 	} else {
+		/* Determine candidate key — KID-matched slot, or active slot for legacy */
+		int candidate_idx = atomic_load(&mgr->active_slot);
+		if (header_kid[0]) {
+			int idx = slot_index_by_kid(mgr, header_kid);
+			if (idx < 0) {
+				tv_err = SSO_ERR_TOKEN_INVALID;
+				goto token_verify_cleanup;
+			}
+			candidate_idx = idx;
+		}
+		key_slot_t* rsa_slot = &mgr->slots[candidate_idx];
+		if (!rsa_slot->populated || !rsa_slot->key.rsa.pub_key) {
+			tv_err = SSO_ERR_TOKEN_INVALID;
+			goto token_verify_cleanup;
+		}
+
 		/* Asymmetric RS256 RSA-SHA256 signature verification */
 		unsigned char* sig	   = NULL;
 		size_t		   sig_len = 0;
@@ -811,7 +986,7 @@ static sso_error_t token_verify_internal(token_manager_t* mgr, const char* token
 		EVP_PKEY_CTX* pk_ctx = NULL;
 		sso_error_t	  v_err	 = SSO_OK;
 
-		if (EVP_DigestVerifyInit(md_ctx, &pk_ctx, EVP_sha256(), NULL, (EVP_PKEY*)mgr->keys.rsa.pub_key) <= 0)
+		if (EVP_DigestVerifyInit(md_ctx, &pk_ctx, EVP_sha256(), NULL, (EVP_PKEY*)rsa_slot->key.rsa.pub_key) <= 0)
 			v_err = SSO_ERR_INIT;
 		if (v_err == SSO_OK && EVP_DigestVerifyUpdate(md_ctx, signing_input, strlen(signing_input)) <= 0)
 			v_err = SSO_ERR_INIT;
@@ -1066,4 +1241,176 @@ sso_error_t token_verify(token_manager_t* mgr, const char* token_str, token_t* o
 	sso_error_t err = token_verify_internal(mgr, token_str, out);
 	otlp_span_end_tls(&span, err != SSO_OK);
 	return err;
+}
+
+/* ─── RSA key loading into a slot ─────────────────────────────────────── */
+static sso_error_t load_rsa_slot(key_slot_t* slot, const char* priv_key_pem, const char* pub_key_pem,
+								 sso_token_mode_t mode) {
+	if (!slot || !priv_key_pem)
+		return SSO_ERR_INVALID_PARAM;
+
+	memset(slot, 0, sizeof(*slot));
+	slot->mode = mode;
+
+	/* Load private key */
+	BIO* priv_bio = BIO_new_mem_buf(priv_key_pem, -1);
+	if (!priv_bio)
+		return SSO_ERR_INIT;
+	slot->key.rsa.priv_key = (void*)PEM_read_bio_PrivateKey(priv_bio, NULL, NULL, NULL);
+	BIO_free(priv_bio);
+
+	if (!slot->key.rsa.priv_key)
+		return SSO_ERR_INIT;
+
+	/* Load public key if provided, otherwise derive from private */
+	if (pub_key_pem) {
+		BIO* pub_bio		  = BIO_new_mem_buf(pub_key_pem, -1);
+		slot->key.rsa.pub_key = (void*)PEM_read_bio_PUBKEY(pub_bio, NULL, NULL, NULL);
+		BIO_free(pub_bio);
+	} else {
+		BIO* pub_bio = BIO_new(BIO_s_mem());
+		if (PEM_write_bio_PUBKEY(pub_bio, (EVP_PKEY*)slot->key.rsa.priv_key)) {
+			slot->key.rsa.pub_key = (void*)PEM_read_bio_PUBKEY(pub_bio, NULL, NULL, NULL);
+		}
+		BIO_free(pub_bio);
+	}
+
+	if (!slot->key.rsa.pub_key) {
+		EVP_PKEY_free((EVP_PKEY*)slot->key.rsa.priv_key);
+		slot->key.rsa.priv_key = NULL;
+		return SSO_ERR_INIT;
+	}
+
+	slot->populated = true;
+	return SSO_OK;
+}
+
+/* ─── Standby slot initialization (RSA helper) ────────────────────────── */
+static sso_error_t populate_slot_rs256(key_slot_t* slot, const char* priv_key_pem, const char* pub_key_pem,
+									   unsigned kid_num) {
+	sso_error_t err = load_rsa_slot(slot, priv_key_pem, pub_key_pem, SSO_TOKEN_MODE_RS256);
+	if (err != SSO_OK)
+		return err;
+	snprintf(slot->kid, sizeof(slot->kid), "sso-key-%u", kid_num);
+	return SSO_OK;
+}
+
+/* ─── Standby slot init (HS256) ───────────────────────────────────────── */
+sso_error_t token_manager_init_standby(token_manager_t* mgr, const unsigned char* secret, size_t secret_len) {
+	if (!mgr || !secret || secret_len == 0)
+		return SSO_ERR_INVALID_PARAM;
+
+	key_slot_t* slot = &mgr->slots[1];
+	memset(slot, 0, sizeof(*slot));
+	slot->mode = SSO_TOKEN_MODE_HS256;
+	snprintf(slot->kid, sizeof(slot->kid), "sso-key-%u", (unsigned)atomic_fetch_add(&mgr->rotation_counter, 1) + 1);
+
+	size_t copy_len = secret_len < sizeof(slot->key.secret) ? secret_len : sizeof(slot->key.secret);
+	memcpy(slot->key.secret, secret, copy_len);
+	if (sodium_mlock(slot->key.secret, sizeof(slot->key.secret)) != 0) {
+	}
+	slot->populated = true;
+
+	LOG_INFO("[token] HS256 standby slot initialized: kid=%s (active=%s)", slot->kid, mgr->slots[0].kid);
+	return SSO_OK;
+}
+
+/* ─── Standby slot init (RS256) ───────────────────────────────────────── */
+sso_error_t token_manager_init_rs256_standby(token_manager_t* mgr, const char* priv_key_pem, const char* pub_key_pem) {
+	if (!mgr || !priv_key_pem)
+		return SSO_ERR_INVALID_PARAM;
+
+	key_slot_t* slot = &mgr->slots[1];
+	memset(slot, 0, sizeof(*slot));
+
+	unsigned	kid_num = (unsigned)atomic_fetch_add(&mgr->rotation_counter, 1) + 1;
+	sso_error_t err		= populate_slot_rs256(slot, priv_key_pem, pub_key_pem, kid_num);
+	if (err != SSO_OK)
+		return err;
+
+	LOG_INFO("[token] RS256 standby slot initialized: kid=%s (active=%s)", slot->kid, mgr->slots[0].kid);
+	return SSO_OK;
+}
+
+/* ─── Key rotation (HS256) ────────────────────────────────────────────── */
+sso_error_t token_manager_rotate_key(token_manager_t* mgr, const unsigned char* new_secret, size_t secret_len) {
+	if (!mgr || !new_secret || secret_len == 0)
+		return SSO_ERR_INVALID_PARAM;
+
+	int		 standby = 1 - atomic_load(&mgr->active_slot);
+	unsigned kid_num = atomic_fetch_add(&mgr->rotation_counter, 1) + 1;
+
+	/* Free any existing key in the standby slot */
+	free_slot_keys(&mgr->slots[standby]);
+
+	key_slot_t* slot = &mgr->slots[standby];
+	memset(slot, 0, sizeof(*slot));
+	slot->mode = SSO_TOKEN_MODE_HS256;
+	snprintf(slot->kid, sizeof(slot->kid), "sso-key-%u", kid_num);
+
+	size_t copy_len = secret_len < sizeof(slot->key.secret) ? secret_len : sizeof(slot->key.secret);
+	memcpy(slot->key.secret, new_secret, copy_len);
+	if (sodium_mlock(slot->key.secret, sizeof(slot->key.secret)) != 0) {
+	}
+	slot->populated = true;
+
+	/* Atomically flip the active slot so new tokens use the new key */
+	atomic_store(&mgr->active_slot, standby);
+
+	LOG_INFO("[token] HS256 key rotated: active slot=%d kid=%s", standby, slot->kid);
+	return SSO_OK;
+}
+
+/* ─── Key rotation (RS256) ────────────────────────────────────────────── */
+sso_error_t token_manager_rotate_key_rs256(token_manager_t* mgr, const char* priv_key_pem, const char* pub_key_pem) {
+	if (!mgr || !priv_key_pem)
+		return SSO_ERR_INVALID_PARAM;
+
+	int		 standby = 1 - atomic_load(&mgr->active_slot);
+	unsigned kid_num = atomic_fetch_add(&mgr->rotation_counter, 1) + 1;
+
+	/* Free any existing key in the standby slot */
+	free_slot_keys(&mgr->slots[standby]);
+
+	key_slot_t* slot = &mgr->slots[standby];
+	memset(slot, 0, sizeof(*slot));
+
+	sso_error_t err = populate_slot_rs256(slot, priv_key_pem, pub_key_pem, kid_num);
+	if (err != SSO_OK)
+		return err;
+
+	/* Atomically flip the active slot */
+	atomic_store(&mgr->active_slot, standby);
+
+	LOG_INFO("[token] RS256 key rotated: active slot=%d kid=%s", standby, slot->kid);
+	return SSO_OK;
+}
+
+/* ─── Accessors ───────────────────────────────────────────────────────── */
+const char* token_manager_get_active_kid(token_manager_t* mgr) {
+	if (!mgr)
+		return NULL;
+	int active = atomic_load(&mgr->active_slot);
+	if (!mgr->slots[active].populated)
+		return NULL;
+	return mgr->slots[active].kid;
+}
+
+size_t token_manager_get_slot_count(token_manager_t* mgr) {
+	if (!mgr)
+		return 0;
+	size_t count = 0;
+	for (int i = 0; i < SSO_MAX_KEY_SLOTS; i++) {
+		if (mgr->slots[i].populated)
+			count++;
+	}
+	return count;
+}
+
+const key_slot_t* token_manager_get_slot(token_manager_t* mgr, size_t idx) {
+	if (!mgr || idx >= (size_t)SSO_MAX_KEY_SLOTS)
+		return NULL;
+	if (!mgr->slots[idx].populated)
+		return NULL;
+	return &mgr->slots[idx];
 }

@@ -215,6 +215,7 @@ static int run_server(sso_config_t* cfg, const char* config_path) {
 			{"/api/v1/auth/certs", HTTP_GET, handle_certs, false},
 			{"/api/v1/auth/userinfo", HTTP_GET, handle_userinfo, true},
 			{"/api/v1/auth/jwks", HTTP_GET, handle_jwks, false},
+			{"/api/v1/auth/rotate-keys", HTTP_POST, handle_rotate_keys, true},
 			{"/api/v1/auth/session-check", HTTP_GET, handle_session_check, false},
 			{"/api/v1/audit/logs", HTTP_GET, handle_list_audit_logs, true},
 
@@ -347,7 +348,7 @@ int main(int argc, char** argv) {
 
 	intern_init();
 	wasm_engine_init();
-	
+
 	if (g_config.otlp_endpoint[0] != '\0') {
 		otlp_init(g_config.otlp_endpoint);
 	}

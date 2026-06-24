@@ -814,6 +814,57 @@ sso_error_t handle_well_known_openid_config(sso_context_t* ctx, const http_reque
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
+static bool append_jwk_entry(token_manager_t* tmgr, const key_slot_t* slot, arena_t* arena, char* buf, size_t buf_size,
+							 size_t* pos) {
+	if (!slot->populated || slot->mode != SSO_TOKEN_MODE_RS256 || !slot->key.rsa.pub_key)
+		return false;
+
+	EVP_PKEY* pkey = (EVP_PKEY*)slot->key.rsa.pub_key;
+	RSA*	  rsa  = EVP_PKEY_get1_RSA(pkey);
+	if (!rsa)
+		return false;
+
+	const BIGNUM* n_bn = NULL;
+	const BIGNUM* e_bn = NULL;
+	RSA_get0_key(rsa, &n_bn, &e_bn, NULL);
+	if (!n_bn || !e_bn) {
+		RSA_free(rsa);
+		return false;
+	}
+
+	unsigned char* n_bytes = arena_alloc(arena, BN_num_bytes(n_bn));
+	unsigned char* e_bytes = arena_alloc(arena, BN_num_bytes(e_bn));
+	if (!n_bytes || !e_bytes) {
+		RSA_free(rsa);
+		return false;
+	}
+
+	int n_len = BN_bn2bin(n_bn, n_bytes);
+	int e_len = BN_bn2bin(e_bn, e_bytes);
+
+	char* n_b64 = arena_alloc(arena, (size_t)n_len * 2 + 10);
+	char* e_b64 = arena_alloc(arena, (size_t)e_len * 2 + 10);
+	if (!n_b64 || !e_b64) {
+		RSA_free(rsa);
+		return false;
+	}
+
+	base64url_encode(n_bytes, (size_t)n_len, n_b64, (size_t)n_len * 2 + 10);
+	base64url_encode(e_bytes, (size_t)e_len, e_b64, (size_t)e_len * 2 + 10);
+
+	size_t remaining = buf_size - *pos;
+	int	   written	 = snprintf(buf + *pos, remaining,
+								"%s{\"kty\":\"RSA\",\"alg\":\"RS256\",\"use\":\"sig\","
+								"\"kid\":\"%s\",\"n\":\"%s\",\"e\":\"%s\"}",
+								(*pos > 1) ? "," : "", slot->kid, n_b64, e_b64);
+
+	RSA_free(rsa);
+
+	if (written > 0 && (size_t)written < remaining)
+		*pos += (size_t)written;
+	return true;
+}
+
 sso_error_t handle_jwks(sso_context_t* ctx, const http_request_t* req, http_response_t* resp) {
 	(void)req;
 	token_manager_t* tmgr = get_token_mgr(ctx);
@@ -822,87 +873,46 @@ sso_error_t handle_jwks(sso_context_t* ctx, const http_request_t* req, http_resp
 		return SSO_OK;
 	}
 
-	if (tmgr->mode != SSO_TOKEN_MODE_RS256 || !tmgr->keys.rsa.pub_key) {
+	if (tmgr->mode != SSO_TOKEN_MODE_RS256) {
 		sso_response_ok(resp, "{\"keys\":[]}");
 		return SSO_OK;
 	}
 
-	EVP_PKEY* pkey = (EVP_PKEY*)tmgr->keys.rsa.pub_key;
-	RSA*	  rsa  = EVP_PKEY_get1_RSA(pkey);
-	if (!rsa) {
-		json_error_response(resp, 500, "server_error");
+	size_t slot_cnt = token_manager_get_slot_count(tmgr);
+	if (slot_cnt == 0) {
+		sso_response_ok(resp, "{\"keys\":[]}");
 		return SSO_OK;
 	}
-
-	const BIGNUM* n_bn = NULL;
-	const BIGNUM* e_bn = NULL;
-	RSA_get0_key(rsa, &n_bn, &e_bn, NULL);
-	if (!n_bn || !e_bn) {
-		RSA_free(rsa);
-		json_error_response(resp, 500, "server_error");
-		return SSO_OK;
-	}
-
-	unsigned char* n_bytes = arena_alloc((arena_t*)&req->arena, BN_num_bytes(n_bn));
-	unsigned char* e_bytes = arena_alloc((arena_t*)&req->arena, BN_num_bytes(e_bn));
-	if (!n_bytes || !e_bytes) {
-		/* free(n_bytes); */
-		/* free(e_bytes); */
-		RSA_free(rsa);
-		json_error_response(resp, 500, "server_error");
-		return SSO_OK;
-	}
-
-	int n_len = BN_bn2bin(n_bn, n_bytes);
-	int e_len = BN_bn2bin(e_bn, e_bytes);
-
-	/* Allocate buffer for base64url encoding (around 2x binary size is safe) */
-	char* n_b64 = arena_alloc((arena_t*)&req->arena, n_len * 2 + 10);
-	char* e_b64 = arena_alloc((arena_t*)&req->arena, e_len * 2 + 10);
-	if (!n_b64 || !e_b64) {
-		/* free(n_bytes); */
-		/* free(e_bytes); */
-		/* free(n_b64); */
-		/* free(e_b64); */
-		RSA_free(rsa);
-		json_error_response(resp, 500, "server_error");
-		return SSO_OK;
-	}
-
-	base64url_encode(n_bytes, n_len, n_b64, n_len * 2 + 10);
-	base64url_encode(e_bytes, e_len, e_b64, e_len * 2 + 10);
 
 	char* buf = (char*)arena_alloc((arena_t*)&req->arena, 4096);
 	if (!buf) {
-		/* free(n_bytes); */
-		/* free(e_bytes); */
-		/* free(n_b64); */
-		/* free(e_b64); */
-		RSA_free(rsa);
 		sso_response_error(resp, 500, "Out of memory");
 		return SSO_OK;
 	}
-	snprintf(buf, 4096,
-			 "{"
-			 "\"keys\":[{"
-			 "\"kty\":\"RSA\","
-			 "\"alg\":\"RS256\","
-			 "\"use\":\"sig\","
-			 "\"kid\":\"sso-key-1\","
-			 "\"n\":\"%s\","
-			 "\"e\":\"%s\""
-			 "}]"
-			 "}",
-			 n_b64, e_b64);
 
-	/* free(n_bytes); */
-	/* free(e_bytes); */
-	/* free(n_b64); */
-	/* free(e_b64); */
-	RSA_free(rsa);
+	size_t pos = 0;
+	buf[pos++] = '{';
+	memcpy(buf + pos, "\"keys\":[", 8);
+	pos += 8;
+
+	for (size_t i = 0; i < SSO_MAX_KEY_SLOTS; i++) {
+		const key_slot_t* slot = token_manager_get_slot(tmgr, i);
+		if (slot) {
+			append_jwk_entry(tmgr, slot, (arena_t*)&req->arena, buf, 4096, &pos);
+		}
+	}
+
+	if (pos >= 2 && buf[pos - 1] == '[') {
+		/* No keys were appended */
+		memcpy(buf + pos, "]}", 2);
+		pos += 2;
+	} else {
+		memcpy(buf + pos, "]}", 2);
+		pos += 2;
+	}
+	buf[pos] = '\0';
 
 	sso_response_ok(resp, buf);
-	/* free(buf); */
 	return SSO_OK;
 }
 #if defined(__GNUC__) || defined(__clang__)

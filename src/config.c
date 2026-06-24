@@ -313,10 +313,16 @@ void sso_config_apply_env(sso_config_t* cfg) {
 		SSO_STRNCPY_DST(cfg->database_url, val);
 	if ((val = getenv("SSO_TOKEN_SECRET")))
 		SSO_STRNCPY_DST(cfg->token_secret, val);
+	if ((val = getenv("SSO_TOKEN_SECRET_2")))
+		SSO_STRNCPY_DST(cfg->token_secret_2, val);
 	if ((val = getenv("SSO_PRIVATE_KEY")))
 		SSO_STRNCPY_DST(cfg->private_key_pem, val);
 	if ((val = getenv("SSO_PUBLIC_KEY")))
 		SSO_STRNCPY_DST(cfg->public_key_pem, val);
+	if ((val = getenv("SSO_PRIVATE_KEY_2")))
+		SSO_STRNCPY_DST(cfg->private_key_pem_2, val);
+	if ((val = getenv("SSO_PUBLIC_KEY_2")))
+		SSO_STRNCPY_DST(cfg->public_key_pem_2, val);
 	if ((val = getenv("SSO_ADMIN_PASSWORD")))
 		SSO_STRNCPY_DST(cfg->admin_password, val);
 	if ((val = getenv("SSO_SMS_GATEWAY_URL")))
