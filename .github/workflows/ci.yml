@@ -98,8 +98,8 @@ jobs:
 
     - name: Run clang-tidy
       run: |
-        # Filter out 3rd-party code (cJSON.c, toml.c) from analysis to prevent spam
-        find src strategies -name "*.c" ! -name "cJSON.c" ! -name "toml.c" -print0 | xargs -0 clang-tidy -p compile_commands.json
+        # Filter out 3rd-party code (toml.c) from analysis to prevent spam
+        find src strategies -name "*.c" ! -name "toml.c" -print0 | xargs -0 clang-tidy -p compile_commands.json
 
   frontend-build:
     runs-on: ubuntu-latest

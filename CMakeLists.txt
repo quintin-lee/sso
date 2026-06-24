@@ -69,7 +69,6 @@ include_directories(
 # ── Source Files ────────────────────────────────────────────────────────
 set(COMMON_SOURCES
   src/arena.c
-  src/cJSON.c
   src/config.c
   src/demo.c
   src/dpop.c
