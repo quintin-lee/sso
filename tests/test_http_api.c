@@ -225,12 +225,97 @@ static const char* test_refresh_token() {
 	return 0;
 }
 
+/* --- Key Rotation Integration Tests --- */
+static const char* test_key_rotation_jwks_integration() {
+	printf("  Running test_key_rotation_jwks_integration...\n");
+
+	sso_context_t	   ctx;
+	storage_backend_t* storage = NULL;
+	if (bootstrap_system(&ctx, storage) != SSO_OK)
+		return "bootstrap failed";
+
+	token_manager_t* tmgr = (token_manager_t*)ctx.token_mgr;
+
+	/* Initial state: 1 populated slot */
+	ASSERT_INT_EQUAL(token_manager_get_slot_count(tmgr), 1);
+
+	/* Get initial slot */
+	const key_slot_t* slot0 = token_manager_get_slot(tmgr, 0);
+	ASSERT_NOT_NULL(slot0);
+	ASSERT_TRUE(slot0->populated);
+
+	/* Perform rotation */
+	unsigned char new_secret[32];
+	memset(new_secret, 0x42, sizeof(new_secret));
+	sso_error_t err = token_manager_rotate_key(tmgr, new_secret, sizeof(new_secret));
+	ASSERT_INT_EQUAL(err, SSO_OK);
+
+	/* After rotation: 2 populated slots */
+	ASSERT_INT_EQUAL(token_manager_get_slot_count(tmgr), 2);
+
+	/* Both slots should be accessible */
+	const key_slot_t* slot1 = token_manager_get_slot(tmgr, 1);
+	ASSERT_NOT_NULL(slot1);
+	ASSERT_TRUE(slot1->populated);
+
+	/* Active KID changed */
+	const char* active_kid = token_manager_get_active_kid(tmgr);
+	ASSERT_NOT_NULL(active_kid);
+	ASSERT_TRUE(strstr(active_kid, "sso-key-") != NULL);
+
+	sso_destroy(&ctx);
+	return 0;
+}
+
+static const char* test_key_rotation_verify_both_slots() {
+	printf("  Running test_key_rotation_verify_both_slots...\n");
+
+	token_manager_t* tmgr = (token_manager_t*)calloc(1, sizeof(token_manager_t));
+	unsigned char	 initial_secret[32];
+	memset(initial_secret, 0x11, sizeof(initial_secret));
+	token_manager_init(tmgr, initial_secret, sizeof(initial_secret), 3600000LL);
+
+	user_t user;
+	memset(&user, 0, sizeof(user));
+	user.id = 77;
+	sso_strlcpy(user.username, "rotuser", sizeof(user.username));
+
+	/* Issue token with initial key */
+	token_t old_token;
+	token_issue(tmgr, &user, NULL, 0, NULL, 0, NULL, 3600000LL, NULL, &old_token);
+
+	/* Rotate key */
+	unsigned char rotated_secret[32];
+	memset(rotated_secret, 0x22, sizeof(rotated_secret));
+	token_manager_rotate_key(tmgr, rotated_secret, sizeof(rotated_secret));
+
+	/* Issue token with new key */
+	token_t new_token;
+	token_issue(tmgr, &user, NULL, 0, NULL, 0, NULL, 3600000LL, NULL, &new_token);
+
+	/* Both tokens should verify */
+	token_t v_old, v_new;
+	ASSERT_INT_EQUAL(token_verify(tmgr, old_token.token_str, &v_old), SSO_OK);
+	ASSERT_INT_EQUAL(token_verify(tmgr, new_token.token_str, &v_new), SSO_OK);
+	ASSERT_INT_EQUAL(v_old.user_id, 77);
+	ASSERT_INT_EQUAL(v_new.user_id, 77);
+
+	token_destroy(&old_token);
+	token_destroy(&new_token);
+	token_destroy(&v_old);
+	token_destroy(&v_new);
+	token_manager_destroy(tmgr);
+	return 0;
+}
+
 static const char* all_tests() {
 	mu_run_test(test_login_success);
 	mu_run_test(test_token_expired);
 	mu_run_test(test_invalid_password);
 	mu_run_test(test_token_nonce);
 	mu_run_test(test_refresh_token);
+	mu_run_test(test_key_rotation_jwks_integration);
+	mu_run_test(test_key_rotation_verify_both_slots);
 	return 0;
 }
 
